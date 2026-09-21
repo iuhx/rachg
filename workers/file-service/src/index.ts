@@ -6,6 +6,7 @@ import type {
   ApiErrorResponse,
 } from '@rachg/shared';
 import {
+  ensureSchema,
   insertFileRecord,
   getFileRecordById,
   listActiveFiles,
@@ -87,12 +88,14 @@ export default {
       // Health check & Service status
       // -------------------------------------------------------------
       if (url.pathname === '/' || url.pathname === '/health') {
+        await ensureSchema(env.DB);
         const usage = await getActiveStorageUsage(env.DB).catch(() => 0);
         return jsonResponse(
           {
             service: 'rachg-file-service',
             version: '1.0.0',
             status: 'healthy',
+            schema: 'ready',
             quota: {
               usedBytes: usage,
               maxBytes: maxStorageLimit,

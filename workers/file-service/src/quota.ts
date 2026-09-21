@@ -1,8 +1,11 @@
+import { ensureSchema } from './db';
+
 /**
  * 4GB Storage Quota Management.
  * Checks total storage occupied by active non-expired files in D1.
  */
 export async function getActiveStorageUsage(db: D1Database): Promise<number> {
+  await ensureSchema(db).catch(() => {});
   const now = Date.now();
   const row = await db
     .prepare(

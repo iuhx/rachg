@@ -82,9 +82,44 @@ export function mapRecordToFileItem(r: FileRecord, baseUrl: string): FileItem {
 }
 
 /**
+ * Ensure database table and indexes exist.
+ * This runs natively inside the Worker with native D1 bindings.
+ */
+export async function ensureSchema(db: D1Database): Promise<void> {
+  await db
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS files (
+        id TEXT PRIMARY KEY,
+        filename TEXT NOT NULL,
+        size_bytes INTEGER NOT NULL,
+        mime_type TEXT NOT NULL,
+        r2_key TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL,
+        download_count INTEGER DEFAULT 0,
+        delete_token TEXT NOT NULL,
+        owner_id TEXT,
+        status TEXT DEFAULT 'active'
+      );`
+    )
+    .run();
+
+  await db
+    .prepare(`CREATE INDEX IF NOT EXISTS idx_files_status_expires ON files (status, expires_at);`)
+    .run()
+    .catch(() => {});
+
+  await db
+    .prepare(`CREATE INDEX IF NOT EXISTS idx_files_created ON files (created_at DESC);`)
+    .run()
+    .catch(() => {});
+}
+
+/**
  * Insert a new file record into D1.
  */
 export async function insertFileRecord(db: D1Database, record: FileRecord): Promise<void> {
+  await ensureSchema(db);
   await db
     .prepare(
       `INSERT INTO files (
@@ -111,6 +146,7 @@ export async function insertFileRecord(db: D1Database, record: FileRecord): Prom
  * Fetch a file record by id.
  */
 export async function getFileRecordById(db: D1Database, id: string): Promise<FileRecord | null> {
+  await ensureSchema(db);
   const result = await db
     .prepare(`SELECT * FROM files WHERE id = ? LIMIT 1`)
     .bind(id)
@@ -123,6 +159,7 @@ export async function getFileRecordById(db: D1Database, id: string): Promise<Fil
  * Also performs lazy status updates for expired files.
  */
 export async function listActiveFiles(db: D1Database): Promise<FileRecord[]> {
+  await ensureSchema(db);
   const now = Date.now();
 
   // Lazy mark expired
