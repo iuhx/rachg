@@ -61,7 +61,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 Cloudflare Ecosystem Status
               </h3>
               <p className="text-xs text-neutral-400">
-                Connected to account: <span className="font-mono text-neutral-600 dark:text-neutral-300">haenlau@air1.cn</span>
+                Connected to account: <span className="font-mono text-neutral-600 dark:text-neutral-300">haenlau@rachg.com</span>
               </p>
             </div>
           </div>

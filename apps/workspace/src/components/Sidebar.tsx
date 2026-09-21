@@ -62,18 +62,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 }}
                 className="w-full flex items-center justify-between px-2.5 py-1.5 text-xs rounded-lg text-white bg-white/5 hover:bg-white/10 transition-colors"
               >
-                <span>rachg.com</span>
+                <span>app.rachg.com</span>
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
               </button>
-              <a
-                href="https://canvas.air1.cn"
-                target="_blank"
-                rel="noreferrer"
-                className="w-full flex items-center justify-between px-2.5 py-1.5 text-xs rounded-lg text-neutral-300 hover:text-white hover:bg-white/5 transition-colors mt-0.5"
-              >
-                <span>canvas.air1.cn</span>
-                <span className="text-[10px] text-neutral-500 font-mono">live</span>
-              </a>
+              <div className="px-2.5 py-1.5 text-[11px] text-neutral-400">
+                Personal Digital Studio
+              </div>
             </div>
           )}
         </div>
