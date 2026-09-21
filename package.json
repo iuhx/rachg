@@ -1,0 +1,16 @@
+{
+  "name": "rachg-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:workspace": "npm --prefix apps/workspace run dev",
+    "build:workspace": "npm --prefix apps/workspace run build",
+    "preview:workspace": "npm --prefix apps/workspace run preview",
+    "dev:file-service": "npm --prefix workers/file-service run dev",
+    "build:all": "npm --prefix apps/workspace run build"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}

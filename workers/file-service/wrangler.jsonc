@@ -1,0 +1,31 @@
+{
+  "$schema": "https://unpkg.com/wrangler/config-schema.json",
+  "name": "rachg-file-service",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // D1 Database Binding for file metadata
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "d1rachg",
+      "database_id": "804f589f-b81d-4884-8878-91bd8e6611f3"
+    }
+  ],
+
+  // R2 Bucket Binding (reusing your existing R2 bucket r2rachg, transfers/ prefix isolation)
+  "r2_buckets": [
+    {
+      "binding": "FILES_BUCKET",
+      "bucket_name": "r2rachg"
+    }
+  ],
+
+  // Service configuration & Limits
+  "vars": {
+    "MAX_STORAGE_BYTES": "4294967296", // 4GB max total active storage cap
+    "DEFAULT_EXPIRATION_HOURS": "48",
+    "ALLOWED_ORIGINS": "https://app.rachg.com,http://localhost:4321,http://127.0.0.1:4321"
+  }
+}

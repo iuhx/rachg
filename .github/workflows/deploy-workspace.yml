@@ -1,0 +1,50 @@
+name: Deploy rachg-workspace (Cloudflare Pages)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/workspace/**'
+      - 'packages/shared/**'
+      - '.github/workflows/deploy-workspace.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-workspace-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    name: Build & Deploy to Cloudflare Pages
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Shared Package
+        run: pnpm --filter @rachg/shared build
+
+      - name: Build Workspace Static Bundle
+        env:
+          PUBLIC_FILE_SERVICE_URL: ${{ vars.PUBLIC_FILE_SERVICE_URL || 'https://files.rachg.com' }}
+        run: pnpm --filter @rachg/workspace build
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy apps/workspace/dist --project-name=rachg-workspace --branch=main

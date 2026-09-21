@@ -1,0 +1,38 @@
+# Build output (Cloudflare Pages builds from source)
+dist/
+**/dist/
+.astro/
+**/.astro/
+
+# Dependencies
+node_modules/
+**/node_modules/
+.pnpm-store/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Cloudflare Wrangler local state & credentials
+.wrangler/
+**/.wrangler/
+wrangler.dev.json*
+
+# Environment variables and secrets (CRITICAL: never commit tokens or credentials)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# macOS and OS specific files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
