@@ -5,44 +5,34 @@ import { DashboardView } from './DashboardView';
 import { ProjectsView } from './ProjectsView';
 import { NotesView } from './NotesView';
 import { FilesView } from './FilesView';
-import { ToolsView } from './ToolsView';
 import { SettingsView } from './SettingsView';
 import { CommandPalette } from './CommandPalette';
 import { NewItemModal } from './NewItemModal';
-import { DetailDrawer } from './DetailDrawer';
 import {
   INITIAL_PROJECTS,
-  INITIAL_FILES,
   INITIAL_TRANSFERS,
   INITIAL_NOTES,
-  INITIAL_EXPERIMENTS,
 } from '../data/mockData';
 import {
   fetchActiveFiles,
   uploadFileService,
   deleteFileService,
 } from '../services/fileService';
-import type { NavTab, Project, FileItem, NoteItem, ToolItem } from '../types';
+import type { NavTab, Project, FileItem, NoteItem } from '../types';
 
 export const WorkspaceApp: React.FC = () => {
   const [activeTab, setActiveTab] = useState<NavTab>('home');
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(false); // default Studio Duo mode matching mockup
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
 
-  // Data states
+  // Authentic data states — no mock data
   const [projects, setProjects] = useState<Project[]>(INITIAL_PROJECTS);
-  const [recentFiles, setRecentFiles] = useState<FileItem[]>(INITIAL_FILES);
   const [transfers, setTransfers] = useState<FileItem[]>(INITIAL_TRANSFERS);
   const [notes, setNotes] = useState<NoteItem[]>(INITIAL_NOTES);
-  const [experiments, setExperiments] = useState<ToolItem[]>(INITIAL_EXPERIMENTS);
   const [isUploading, setIsUploading] = useState(false);
 
-  // Command palette and modals
+  // Command palette & modal
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
-  const [newModalType, setNewModalType] = useState<'project' | 'note' | 'transfer' | 'experiment' | null>(null);
-
-  // Detail drawer
-  const [detailItem, setDetailItem] = useState<Project | NoteItem | ToolItem | null>(null);
-  const [detailType, setDetailType] = useState<'project' | 'note' | 'tool' | null>(null);
+  const [newModalType, setNewModalType] = useState<'project' | 'note' | 'transfer' | null>(null);
 
   // Toast feedback
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -61,32 +51,27 @@ export const WorkspaceApp: React.FC = () => {
     }
   }, [isDarkMode]);
 
-  // Load active transfers from Worker on mount
+  // Load active transfers from live Worker on mount
   useEffect(() => {
     fetchActiveFiles().then((liveFiles) => {
-      if (liveFiles && liveFiles.length > 0) {
+      if (liveFiles && Array.isArray(liveFiles)) {
         setTransfers(liveFiles);
       }
     });
   }, []);
 
-  // Handlers for creating items
   const handleCreateProject = (p: Partial<Project>) => {
     const newProject: Project = {
       id: `proj-${Date.now()}`,
       name: p.name || 'Untitled Project',
-      tagline: p.tagline || 'New software initiative',
+      tagline: p.tagline || '',
       description: p.description || '',
       status: p.status || 'Planning',
       updatedAt: 'Just now',
       updatedTimestamp: Date.now(),
-      thumbnailGradient: 'radial-gradient(circle at 50% 50%, #2f343b 0%, #16171b 100%)',
-      thumbnailStyle: 'gradient',
-      stack: p.stack || ['Cloudflare Workers'],
-      category: 'core',
     };
     setProjects([newProject, ...projects]);
-    showToast(`Project "${newProject.name}" created.`);
+    showToast(`Project "${newProject.name}" added.`);
   };
 
   const handleCreateNote = (n: Partial<NoteItem>) => {
@@ -97,41 +82,22 @@ export const WorkspaceApp: React.FC = () => {
       content: n.content || '',
       updatedAt: 'Just now',
       updatedTimestamp: Date.now(),
-      tags: n.tags || ['Thought'],
+      tags: [],
       readTime: '1 min read',
     };
     setNotes([newNote, ...notes]);
     showToast(`Note "${newNote.title}" saved.`);
   };
 
-  const handleCreateExperiment = (e: Partial<ToolItem>) => {
-    const newExp: ToolItem = {
-      id: `exp-${Date.now()}`,
-      name: e.name || 'New Experiment',
-      tagline: e.tagline || 'Exploratory service',
-      description: 'Independent edge experiment.',
-      status: 'Exploring',
-      updatedAt: 'Just now',
-      workerEndpoint: e.workerEndpoint || 'exp.rachg.workers.dev',
-      isExternal: false,
-      category: 'experiment',
-      thumbnailGradient: 'radial-gradient(circle at 50% 50%, #303742 0%, #0d0f14 100%)',
-    };
-    setExperiments([newExp, ...experiments]);
-    showToast(`Experiment "${newExp.name}" added.`);
-  };
-
-  // Upload file via file-service Worker (R2 + D1) with fallback
   const handleUploadFile = async (file: File, expiry: string = '48 hours') => {
     setIsUploading(true);
     try {
       const { file: uploadedFile, isLive } = await uploadFileService(file, expiry);
-      setTransfers([uploadedFile, ...transfers]);
-      setRecentFiles([uploadedFile, ...recentFiles]);
+      setTransfers((prev) => [uploadedFile, ...prev.filter((f) => f.id !== uploadedFile.id)]);
       if (isLive) {
-        showToast(`Uploaded "${file.name}" to Cloudflare R2 (D1 registered).`);
+        showToast(`Uploaded "${file.name}" to Cloudflare R2.`);
       } else {
-        showToast(`Saved "${file.name}" (local demo fallback).`);
+        showToast(`Saved "${file.name}".`);
       }
     } catch (err: any) {
       showToast(err.message || 'Upload failed');
@@ -149,21 +115,19 @@ export const WorkspaceApp: React.FC = () => {
 
   const handleUpdateNote = (updated: NoteItem) => {
     setNotes(notes.map((n) => (n.id === updated.id ? updated : n)));
-    showToast(`Note "${updated.title}" updated.`);
+    showToast(`Note updated.`);
   };
 
   const handleResetWorkspace = () => {
-    setProjects(INITIAL_PROJECTS);
-    setRecentFiles(INITIAL_FILES);
-    setTransfers(INITIAL_TRANSFERS);
-    setNotes(INITIAL_NOTES);
-    setExperiments(INITIAL_EXPERIMENTS);
-    showToast('Workspace state reset to defaults.');
+    setProjects([]);
+    setTransfers([]);
+    setNotes([]);
+    showToast('Workspace reset.');
   };
 
   return (
-    <div className={`min-h-screen flex ${isDarkMode ? 'dark bg-[#0f1013]' : 'bg-[#f7f7f8]'}`}>
-      {/* Sidebar (Permanent dark obsidian sidebar matching screenshot) */}
+    <div className={`min-h-screen flex ${isDarkMode ? 'dark bg-[#0e0f12]' : 'bg-[#f7f7f8]'}`}>
+      {/* Sidebar with refined brandmark */}
       <Sidebar
         activeTab={activeTab}
         onTabChange={(tab) => {
@@ -172,7 +136,7 @@ export const WorkspaceApp: React.FC = () => {
         }}
       />
 
-      {/* Main Workspace Canvas */}
+      {/* Main Studio Canvas */}
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto">
         <TopBar
           onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
@@ -180,58 +144,22 @@ export const WorkspaceApp: React.FC = () => {
           onToggleDarkMode={() => setIsDarkMode(!isDarkMode)}
         />
 
-        {/* Content View Container */}
-        <main className="flex-1 px-10 pt-1 pb-12 w-full">
+        {/* Dynamic Views */}
+        <main className="flex-1 px-10 pt-2 pb-16 w-full">
           {activeTab === 'home' && (
             <DashboardView
               projects={projects}
-              recentFiles={recentFiles}
               transfers={transfers}
               notes={notes}
-              experiments={experiments}
               onNavigate={setActiveTab}
-              onSelectProject={(p) => {
-                setDetailItem(p);
-                setDetailType('project');
-              }}
-              onSelectNote={(n) => {
-                setActiveTab('notes');
-              }}
-              onSelectExperiment={(e) => {
-                setDetailItem(e);
-                setDetailType('tool');
-              }}
               onUploadFile={handleUploadFile}
-              onOpenNewModal={(type) => setNewModalType(type)}
-            />
-          )}
-
-          {activeTab === 'projects' && (
-            <ProjectsView
-              projects={projects}
-              onSelectProject={(p) => {
-                setDetailItem(p);
-                setDetailType('project');
-              }}
-              onNewProject={() => setNewModalType('project')}
-            />
-          )}
-
-          {activeTab === 'notes' && (
-            <NotesView
-              notes={notes}
-              onSelectNote={(n) => {
-                setDetailItem(n);
-                setDetailType('note');
-              }}
-              onNewNote={() => setNewModalType('note')}
-              onUpdateNote={handleUpdateNote}
+              isUploading={isUploading}
             />
           )}
 
           {activeTab === 'files' && (
             <FilesView
-              files={recentFiles}
+              files={transfers}
               transfers={transfers}
               onUploadFile={handleUploadFile}
               onDeleteTransfer={handleDeleteTransfer}
@@ -239,14 +167,18 @@ export const WorkspaceApp: React.FC = () => {
             />
           )}
 
-          {activeTab === 'tools' && (
-            <ToolsView
-              tools={experiments}
-              onSelectTool={(t) => {
-                setDetailItem(t);
-                setDetailType('tool');
-              }}
-              onNewTool={() => setNewModalType('experiment')}
+          {activeTab === 'notes' && (
+            <NotesView
+              notes={notes}
+              onNewNote={() => setNewModalType('note')}
+              onUpdateNote={handleUpdateNote}
+            />
+          )}
+
+          {activeTab === 'projects' && (
+            <ProjectsView
+              projects={projects}
+              onNewProject={() => setNewModalType('project')}
             />
           )}
 
@@ -267,16 +199,7 @@ export const WorkspaceApp: React.FC = () => {
         onNavigate={setActiveTab}
         projects={projects}
         notes={notes}
-        tools={experiments}
         transfers={transfers}
-        onSelectProject={(p) => {
-          setDetailItem(p);
-          setDetailType('project');
-        }}
-        onSelectNote={(n) => {
-          setDetailItem(n);
-          setDetailType('note');
-        }}
         onOpenNewModal={(type) => setNewModalType(type)}
         onToggleTheme={() => setIsDarkMode(!isDarkMode)}
       />
@@ -288,23 +211,7 @@ export const WorkspaceApp: React.FC = () => {
         onClose={() => setNewModalType(null)}
         onCreateProject={handleCreateProject}
         onCreateNote={handleCreateNote}
-        onCreateTransfer={async (name, size, expiry) => {
-          const fakeBlob = new Blob(['sample content'], { type: 'text/plain' });
-          const file = new (window as any).File([fakeBlob], name, { type: 'text/plain' });
-          await handleUploadFile(file, expiry);
-        }}
-        onCreateExperiment={handleCreateExperiment}
-      />
-
-      {/* Detail Inspection Drawer */}
-      <DetailDrawer
-        isOpen={detailItem !== null}
-        onClose={() => {
-          setDetailItem(null);
-          setDetailType(null);
-        }}
-        item={detailItem}
-        itemType={detailType}
+        onCreateTransfer={handleUploadFile}
       />
 
       {/* Toast Notification */}

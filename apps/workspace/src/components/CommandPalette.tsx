@@ -1,18 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import {
   Search,
-  Folder,
+  LayoutDashboard,
+  FolderDot,
   FileText,
   Paperclip,
-  LayoutGrid,
   Settings,
   Plus,
-  Moon,
   Sun,
-  ExternalLink,
   ArrowRight,
 } from 'lucide-react';
-import type { NavTab, Project, NoteItem, ToolItem, FileItem } from '../types';
+import type { NavTab, Project, NoteItem, FileItem } from '../types';
 
 interface CommandPaletteProps {
   isOpen: boolean;
@@ -20,11 +18,8 @@ interface CommandPaletteProps {
   onNavigate: (tab: NavTab) => void;
   projects: Project[];
   notes: NoteItem[];
-  tools: ToolItem[];
   transfers: FileItem[];
-  onSelectProject: (p: Project) => void;
-  onSelectNote: (n: NoteItem) => void;
-  onOpenNewModal: (type: 'project' | 'note' | 'transfer' | 'experiment') => void;
+  onOpenNewModal: (type: 'project' | 'note' | 'transfer') => void;
   onToggleTheme: () => void;
 }
 
@@ -34,15 +29,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onNavigate,
   projects,
   notes,
-  tools,
   transfers,
-  onSelectProject,
-  onSelectNote,
   onOpenNewModal,
   onToggleTheme,
 }) => {
   const [query, setQuery] = useState('');
-  const [selectedIndex, setSelectedIndex] = useState(0);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -64,21 +55,19 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
   if (!isOpen) return null;
 
-  // Actions list
   const navActions = [
-    { label: 'Go to Home Dashboard', tab: 'home' as NavTab, icon: LayoutGrid },
-    { label: 'Go to Projects', tab: 'projects' as NavTab, icon: Folder },
-    { label: 'Go to Writing & Notes', tab: 'notes' as NavTab, icon: FileText },
-    { label: 'Go to File Transfer', tab: 'files' as NavTab, icon: Paperclip },
-    { label: 'Go to Tools & Workers', tab: 'tools' as NavTab, icon: LayoutGrid },
-    { label: 'Go to Settings', tab: 'settings' as NavTab, icon: Settings },
+    { label: 'Overview', tab: 'home' as NavTab, icon: LayoutDashboard },
+    { label: 'Files', tab: 'files' as NavTab, icon: Paperclip },
+    { label: 'Notes', tab: 'notes' as NavTab, icon: FileText },
+    { label: 'Projects', tab: 'projects' as NavTab, icon: FolderDot },
+    { label: 'Settings', tab: 'settings' as NavTab, icon: Settings },
   ];
 
   const quickActions = [
-    { label: 'New Project...', action: () => onOpenNewModal('project'), icon: Plus },
-    { label: 'New Note...', action: () => onOpenNewModal('note'), icon: Plus },
     { label: 'Upload File to R2...', action: () => onOpenNewModal('transfer'), icon: Plus },
-    { label: 'Toggle Contrast Theme', action: onToggleTheme, icon: Sun },
+    { label: 'New Note...', action: () => onOpenNewModal('note'), icon: Plus },
+    { label: 'New Project...', action: () => onOpenNewModal('project'), icon: Plus },
+    { label: 'Toggle Appearance (Duo / Dark)', action: onToggleTheme, icon: Sun },
   ];
 
   const matchedProjects = projects.filter((p) =>
@@ -86,6 +75,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   );
   const matchedNotes = notes.filter((n) =>
     n.title.toLowerCase().includes(query.toLowerCase())
+  );
+  const matchedFiles = transfers.filter((f) =>
+    f.name.toLowerCase().includes(query.toLowerCase())
   );
 
   return (
@@ -105,7 +97,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Type a command, search project or note..."
+            placeholder="Type a command or search..."
             className="w-full bg-transparent text-sm text-neutral-900 dark:text-white placeholder:text-neutral-400 focus:outline-none"
           />
           <kbd className="px-1.5 py-0.5 text-[10px] font-mono text-neutral-400 bg-neutral-100 dark:bg-white/5 rounded">
@@ -135,7 +127,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                       className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-white/5 hover:text-black dark:hover:text-white transition-colors cursor-pointer"
                     >
                       <div className="flex items-center gap-2.5">
-                        <Icon className="w-4 h-4 text-neutral-400" />
+                        <Icon className="w-4 h-4 text-neutral-400 stroke-[1.6]" />
                         <span>{a.label}</span>
                       </div>
                       <ArrowRight className="w-3.5 h-3.5 text-neutral-400" />
@@ -164,7 +156,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                       }}
                       className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-white/5 hover:text-black dark:hover:text-white transition-colors cursor-pointer"
                     >
-                      <Icon className="w-4 h-4 text-neutral-400" />
+                      <Icon className="w-4 h-4 text-neutral-400 stroke-[1.6]" />
                       <span>{a.label}</span>
                     </button>
                   );
@@ -172,60 +164,28 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             </div>
           </div>
 
-          {/* Matched Projects */}
-          {matchedProjects.length > 0 && (
+          {/* Files */}
+          {matchedFiles.length > 0 && (
             <div>
               <div className="px-3 py-1 text-[10px] font-mono uppercase tracking-wider text-neutral-400">
-                Projects
+                Files
               </div>
               <div className="space-y-0.5">
-                {matchedProjects.map((p) => (
+                {matchedFiles.map((f) => (
                   <button
-                    key={p.id}
+                    key={f.id}
                     onClick={() => {
-                      onSelectProject(p);
+                      onNavigate('files');
                       onClose();
                     }}
-                    className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-white/5 hover:text-black dark:hover:text-white transition-colors cursor-pointer"
+                    className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
                   >
-                    <div className="flex items-center gap-2.5">
-                      <Folder className="w-4 h-4 text-neutral-400" />
-                      <span className="font-medium">{p.name}</span>
-                      <span className="text-neutral-400 text-[11px] truncate max-w-xs">
-                        {p.tagline}
-                      </span>
+                    <div className="flex items-center gap-2.5 truncate">
+                      <Paperclip className="w-3.5 h-3.5 text-neutral-400 flex-shrink-0 stroke-[1.6]" />
+                      <span className="truncate">{f.name}</span>
                     </div>
-                    <span className="text-[10px] font-mono text-neutral-400">
-                      {p.status}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Matched Notes */}
-          {matchedNotes.length > 0 && (
-            <div>
-              <div className="px-3 py-1 text-[10px] font-mono uppercase tracking-wider text-neutral-400">
-                Notes
-              </div>
-              <div className="space-y-0.5">
-                {matchedNotes.map((n) => (
-                  <button
-                    key={n.id}
-                    onClick={() => {
-                      onSelectNote(n);
-                      onClose();
-                    }}
-                    className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-white/5 hover:text-black dark:hover:text-white transition-colors cursor-pointer"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <FileText className="w-4 h-4 text-neutral-400" />
-                      <span className="font-medium">{n.title}</span>
-                    </div>
-                    <span className="text-[10px] font-mono text-neutral-400">
-                      {n.updatedAt}
+                    <span className="text-[10px] font-mono text-neutral-400 flex-shrink-0">
+                      {f.size}
                     </span>
                   </button>
                 ))}

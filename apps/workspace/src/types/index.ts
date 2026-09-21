@@ -1,6 +1,6 @@
-export type NavTab = 'home' | 'projects' | 'notes' | 'files' | 'tools' | 'settings';
+export type NavTab = 'home' | 'files' | 'notes' | 'projects' | 'settings';
 
-export type ProjectStatus = 'In Progress' | 'Planning' | 'Exploring' | 'Live' | 'Prototype' | 'Idea';
+export type ProjectStatus = 'Planning' | 'In Progress' | 'Live' | 'Archived';
 
 export interface Project {
   id: string;
@@ -10,13 +10,8 @@ export interface Project {
   status: ProjectStatus;
   updatedAt: string;
   updatedTimestamp: number;
-  thumbnailGradient: string;
-  thumbnailStyle?: 'gradient' | 'plant' | 'minimal' | 'monochrome';
   externalUrl?: string;
-  workerUrl?: string;
-  stack: string[];
-  stars?: number;
-  category: 'core' | 'experiment' | 'utility';
+  stack?: string[];
 }
 
 export type FileCategory = 'image' | 'pdf' | 'archive' | 'video' | 'text' | 'keynote' | 'code';
@@ -47,34 +42,6 @@ export interface NoteItem {
   tags: string[];
   readTime: string;
   pinned?: boolean;
-}
-
-export interface ToolItem {
-  id: string;
-  name: string;
-  tagline: string;
-  description: string;
-  status: ProjectStatus;
-  updatedAt: string;
-  workerEndpoint: string;
-  isExternal: boolean;
-  category: 'utility' | 'experiment' | 'ai' | 'infra';
-  thumbnailGradient: string;
-}
-
-export interface ActivityItem {
-  id: string;
-  type: 'project' | 'file' | 'note' | 'tool';
-  action: string;
-  target: string;
-  timestamp: string;
-}
-
-export interface CloudflareBinding {
-  service: string;
-  bindingName: string;
-  status: 'connected' | 'configured' | 'pending';
-  details: string;
 }
 
 // -------------------------------------------------------------
