@@ -14,7 +14,6 @@
   },
   "dependencies": {
     "@astrojs/react": "^6.0.6",
-    "@rachg/shared": "workspace:*",
     "@tailwindcss/vite": "^4.3.3",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",

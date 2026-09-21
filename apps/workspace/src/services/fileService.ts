@@ -1,9 +1,9 @@
-import type { FileItem, UploadResponse, FileListResponse } from '@rachg/shared';
+import type { FileItem, UploadResponse, FileListResponse } from '../types';
 import { INITIAL_TRANSFERS, INITIAL_FILES } from '../data/mockData';
 
 // Worker API base URL (can be customized via import.meta.env.PUBLIC_FILE_SERVICE_URL)
 const API_BASE_URL =
-  import.meta.env.PUBLIC_FILE_SERVICE_URL || 'http://localhost:8787';
+  import.meta.env.PUBLIC_FILE_SERVICE_URL || 'https://rachg-file-service.haenlau.workers.dev';
 
 /**
  * Fetch active files from Cloudflare Worker API.

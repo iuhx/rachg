@@ -19,6 +19,8 @@ export interface Project {
   category: 'core' | 'experiment' | 'utility';
 }
 
+export type FileCategory = 'image' | 'pdf' | 'archive' | 'video' | 'text' | 'keynote' | 'code';
+
 export interface FileItem {
   id: string;
   name: string;
@@ -28,9 +30,11 @@ export interface FileItem {
   expiresIn?: string;
   expiresTimestamp?: number;
   shareUrl?: string;
-  type: 'image' | 'pdf' | 'archive' | 'video' | 'text' | 'keynote' | 'code';
+  type: FileCategory;
   downloads?: number;
-  status: 'active' | 'expired';
+  status: 'active' | 'expired' | 'deleted';
+  deleteToken?: string;
+  ownerId?: string;
 }
 
 export interface NoteItem {
@@ -71,4 +75,42 @@ export interface CloudflareBinding {
   bindingName: string;
   status: 'connected' | 'configured' | 'pending';
   details: string;
+}
+
+// -------------------------------------------------------------
+// Versioned API Contracts (v1)
+// Base: /v1/files
+// -------------------------------------------------------------
+
+export interface UploadResponse {
+  success: boolean;
+  file: FileItem;
+  shareUrl: string;
+  deleteToken: string;
+}
+
+export interface FileListResponse {
+  success: boolean;
+  files: FileItem[];
+  totalSizeBytes: number;
+  maxSizeBytes: number; // 4GB max quota
+  usagePercent: number;
+}
+
+export interface FileDetailResponse {
+  success: boolean;
+  file: FileItem;
+}
+
+export interface FileDeleteResponse {
+  success: boolean;
+  message: string;
+  id: string;
+}
+
+export interface ApiErrorResponse {
+  success: false;
+  error: string;
+  code: string;
+  status: number;
 }
