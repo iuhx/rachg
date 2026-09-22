@@ -6,7 +6,6 @@ interface TopBarProps {
   isDarkMode: boolean;
   onToggleDarkMode: () => void;
   authStatus: 'loading' | 'authenticated' | 'unauthenticated';
-  apiAuthRequired?: boolean;
   userEmail?: string;
   onSignIn: () => void;
   onSignOut: () => void;
@@ -17,7 +16,6 @@ export const TopBar: React.FC<TopBarProps> = ({
   isDarkMode,
   onToggleDarkMode,
   authStatus,
-  apiAuthRequired = false,
   userEmail,
   onSignIn,
   onSignOut,
@@ -69,14 +67,9 @@ export const TopBar: React.FC<TopBarProps> = ({
                   <span className={`w-1.5 h-1.5 rounded-full ${authStatus === 'authenticated' ? 'bg-emerald-500' : authStatus === 'loading' ? 'bg-amber-400' : 'bg-neutral-400'}`} />
                   {authStatus === 'authenticated' ? 'Signed in' : authStatus === 'loading' ? 'Checking session…' : 'Not signed in'}
                 </p>
-                {apiAuthRequired && <p className="type-caption mt-1 text-amber-600 dark:text-amber-400">Private API sign-in needed</p>}
               </div>
               {authStatus === 'authenticated' ? (
-                apiAuthRequired ? (
-                  <button type="button" onClick={onSignIn} className="workspace-button workspace-button-primary w-full mt-2 cursor-pointer" role="menuitem">Sign in to private API</button>
-                ) : (
-                  <button type="button" onClick={onSignOut} className="type-body w-full text-left px-2 py-2 mt-1 rounded-lg text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-white/5 cursor-pointer" role="menuitem">Sign out</button>
-                )
+                <button type="button" onClick={onSignOut} className="type-body w-full text-left px-2 py-2 mt-1 rounded-lg text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-white/5 cursor-pointer" role="menuitem">Sign out</button>
               ) : (
                 <button type="button" onClick={onSignIn} className="workspace-button workspace-button-primary w-full mt-2 cursor-pointer" role="menuitem">Sign in with Cloudflare Access</button>
               )}
