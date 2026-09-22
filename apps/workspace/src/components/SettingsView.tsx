@@ -74,7 +74,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <button
               onClick={handleTestPing}
               disabled={testingPing}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono bg-neutral-100 dark:bg-white/5 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-white/10 transition-colors cursor-pointer"
+              className="workspace-button workspace-button-secondary font-mono cursor-pointer"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${testingPing ? 'animate-spin' : ''}`} />
               <span>{pingLatency !== null ? `${pingLatency}ms` : 'Ping Edge'}</span>

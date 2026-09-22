@@ -25,7 +25,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         </div>
         <button
           onClick={onNewProject}
-          className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium bg-neutral-900 text-white dark:bg-white dark:text-black hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-colors cursor-pointer shadow-xs"
+          className="workspace-button workspace-button-primary cursor-pointer shadow-xs"
         >
           <Plus className="w-3.5 h-3.5 stroke-[2]" />
           <span>New Project</span>
@@ -45,7 +45,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           </p>
           <button
             onClick={onNewProject}
-            className="mt-6 inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium bg-neutral-100 dark:bg-white/10 hover:bg-neutral-200 dark:hover:bg-white/15 text-neutral-800 dark:text-neutral-200 transition-colors cursor-pointer"
+            className="workspace-button workspace-button-secondary mt-6 cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Create First Project</span>
