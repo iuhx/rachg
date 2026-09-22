@@ -4,7 +4,9 @@ import { AuthenticationRequiredError } from './fileService';
 const API_BASE_URL = 'https://files.rachg.com';
 
 async function throwScratchpadError(response: Response, fallback: string): Promise<never> {
-  if (response.status === 401) throw new AuthenticationRequiredError();
+  if (response.status === 401 || response.redirected || response.url.includes('/cdn-cgi/access/login')) {
+    throw new AuthenticationRequiredError();
+  }
   const body = await response.json().catch(() => null) as ApiErrorResponse | null;
   throw new Error(body?.error || `${fallback} (HTTP ${response.status})`);
 }

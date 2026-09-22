@@ -73,8 +73,12 @@ export const WorkspaceApp: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    fetchScratchpad().then(setScratchpad).catch(() => {}).finally(() => setIsScratchpadLoading(false));
-  }, []);
+    if (authStatus !== 'authenticated') return;
+    setIsScratchpadLoading(true);
+    fetchScratchpad().then(setScratchpad).catch((error: unknown) => {
+      showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to continue.' : 'Unable to load scratchpad.');
+    }).finally(() => setIsScratchpadLoading(false));
+  }, [authStatus]);
 
   const handleSaveScratchpad = async (content: string, image?: File | null) => {
     setIsScratchpadSaving(true);
@@ -92,22 +96,26 @@ export const WorkspaceApp: React.FC = () => {
 
   // Load active transfers from live Worker on mount
   useEffect(() => {
+    if (authStatus !== 'authenticated') return;
+    setIsFilesLoading(true);
     fetchActiveFiles()
       .then(setTransfers)
       .catch((error: unknown) => {
         showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to continue.' : 'Unable to load private files.');
       })
       .finally(() => setIsFilesLoading(false));
-  }, []);
+  }, [authStatus]);
 
   useEffect(() => {
+    if (authStatus !== 'authenticated') return;
+    setIsNotesLoading(true);
     fetchNotes()
       .then(setNotes)
       .catch((error: unknown) => {
         showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to continue.' : 'Unable to load private notes.');
       })
       .finally(() => setIsNotesLoading(false));
-  }, []);
+  }, [authStatus]);
 
   const handleCreateProject = (p: Partial<Project>) => {
     const newProject: Project = {
