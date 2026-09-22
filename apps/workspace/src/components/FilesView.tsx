@@ -228,11 +228,11 @@ export const FilesView: React.FC<FilesViewProps> = ({
       {/* QR Code Modal */}
       {qrModalItem && (
         <div
-          className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150"
+          className="workspace-modal-overlay fixed inset-0 bg-black/50 backdrop-blur-xs flex items-start sm:items-center justify-center p-4 z-50 animate-in fade-in duration-150"
           onClick={() => setQrModalItem(null)}
         >
           <div
-            className="bg-white dark:bg-[#1a1b20] p-6 rounded-2xl max-w-xs w-full text-center border border-neutral-200 dark:border-white/10 shadow-2xl"
+            className="workspace-modal bg-white dark:bg-[#1a1b20] p-6 rounded-2xl max-w-xs w-full text-center border border-neutral-200 dark:border-white/10 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <h4 className="text-sm font-medium text-neutral-900 dark:text-white mb-1">

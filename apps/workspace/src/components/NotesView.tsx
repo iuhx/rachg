@@ -223,8 +223,8 @@ export const NotesView: React.FC<NotesViewProps> = ({
             ) : <span className="hidden sm:inline text-[10px] font-mono text-neutral-400">/</span>}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-6 md:min-h-[500px]">
-            <div className="workspace-card md:col-span-5 p-3 space-y-1">
+          <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 xl:min-h-[500px]">
+            <div className="workspace-card xl:col-span-5 p-3 space-y-1">
               {filteredNotes.length === 0 ? (
                 <div className="p-8 text-center text-xs text-neutral-400">No matching notes.</div>
               ) : filteredNotes.map((note) => (
@@ -244,7 +244,7 @@ export const NotesView: React.FC<NotesViewProps> = ({
               ))}
             </div>
 
-            <div className="workspace-card md:col-span-7 p-5 sm:p-7">
+            <div className="workspace-card xl:col-span-7 p-5 sm:p-7">
               {filteredNotes.length === 0 ? (
                 <div className="h-full min-h-[16rem] flex items-center justify-center text-center text-xs text-neutral-400">
                   No note matches “{searchQuery}”.

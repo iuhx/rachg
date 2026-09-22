@@ -108,9 +108,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       </div>
 
       {/* Main Grid: File Transfer (Primary Live Service) & Recent Activities */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-7">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-7">
         {/* Left: Active File Transfer Vault (7 Cols) */}
-        <div className="workspace-card lg:col-span-7 p-5 sm:p-7 flex flex-col justify-between transition-colors">
+        <div className="workspace-card xl:col-span-7 p-5 sm:p-7 flex flex-col justify-between transition-colors">
           <div>
             <div className="flex items-center justify-between mb-5">
               <button
@@ -230,7 +230,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         {/* Right: Notes & Projects Overview (5 Cols) */}
-        <div className="lg:col-span-5 space-y-7">
+        <div className="xl:col-span-5 space-y-7">
           {/* Notes Card */}
           <div className="workspace-card p-5 sm:p-6 transition-colors">
             <div className="flex items-center justify-between mb-4">

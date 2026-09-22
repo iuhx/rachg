@@ -13,7 +13,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onToggleDarkMode,
 }) => {
   return (
-    <header className="w-full flex items-center justify-end px-4 pt-4 pb-3 sm:px-6 lg:px-8 lg:pt-6 select-none">
+    <header className="workspace-topbar w-full flex items-center justify-end px-4 pt-4 pb-3 sm:px-6 lg:px-8 lg:pt-6 select-none">
       <div className="flex items-center gap-2.5 sm:gap-4">
         {/* Search Input Bar (⌘K) matching screenshot */}
         <button

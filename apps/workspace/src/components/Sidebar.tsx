@@ -40,7 +40,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </button>
 
         {/* Navigation list */}
-        <nav className="mt-7 space-y-1">
+        <nav aria-label="Workspace navigation" className="mt-7 space-y-1">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
@@ -48,6 +48,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <button
                 key={item.id}
                 onClick={() => onTabChange(item.id)}
+                aria-label={item.label}
                 className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-normal transition-colors cursor-pointer ${
                   isActive
                     ? 'bg-[#1d1f24] text-white font-medium shadow-xs border border-white/[0.07]'
