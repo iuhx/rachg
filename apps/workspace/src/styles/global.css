@@ -276,10 +276,10 @@ a {
 }
 
 .workspace-editor-compact {
-  min-height: 3.25rem;
-  height: 3.25rem;
-  padding: 0.5rem 0.625rem;
-  line-height: 1.4;
+  min-height: 15rem;
+  height: 15rem;
+  padding: 0.75rem;
+  line-height: 1.5;
 }
 
 .workspace-empty {
