@@ -19,11 +19,15 @@ import {
   AuthenticationRequiredError,
 } from '../services/fileService';
 import { createNote, deleteNote, fetchNotes, updateNote as updateNoteService } from '../services/noteService';
+import { getAccessIdentity, startAccessLogin, startAccessLogout } from '../services/accessService';
 import type { NavTab, Project, FileItem, NoteItem } from '../types';
 
 export const WorkspaceApp: React.FC = () => {
   const [activeTab, setActiveTab] = useState<NavTab>('home');
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
+  const [authStatus, setAuthStatus] = useState<'loading' | 'authenticated' | 'unauthenticated'>('loading');
+  const [userEmail, setUserEmail] = useState<string>();
+  const [apiAuthRequired, setApiAuthRequired] = useState(false);
 
   // Authentic data states — no mock data
   const [projects, setProjects] = useState<Project[]>(INITIAL_PROJECTS);
@@ -54,11 +58,23 @@ export const WorkspaceApp: React.FC = () => {
     }
   }, [isDarkMode]);
 
+  useEffect(() => {
+    getAccessIdentity().then((identity) => {
+      if (identity?.email) {
+        setUserEmail(identity.email);
+        setAuthStatus('authenticated');
+      } else {
+        setAuthStatus('unauthenticated');
+      }
+    }).catch(() => setAuthStatus('unauthenticated'));
+  }, []);
+
   // Load active transfers from live Worker on mount
   useEffect(() => {
     fetchActiveFiles()
-      .then(setTransfers)
+      .then((files) => { setTransfers(files); setApiAuthRequired(false); })
       .catch((error: unknown) => {
+        if (error instanceof AuthenticationRequiredError) setApiAuthRequired(true);
         showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to continue.' : 'Unable to load private files.');
       })
       .finally(() => setIsFilesLoading(false));
@@ -66,8 +82,9 @@ export const WorkspaceApp: React.FC = () => {
 
   useEffect(() => {
     fetchNotes()
-      .then(setNotes)
+      .then((loadedNotes) => { setNotes(loadedNotes); setApiAuthRequired(false); })
       .catch((error: unknown) => {
+        if (error instanceof AuthenticationRequiredError) setApiAuthRequired(true);
         showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to continue.' : 'Unable to load private notes.');
       })
       .finally(() => setIsNotesLoading(false));
@@ -93,6 +110,7 @@ export const WorkspaceApp: React.FC = () => {
       setNotes((current) => [newNote, ...current]);
       showToast(`Note "${newNote.title}" saved.`);
     } catch (error: any) {
+      if (error instanceof AuthenticationRequiredError) setApiAuthRequired(true);
       showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to create notes.' : (error.message || 'Unable to create note.'));
       throw error;
     }
@@ -102,11 +120,13 @@ export const WorkspaceApp: React.FC = () => {
     setIsUploading(true);
     try {
       const { file: uploadedFile, isLive } = await uploadFileService(file, expiry);
+      setApiAuthRequired(false);
       setTransfers((prev) => [uploadedFile, ...prev.filter((f) => f.id !== uploadedFile.id)]);
       if (isLive) {
         showToast(`Uploaded "${file.name}" to Cloudflare R2.`);
       }
     } catch (err: any) {
+      if (err instanceof AuthenticationRequiredError) setApiAuthRequired(true);
       showToast(err instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to upload files.' : (err.message || 'Upload failed'));
     } finally {
       setIsUploading(false);
@@ -116,9 +136,11 @@ export const WorkspaceApp: React.FC = () => {
   const handleDeleteTransfer = async (id: string) => {
     try {
       await deleteFileService(id);
+      setApiAuthRequired(false);
       setTransfers(transfers.filter((t) => t.id !== id));
       showToast('File transfer revoked.');
     } catch (err: any) {
+      if (err instanceof AuthenticationRequiredError) setApiAuthRequired(true);
       showToast(err instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to delete files.' : (err.message || 'Delete failed'));
     }
   };
@@ -129,6 +151,7 @@ export const WorkspaceApp: React.FC = () => {
       setNotes((current) => current.map((note) => (note.id === saved.id ? saved : note)));
       showToast('Note saved.');
     } catch (error: any) {
+      if (error instanceof AuthenticationRequiredError) setApiAuthRequired(true);
       showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to save notes.' : (error.message || 'Unable to save note.'));
       throw error;
     }
@@ -140,6 +163,7 @@ export const WorkspaceApp: React.FC = () => {
       setNotes((current) => current.filter((note) => note.id !== id));
       showToast('Note deleted.');
     } catch (error: any) {
+      if (error instanceof AuthenticationRequiredError) setApiAuthRequired(true);
       showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to delete notes.' : (error.message || 'Unable to delete note.'));
       throw error;
     }
@@ -169,6 +193,11 @@ export const WorkspaceApp: React.FC = () => {
           onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
           isDarkMode={isDarkMode}
           onToggleDarkMode={() => setIsDarkMode(!isDarkMode)}
+          authStatus={authStatus}
+          apiAuthRequired={apiAuthRequired}
+          userEmail={userEmail}
+          onSignIn={startAccessLogin}
+          onSignOut={startAccessLogout}
         />
 
         {/* Dynamic Views */}

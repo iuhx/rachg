@@ -28,6 +28,6 @@
     "DEFAULT_EXPIRATION_HOURS": "48",
     "ALLOWED_ORIGINS": "https://rachg.com",
     "ACCESS_TEAM_DOMAIN": "https://haenl.cloudflareaccess.com",
-    "ACCESS_AUDIENCE": "5afb280da0a5e1df6730484288776b32ce9efb6a9d65fa7292c862341fcccf64"
+    "ACCESS_AUDIENCE": "c957cd24c86488ef41c73ce7b915a92b348e6babb849441f41c4a3e4a8f791cb"
   }
 }
