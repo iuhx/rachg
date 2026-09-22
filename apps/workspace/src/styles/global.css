@@ -275,6 +275,13 @@ a {
   padding: 1rem;
 }
 
+.workspace-editor-compact {
+  min-height: 3.25rem;
+  height: 3.25rem;
+  padding: 0.5rem 0.625rem;
+  line-height: 1.4;
+}
+
 .workspace-empty {
   display: flex;
   flex-direction: column;
