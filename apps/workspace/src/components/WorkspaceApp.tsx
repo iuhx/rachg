@@ -225,6 +225,11 @@ export const WorkspaceApp: React.FC = () => {
               projects={projects}
               transfers={transfers}
               notes={notes}
+              scratchpad={scratchpad}
+              isScratchpadLoading={isScratchpadLoading}
+              isScratchpadSaving={isScratchpadSaving}
+              onSaveScratchpad={handleSaveScratchpad}
+              onClearScratchpad={handleClearScratchpad}
               onNavigate={setActiveTab}
               onUploadFile={handleUploadFile}
               isUploading={isUploading}
