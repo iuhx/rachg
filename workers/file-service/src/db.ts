@@ -1,4 +1,4 @@
-import type { FileItem, FileCategory } from '@rachg/shared';
+import type { FileItem, FileCategory, NoteItem } from '@rachg/shared';
 
 export interface FileRecord {
   id: string;
@@ -12,6 +12,14 @@ export interface FileRecord {
   delete_token: string;
   owner_id?: string | null;
   status: 'active' | 'expired' | 'deleted';
+}
+
+export interface NoteRecord {
+  id: string;
+  title: string;
+  content: string;
+  created_at: number;
+  updated_at: number;
 }
 
 function getFileType(filename: string, mime: string): FileCategory {
@@ -57,6 +65,28 @@ function formatTimeRemaining(msRemaining: number): string {
     return `${totalHours}h ${minutes}m`;
   }
   return `${minutes}m`;
+}
+
+function formatNoteExcerpt(content: string): string {
+  return content.replace(/^\s+|\s+$/g, '').replace(/\s+/g, ' ').slice(0, 120);
+}
+
+function formatNoteTimestamp(timestamp: number): string {
+  return new Date(timestamp).toLocaleString([], {
+    year: 'numeric', month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+}
+
+export function mapRecordToNoteItem(record: NoteRecord): NoteItem {
+  return {
+    id: record.id,
+    title: record.title,
+    content: record.content,
+    excerpt: formatNoteExcerpt(record.content),
+    updatedAt: formatNoteTimestamp(record.updated_at),
+    updatedTimestamp: record.updated_at,
+  };
 }
 
 export function mapRecordToFileItem(r: FileRecord, baseUrl: string): FileItem {
@@ -110,6 +140,23 @@ export async function ensureSchema(db: D1Database): Promise<void> {
 
   await db
     .prepare(`CREATE INDEX IF NOT EXISTS idx_files_created ON files (created_at DESC);`)
+    .run()
+    .catch(() => {});
+
+  await db
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS notes (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );`
+    )
+    .run();
+
+  await db
+    .prepare(`CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes (updated_at DESC);`)
     .run()
     .catch(() => {});
 }
@@ -198,4 +245,55 @@ export async function markFileDeleted(db: D1Database, id: string): Promise<void>
     .prepare(`UPDATE files SET status = 'deleted' WHERE id = ?`)
     .bind(id)
     .run();
+}
+
+export async function insertNoteRecord(db: D1Database, record: NoteRecord): Promise<void> {
+  await ensureSchema(db);
+  await db
+    .prepare(
+      `INSERT INTO notes (id, title, content, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?)`
+    )
+    .bind(record.id, record.title, record.content, record.created_at, record.updated_at)
+    .run();
+}
+
+export async function getNoteRecordById(db: D1Database, id: string): Promise<NoteRecord | null> {
+  await ensureSchema(db);
+  const result = await db
+    .prepare(`SELECT * FROM notes WHERE id = ? LIMIT 1`)
+    .bind(id)
+    .first<NoteRecord>();
+  return result ?? null;
+}
+
+export async function listNotes(db: D1Database): Promise<NoteRecord[]> {
+  await ensureSchema(db);
+  const result = await db
+    .prepare(`SELECT * FROM notes ORDER BY updated_at DESC LIMIT 200`)
+    .all<NoteRecord>();
+  return result.results ?? [];
+}
+
+export async function updateNoteRecord(
+  db: D1Database,
+  id: string,
+  title: string,
+  content: string,
+  updatedAt: number
+): Promise<NoteRecord | null> {
+  await ensureSchema(db);
+  await db
+    .prepare(
+      `UPDATE notes SET title = ?, content = ?, updated_at = ? WHERE id = ?`
+    )
+    .bind(title, content, updatedAt, id)
+    .run();
+  return getNoteRecordById(db, id);
+}
+
+export async function deleteNoteRecord(db: D1Database, id: string): Promise<boolean> {
+  await ensureSchema(db);
+  const result = await db.prepare(`DELETE FROM notes WHERE id = ?`).bind(id).run();
+  return (result.meta?.changes ?? 0) > 0;
 }

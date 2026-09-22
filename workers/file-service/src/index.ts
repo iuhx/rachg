@@ -3,6 +3,9 @@ import type {
   FileListResponse,
   FileDetailResponse,
   FileDeleteResponse,
+  NoteListResponse,
+  NoteResponse,
+  NoteDeleteResponse,
   ApiErrorResponse,
 } from '@rachg/shared';
 import {
@@ -14,6 +17,12 @@ import {
   markFileDeleted,
   mapRecordToFileItem,
   type FileRecord,
+  insertNoteRecord,
+  getNoteRecordById,
+  listNotes,
+  updateNoteRecord,
+  deleteNoteRecord,
+  mapRecordToNoteItem,
 } from './db';
 import { buildR2Key, uploadToR2, getFromR2, deleteFromR2 } from './storage';
 import { checkStorageQuota, getActiveStorageUsage } from './quota';
@@ -42,7 +51,7 @@ function jsonResponse<T>(data: T, status: number = 200, origin: string): Respons
     headers: {
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': origin,
-      'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
       'Access-Control-Allow-Credentials': 'true',
       Vary: 'Origin',
@@ -72,6 +81,23 @@ function parseExpiryHours(str: string | null): number {
   return isNaN(num) ? 48 : Math.max(1, Math.min(168, num));
 }
 
+interface NotePayload {
+  title: string;
+  content: string;
+}
+
+async function parseNotePayload(request: Request): Promise<NotePayload | null> {
+  const body = await request.json().catch(() => null) as unknown;
+  if (!body || typeof body !== 'object') return null;
+  const candidate = body as Record<string, unknown>;
+  if (typeof candidate.title !== 'string' || typeof candidate.content !== 'string') return null;
+
+  const title = candidate.title.trim();
+  const content = candidate.content;
+  if (!title || title.length > 200 || content.length > 1_000_000) return null;
+  return { title, content };
+}
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
@@ -84,7 +110,7 @@ export default {
       return new Response(null, {
         headers: {
           'Access-Control-Allow-Origin': origin,
-          'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type, Authorization',
           'Access-Control-Allow-Credentials': 'true',
           'Access-Control-Max-Age': '86400',
@@ -121,6 +147,109 @@ export default {
             },
             timestamp: Date.now(),
           },
+          200,
+          origin
+        );
+      }
+
+      // -------------------------------------------------------------
+      // Routes: private Markdown notes (D1)
+      // -------------------------------------------------------------
+      const noteDetailMatch = url.pathname.match(/^\/v1\/notes\/([a-zA-Z0-9_-]+)$/);
+
+      if (request.method === 'POST' && url.pathname === '/v1/notes') {
+        const payload = await parseNotePayload(request);
+        if (!payload) {
+          return jsonResponse<ApiErrorResponse>(
+            { success: false, error: 'A title and Markdown content are required', code: 'INVALID_NOTE', status: 400 },
+            400,
+            origin
+          );
+        }
+
+        const now = Date.now();
+        const record = {
+          id: `note-${now}-${generateCode(6)}`,
+          title: payload.title,
+          content: payload.content,
+          created_at: now,
+          updated_at: now,
+        };
+        await insertNoteRecord(env.DB, record);
+        return jsonResponse<NoteResponse>(
+          { success: true, note: mapRecordToNoteItem(record) },
+          201,
+          origin
+        );
+      }
+
+      if (request.method === 'GET' && url.pathname === '/v1/notes') {
+        const records = await listNotes(env.DB);
+        return jsonResponse<NoteListResponse>(
+          { success: true, notes: records.map(mapRecordToNoteItem) },
+          200,
+          origin
+        );
+      }
+
+      if (request.method === 'GET' && noteDetailMatch) {
+        const record = await getNoteRecordById(env.DB, noteDetailMatch[1]);
+        if (!record) {
+          return jsonResponse<ApiErrorResponse>(
+            { success: false, error: 'Note not found', code: 'NOT_FOUND', status: 404 },
+            404,
+            origin
+          );
+        }
+        return jsonResponse<NoteResponse>(
+          { success: true, note: mapRecordToNoteItem(record) },
+          200,
+          origin
+        );
+      }
+
+      if (request.method === 'PUT' && noteDetailMatch) {
+        const payload = await parseNotePayload(request);
+        if (!payload) {
+          return jsonResponse<ApiErrorResponse>(
+            { success: false, error: 'A title and Markdown content are required', code: 'INVALID_NOTE', status: 400 },
+            400,
+            origin
+          );
+        }
+
+        const record = await updateNoteRecord(
+          env.DB,
+          noteDetailMatch[1],
+          payload.title,
+          payload.content,
+          Date.now()
+        );
+        if (!record) {
+          return jsonResponse<ApiErrorResponse>(
+            { success: false, error: 'Note not found', code: 'NOT_FOUND', status: 404 },
+            404,
+            origin
+          );
+        }
+        return jsonResponse<NoteResponse>(
+          { success: true, note: mapRecordToNoteItem(record) },
+          200,
+          origin
+        );
+      }
+
+      if (request.method === 'DELETE' && noteDetailMatch) {
+        const deleted = await deleteNoteRecord(env.DB, noteDetailMatch[1]);
+        if (!deleted) {
+          return jsonResponse<ApiErrorResponse>(
+            { success: false, error: 'Note not found', code: 'NOT_FOUND', status: 404 },
+            404,
+            origin
+          );
+        }
+        return jsonResponse<NoteDeleteResponse>(
+          { success: true, message: 'Note deleted successfully', id: noteDetailMatch[1] },
           200,
           origin
         );

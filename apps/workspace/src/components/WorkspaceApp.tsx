@@ -11,7 +11,6 @@ import { NewItemModal } from './NewItemModal';
 import {
   INITIAL_PROJECTS,
   INITIAL_TRANSFERS,
-  INITIAL_NOTES,
 } from '../data/mockData';
 import {
   fetchActiveFiles,
@@ -19,6 +18,7 @@ import {
   deleteFileService,
   AuthenticationRequiredError,
 } from '../services/fileService';
+import { createNote, deleteNote, fetchNotes, updateNote as updateNoteService } from '../services/noteService';
 import type { NavTab, Project, FileItem, NoteItem } from '../types';
 
 export const WorkspaceApp: React.FC = () => {
@@ -28,7 +28,7 @@ export const WorkspaceApp: React.FC = () => {
   // Authentic data states — no mock data
   const [projects, setProjects] = useState<Project[]>(INITIAL_PROJECTS);
   const [transfers, setTransfers] = useState<FileItem[]>(INITIAL_TRANSFERS);
-  const [notes, setNotes] = useState<NoteItem[]>(INITIAL_NOTES);
+  const [notes, setNotes] = useState<NoteItem[]>([]);
   const [isUploading, setIsUploading] = useState(false);
 
   // Command palette & modal
@@ -59,6 +59,12 @@ export const WorkspaceApp: React.FC = () => {
     });
   }, []);
 
+  useEffect(() => {
+    fetchNotes().then(setNotes).catch((error: unknown) => {
+      showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to continue.' : 'Unable to load private notes.');
+    });
+  }, []);
+
   const handleCreateProject = (p: Partial<Project>) => {
     const newProject: Project = {
       id: `proj-${Date.now()}`,
@@ -73,19 +79,15 @@ export const WorkspaceApp: React.FC = () => {
     showToast(`Project "${newProject.name}" added.`);
   };
 
-  const handleCreateNote = (n: Partial<NoteItem>) => {
-    const newNote: NoteItem = {
-      id: `note-${Date.now()}`,
-      title: n.title || 'Untitled Note',
-      excerpt: n.excerpt || '',
-      content: n.content || '',
-      updatedAt: 'Just now',
-      updatedTimestamp: Date.now(),
-      tags: [],
-      readTime: '1 min read',
-    };
-    setNotes([newNote, ...notes]);
-    showToast(`Note "${newNote.title}" saved.`);
+  const handleCreateNote = async (n: Partial<NoteItem>) => {
+    try {
+      const newNote = await createNote(n.title?.trim() || 'Untitled Note', n.content || '');
+      setNotes((current) => [newNote, ...current]);
+      showToast(`Note "${newNote.title}" saved.`);
+    } catch (error: any) {
+      showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to create notes.' : (error.message || 'Unable to create note.'));
+      throw error;
+    }
   };
 
   const handleUploadFile = async (file: File, expiry: string = '48 hours') => {
@@ -113,9 +115,26 @@ export const WorkspaceApp: React.FC = () => {
     }
   };
 
-  const handleUpdateNote = (updated: NoteItem) => {
-    setNotes(notes.map((n) => (n.id === updated.id ? updated : n)));
-    showToast(`Note updated.`);
+  const handleUpdateNote = async (updated: NoteItem) => {
+    try {
+      const saved = await updateNoteService(updated);
+      setNotes((current) => current.map((note) => (note.id === saved.id ? saved : note)));
+      showToast('Note saved.');
+    } catch (error: any) {
+      showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to save notes.' : (error.message || 'Unable to save note.'));
+      throw error;
+    }
+  };
+
+  const handleDeleteNote = async (id: string) => {
+    try {
+      await deleteNote(id);
+      setNotes((current) => current.filter((note) => note.id !== id));
+      showToast('Note deleted.');
+    } catch (error: any) {
+      showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to delete notes.' : (error.message || 'Unable to delete note.'));
+      throw error;
+    }
   };
 
   const handleResetWorkspace = () => {
@@ -172,6 +191,7 @@ export const WorkspaceApp: React.FC = () => {
               notes={notes}
               onNewNote={() => setNewModalType('note')}
               onUpdateNote={handleUpdateNote}
+              onDeleteNote={handleDeleteNote}
             />
           )}
 

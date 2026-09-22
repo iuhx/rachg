@@ -43,9 +43,6 @@ export interface NoteItem {
   content: string;
   updatedAt: string;
   updatedTimestamp: number;
-  tags: string[];
-  readTime: string;
-  pinned?: boolean;
 }
 
 // -------------------------------------------------------------
@@ -79,6 +76,22 @@ export interface FileDetailResponse {
 }
 
 export interface FileDeleteResponse {
+  success: boolean;
+  message: string;
+  id: string;
+}
+
+export interface NoteListResponse {
+  success: boolean;
+  notes: NoteItem[];
+}
+
+export interface NoteResponse {
+  success: boolean;
+  note: NoteItem;
+}
+
+export interface NoteDeleteResponse {
   success: boolean;
   message: string;
   id: string;

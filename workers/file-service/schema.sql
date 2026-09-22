@@ -18,3 +18,14 @@ CREATE TABLE IF NOT EXISTS files (
 
 CREATE INDEX IF NOT EXISTS idx_files_status_expires ON files (status, expires_at);
 CREATE INDEX IF NOT EXISTS idx_files_created ON files (created_at DESC);
+
+-- Private Markdown notes. Access authentication is enforced by the Worker.
+CREATE TABLE IF NOT EXISTS notes (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  content TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes (updated_at DESC);

@@ -7,7 +7,7 @@ interface NewItemModalProps {
   type: 'project' | 'note' | 'transfer' | null;
   onClose: () => void;
   onCreateProject: (p: Partial<Project>) => void;
-  onCreateNote: (n: Partial<NoteItem>) => void;
+  onCreateNote: (n: Partial<NoteItem>) => Promise<void>;
   onCreateTransfer: (file: File) => void;
 }
 
@@ -33,7 +33,7 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
   // Transfer form state
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (type === 'project' && projName) {
       onCreateProject({
@@ -43,13 +43,11 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
         status: 'Planning',
       });
     } else if (type === 'note' && noteTitle) {
-      onCreateNote({
-        title: noteTitle,
-        content: noteContent || '',
-        excerpt: (noteContent || noteTitle).slice(0, 60),
-        tags: [],
-        readTime: '1 min read',
-      });
+      try {
+        await onCreateNote({ title: noteTitle, content: noteContent || '' });
+      } catch {
+        return;
+      }
     } else if (type === 'transfer' && selectedFile) {
       onCreateTransfer(selectedFile);
     }

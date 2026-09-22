@@ -4,6 +4,18 @@ This API is private and must be protected by Cloudflare Access. Configure an Acc
 
 Required Worker variables: `ACCESS_TEAM_DOMAIN`, `ACCESS_AUDIENCE`, `ACCESS_ADMIN_EMAIL`, and `ALLOWED_ORIGINS=https://rachg.com`. Keep the API hostname behind Access and do not expose a public bypass through the `workers.dev` hostname.
 
+### Private Markdown Notes
+
+All note routes require the same Cloudflare Access JWT as the file routes:
+
+- `GET /v1/notes` — list notes ordered by most recently updated
+- `POST /v1/notes` — create `{ "title": "...", "content": "..." }`
+- `GET /v1/notes/:id` — read one note
+- `PUT /v1/notes/:id` — replace title and Markdown content
+- `DELETE /v1/notes/:id` — delete one note
+
+Notes are stored in the D1 `notes` table. There are no tags, user records, or anonymous note tokens.
+
 Independent temporary file transfer micro-service powered by Cloudflare Workers, Cloudflare R2 (isolated `transfers/` prefix), and Cloudflare D1 (lightweight metadata table).
 
 ---
