@@ -88,20 +88,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {/* Editorial Header */}
       <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-4 pt-2">
         <div>
-          <h1 className="font-serif text-[42px] leading-none text-neutral-900 dark:text-white font-normal tracking-[-0.015em]">
+          <h1 className="type-display text-neutral-900 dark:text-white">
             Good evening.
           </h1>
-          <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-2 font-normal tracking-normal">
+          <p className="type-secondary mt-2">
             Build. Explore. Create. Repeat.
           </p>
         </div>
 
         <div className="text-left sm:text-right">
-          <div className="flex items-center sm:justify-end gap-1.5 text-xs text-neutral-600 dark:text-neutral-300 font-medium">
+          <div className="type-label flex items-center sm:justify-end gap-1.5 text-neutral-600 dark:text-neutral-300">
             <span className="text-neutral-400">☾</span>
             <span>{todayFormatted}</span>
           </div>
-          <p className="text-[11px] text-neutral-400 dark:text-neutral-500 mt-1">
+          <p className="type-caption mt-1">
             A calmer space for bigger ideas.
           </p>
         </div>
@@ -115,12 +115,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="flex items-center justify-between mb-5">
               <button
                 onClick={() => onNavigate('files')}
-                className="flex items-center gap-1.5 text-sm font-medium text-neutral-900 dark:text-white hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors cursor-pointer group"
+                className="type-section-heading flex items-center gap-1.5 text-neutral-900 dark:text-white hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors cursor-pointer group"
               >
                 <span>File Transfer</span>
                 <ChevronRight className="w-3.5 h-3.5 text-neutral-400 group-hover:translate-x-0.5 transition-transform" />
               </button>
-              <div className="flex items-center gap-1.5 text-[11px] text-neutral-400">
+              <div className="type-caption flex items-center gap-1.5">
                 <Clock className="w-3.5 h-3.5 stroke-[1.6]" />
                 <span>Temporary Edge Storage</span>
               </div>
@@ -155,13 +155,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <Upload className="w-4 h-4 stroke-[1.8]" />
                 )}
               </div>
-              <p className="text-xs font-medium text-neutral-800 dark:text-neutral-200">
+              <p className="type-section-heading text-neutral-800 dark:text-neutral-200">
                 {isUploading ? 'Streaming to Cloudflare R2...' : 'Drag and drop files here'}
               </p>
-              <p className="text-[11px] text-neutral-400 mt-0.5">
+              <p className="type-secondary mt-0.5">
                 or click to browse
               </p>
-              <p className="text-[10px] text-neutral-400 dark:text-neutral-500 mt-1">
+              <p className="type-caption mt-1">
                 Files are stored directly in R2 and purged after expiration.
               </p>
             </div>
@@ -169,9 +169,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             {/* Active Transfers List */}
             <div className="mt-5">
               {transfers.length === 0 ? (
-                <div className="py-8 text-center">
-                  <p className="text-xs text-neutral-400">No active transfers</p>
-                  <p className="text-[11px] text-neutral-400 dark:text-neutral-500 mt-1">
+                <div className="workspace-empty py-8">
+                <p className="type-secondary">No active transfers</p>
+                <p className="type-caption mt-1">
                     Uploaded files will appear here with temporary sharing links.
                   </p>
                 </div>
@@ -190,14 +190,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                           <p className="text-[13px] font-medium text-neutral-800 dark:text-neutral-200 truncate">
                             {item.name}
                           </p>
-                          <p className="text-[11px] text-neutral-400">
+                          <p className="type-caption">
                             {item.size} · Expires in {item.expiresIn}
                           </p>
                         </div>
                       </div>
 
                       <div className="flex items-center gap-2 flex-shrink-0">
-                        <span className="hidden sm:inline-block font-mono text-[11px] text-neutral-400 group-hover:text-neutral-600 dark:group-hover:text-neutral-300 transition-colors truncate max-w-[160px]">
+                        <span className="type-mono hidden sm:inline-block text-neutral-400 group-hover:text-neutral-600 dark:group-hover:text-neutral-300 transition-colors truncate max-w-[160px]">
                           {item.shareUrl}
                         </span>
                         <button
@@ -236,7 +236,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="flex items-center justify-between mb-4">
               <button
                 onClick={() => onNavigate('notes')}
-                className="flex items-center gap-1.5 text-sm font-medium text-neutral-900 dark:text-white hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors cursor-pointer group"
+                className="type-section-heading flex items-center gap-1.5 text-neutral-900 dark:text-white hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors cursor-pointer group"
               >
                 <span>Latest Notes</span>
                 <ChevronRight className="w-3.5 h-3.5 text-neutral-400 group-hover:translate-x-0.5 transition-transform" />
@@ -251,10 +251,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
 
             {notes.length === 0 ? (
-              <div className="py-7 text-center">
+              <div className="workspace-empty py-7">
                 <FileText className="w-6 h-6 text-neutral-300 dark:text-neutral-600 mx-auto mb-2 stroke-[1.4]" />
-                <p className="text-xs text-neutral-500 dark:text-neutral-400 font-medium">No notes yet</p>
-                <p className="text-[11px] text-neutral-400 dark:text-neutral-500 mt-1">
+                <p className="type-section-heading text-neutral-500 dark:text-neutral-400">No notes yet</p>
+                <p className="type-caption mt-1">
                   A personal Markdown writing space is planned here.
                 </p>
               </div>
@@ -266,10 +266,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     onClick={() => onNavigate('notes')}
                     className="p-2 rounded-xl hover:bg-neutral-50 dark:hover:bg-white/[0.03] transition-colors cursor-pointer"
                   >
-                    <p className="text-xs font-medium text-neutral-900 dark:text-white truncate">
+                    <p className="type-body font-medium text-neutral-900 dark:text-white truncate">
                       {note.title}
                     </p>
-                    <p className="text-[11px] text-neutral-400 line-clamp-1 mt-0.5">
+                    <p className="type-caption line-clamp-1 mt-0.5">
                       {note.excerpt}
                     </p>
                   </div>
@@ -283,7 +283,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="flex items-center justify-between mb-4">
               <button
                 onClick={() => onNavigate('projects')}
-                className="flex items-center gap-1.5 text-sm font-medium text-neutral-900 dark:text-white hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors cursor-pointer group"
+                className="type-section-heading flex items-center gap-1.5 text-neutral-900 dark:text-white hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors cursor-pointer group"
               >
                 <span>Projects</span>
                 <ChevronRight className="w-3.5 h-3.5 text-neutral-400 group-hover:translate-x-0.5 transition-transform" />
@@ -298,10 +298,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
 
             {projects.length === 0 ? (
-              <div className="py-7 text-center">
+              <div className="workspace-empty py-7">
                 <FolderDot className="w-6 h-6 text-neutral-300 dark:text-neutral-600 mx-auto mb-2 stroke-[1.4]" />
-                <p className="text-xs text-neutral-500 dark:text-neutral-400 font-medium">No projects yet</p>
-                <p className="text-[11px] text-neutral-400 dark:text-neutral-500 mt-1">
+                <p className="type-section-heading text-neutral-500 dark:text-neutral-400">No projects yet</p>
+                <p className="type-caption mt-1">
                   Your private projects will appear here.
                 </p>
               </div>
@@ -313,10 +313,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     onClick={() => onNavigate('projects')}
                     className="p-2 rounded-xl hover:bg-neutral-50 dark:hover:bg-white/[0.03] transition-colors cursor-pointer"
                   >
-                    <p className="text-xs font-medium text-neutral-900 dark:text-white truncate">
+                    <p className="type-body font-medium text-neutral-900 dark:text-white truncate">
                       {proj.name}
                     </p>
-                    <p className="text-[11px] text-neutral-400 line-clamp-1 mt-0.5">
+                    <p className="type-caption line-clamp-1 mt-0.5">
                       {proj.tagline}
                     </p>
                   </div>

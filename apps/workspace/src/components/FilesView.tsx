@@ -76,10 +76,10 @@ export const FilesView: React.FC<FilesViewProps> = ({
     <div className="workspace-view space-y-7 pb-16">
       {/* Header */}
       <div>
-        <h2 className="font-serif text-3xl text-neutral-900 dark:text-white font-normal tracking-tight">
+        <h2 className="type-page-heading text-neutral-900 dark:text-white">
           File Service
         </h2>
-        <p className="text-neutral-500 dark:text-neutral-400 text-xs mt-1">
+        <p className="type-secondary mt-1">
           Temporary file transfer & edge sharing powered by Cloudflare R2 bucket (isolated <code className="font-mono text-neutral-600 dark:text-neutral-300">transfers/</code> prefix, 4GB cap).
         </p>
       </div>
@@ -88,26 +88,26 @@ export const FilesView: React.FC<FilesViewProps> = ({
       <div className="workspace-card p-5 sm:p-7 space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h3 className="text-sm font-medium text-neutral-900 dark:text-white">
+            <h3 className="type-section-heading text-neutral-900 dark:text-white">
               Transfer New File
             </h3>
-            <p className="text-xs text-neutral-400 mt-0.5">
+            <p className="type-secondary mt-0.5">
               Streams file to R2 with automated expiration & D1 metadata registry.
             </p>
           </div>
 
           {/* Expiry Selector */}
           <div className="flex items-center gap-2">
-            <span className="text-xs text-neutral-400">Expires in:</span>
-            <div className="flex items-center bg-neutral-100 dark:bg-white/5 rounded-lg p-0.5 border border-neutral-200/60 dark:border-white/10">
+            <span className="type-label text-neutral-400">Expires in:</span>
+            <div className="workspace-segment">
               {['1 hour', '24 hours', '48 hours', '7 days'].map((exp) => (
                 <button
                   key={exp}
                   onClick={() => setSelectedExpiry(exp)}
-                  className={`px-2.5 py-1 rounded-md text-[11px] transition-colors cursor-pointer ${
+                  className={`workspace-segment-item cursor-pointer ${
                     selectedExpiry === exp
-                      ? 'bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white shadow-xs font-medium'
-                      : 'text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white'
+                      ? 'workspace-segment-item-active'
+                      : ''
                   }`}
                 >
                   {exp}
@@ -140,12 +140,12 @@ export const FilesView: React.FC<FilesViewProps> = ({
               <Upload className="w-5 h-5 stroke-[1.8]" />
             )}
           </div>
-          <p className="text-xs font-medium text-neutral-900 dark:text-white">
+          <p className="type-section-heading text-neutral-900 dark:text-white">
             {isUploading
               ? 'Streaming to Cloudflare R2...'
               : 'Drop your files here, or browse'}
           </p>
-          <p className="text-[11px] text-neutral-400 mt-1 max-w-sm">
+          <p className="type-caption mt-1 max-w-sm">
             Temporary transfer storage quota: 4GB max total. Objects are strictly kept under <code className="font-mono text-[10px]">transfers/</code>.
           </p>
         </label>
@@ -154,10 +154,10 @@ export const FilesView: React.FC<FilesViewProps> = ({
       {/* Active Shares Table */}
       <div className="workspace-card p-5 sm:p-6 space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium text-neutral-900 dark:text-white">
+          <h3 className="type-section-heading text-neutral-900 dark:text-white">
             Active Shared Links ({transfers.length})
           </h3>
-          <span className="text-[11px] text-neutral-400 font-mono">
+          <span className="type-mono text-neutral-400">
             R2 Bucket: transfers/ · D1 metadata
           </span>
         </div>
@@ -173,10 +173,10 @@ export const FilesView: React.FC<FilesViewProps> = ({
                   {getFileIcon(item.name)}
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs font-medium text-neutral-900 dark:text-white truncate">
+                  <p className="type-body font-medium text-neutral-900 dark:text-white truncate">
                     {item.name}
                   </p>
-                  <p className="text-[11px] text-neutral-400 mt-0.5">
+                  <p className="type-caption mt-0.5">
                     {item.size} · Expires in {item.expiresIn} · {item.downloads || 0} downloads
                   </p>
                 </div>
@@ -235,10 +235,10 @@ export const FilesView: React.FC<FilesViewProps> = ({
             className="workspace-modal bg-white dark:bg-[#1a1b20] p-6 rounded-2xl max-w-xs w-full text-center border border-neutral-200 dark:border-white/10 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <h4 className="text-sm font-medium text-neutral-900 dark:text-white mb-1">
+            <h4 className="type-section-heading text-neutral-900 dark:text-white mb-1">
               Share File
             </h4>
-            <p className="text-xs text-neutral-400 mb-4 truncate">
+            <p className="type-secondary mb-4 truncate">
               {qrModalItem.name}
             </p>
             {/* Minimal SVG QR Code placeholder */}
@@ -256,7 +256,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
                 ))}
               </div>
             </div>
-            <p className="text-[11px] font-mono text-neutral-400 mt-4 break-all">
+            <p className="type-mono text-neutral-400 mt-4 break-all">
               {qrModalItem.shareUrl}
             </p>
             <button

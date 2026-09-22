@@ -86,7 +86,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       onClick={onClose}
     >
       <div
-        className="bg-white dark:bg-[#18191d] border border-neutral-200 dark:border-white/10 rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150"
+        className="workspace-modal bg-white dark:bg-[#18191d] border border-neutral-200 dark:border-white/10 w-full max-w-xl overflow-hidden animate-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Search Input Bar */}
@@ -98,7 +98,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Type a command or search..."
-            className="w-full bg-transparent text-sm text-neutral-900 dark:text-white placeholder:text-neutral-400 focus:outline-none"
+            className="workspace-input workspace-input-plain type-body text-neutral-900 dark:text-white placeholder:text-neutral-400"
           />
           <kbd className="px-1.5 py-0.5 text-[10px] font-mono text-neutral-400 bg-neutral-100 dark:bg-white/5 rounded">
             ESC
@@ -109,7 +109,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         <div className="max-h-96 overflow-y-auto p-2 space-y-4">
           {/* Navigation */}
           <div>
-            <div className="px-3 py-1 text-[10px] font-mono uppercase tracking-wider text-neutral-400">
+            <div className="type-caption px-3 py-1 uppercase tracking-wider text-neutral-400">
               Navigation
             </div>
             <div className="space-y-0.5">
@@ -139,7 +139,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
           {/* Actions */}
           <div>
-            <div className="px-3 py-1 text-[10px] font-mono uppercase tracking-wider text-neutral-400">
+            <div className="type-caption px-3 py-1 uppercase tracking-wider text-neutral-400">
               Quick Actions
             </div>
             <div className="space-y-0.5">
@@ -167,7 +167,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           {/* Files */}
           {matchedFiles.length > 0 && (
             <div>
-              <div className="px-3 py-1 text-[10px] font-mono uppercase tracking-wider text-neutral-400">
+              <div className="type-caption px-3 py-1 uppercase tracking-wider text-neutral-400">
                 Files
               </div>
               <div className="space-y-0.5">

@@ -70,10 +70,10 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
           <X className="w-4 h-4" />
         </button>
 
-        <h3 className="font-serif text-xl font-normal text-neutral-900 dark:text-white capitalize mb-1">
+        <h3 className="type-modal-heading text-neutral-900 dark:text-white capitalize mb-1">
           {type === 'transfer' ? 'Upload to R2' : `New ${type}`}
         </h3>
-        <p className="text-xs text-neutral-400 mb-5">
+        <p className="type-secondary mb-5">
           {type === 'transfer'
             ? 'Select a file to stream directly into Cloudflare R2.'
             : 'Add a new record to your workspace.'}
@@ -83,7 +83,7 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
           {type === 'project' && (
             <>
               <div>
-                <label className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                <label className="type-label block text-neutral-700 dark:text-neutral-300 mb-1">
                   Project Name
                 </label>
                 <input
@@ -92,11 +92,11 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
                   value={projName}
                   onChange={(e) => setProjName(e.target.value)}
                   placeholder="Project name"
-                  className="w-full px-3.5 py-2 rounded-xl text-xs bg-neutral-50 dark:bg-white/5 border border-neutral-200 dark:border-white/10 text-neutral-900 dark:text-white focus:outline-none"
+                  className="workspace-input"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                <label className="type-label block text-neutral-700 dark:text-neutral-300 mb-1">
                   Tagline
                 </label>
                 <input
@@ -104,11 +104,11 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
                   value={projTagline}
                   onChange={(e) => setProjTagline(e.target.value)}
                   placeholder="Short one-line description"
-                  className="w-full px-3.5 py-2 rounded-xl text-xs bg-neutral-50 dark:bg-white/5 border border-neutral-200 dark:border-white/10 text-neutral-900 dark:text-white focus:outline-none"
+                  className="workspace-input"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                <label className="type-label block text-neutral-700 dark:text-neutral-300 mb-1">
                   Description
                 </label>
                 <textarea
@@ -116,7 +116,7 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
                   value={projDesc}
                   onChange={(e) => setProjDesc(e.target.value)}
                   placeholder="Architecture or implementation notes..."
-                  className="w-full px-3.5 py-2 rounded-xl text-xs bg-neutral-50 dark:bg-white/5 border border-neutral-200 dark:border-white/10 text-neutral-900 dark:text-white focus:outline-none"
+                  className="workspace-input min-h-[6rem]"
                 />
               </div>
             </>
@@ -125,7 +125,7 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
           {type === 'note' && (
             <>
               <div>
-                <label className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                <label className="type-label block text-neutral-700 dark:text-neutral-300 mb-1">
                   Title
                 </label>
                 <input
@@ -138,7 +138,7 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                <label className="type-label block text-neutral-700 dark:text-neutral-300 mb-1">
                   Content
                 </label>
                 <textarea
@@ -146,7 +146,7 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
                   value={noteContent}
                   onChange={(e) => setNoteContent(e.target.value)}
                   placeholder="Write your note..."
-                  className="w-full px-3.5 py-2 rounded-xl text-xs bg-neutral-50 dark:bg-white/5 border border-neutral-200 dark:border-white/10 text-neutral-900 dark:text-white font-mono focus:outline-none"
+                  className="workspace-input workspace-input-mono min-h-[10rem]"
                 />
               </div>
             </>
@@ -154,7 +154,7 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
 
           {type === 'transfer' && (
             <div>
-              <label className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+              <label className="type-label block text-neutral-700 dark:text-neutral-300 mb-2">
                 Choose File
               </label>
               <input

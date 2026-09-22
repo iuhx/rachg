@@ -11,7 +11,7 @@ function renderInline(text: string): React.ReactNode[] {
       return <strong key={index}>{token.slice(2, -2)}</strong>;
     }
     if (token.startsWith('`') && token.endsWith('`')) {
-      return <code key={index} className="px-1 py-0.5 rounded bg-neutral-100 dark:bg-white/10 font-mono text-[0.9em]">{token.slice(1, -1)}</code>;
+      return <code key={index} className="type-mono px-1 py-0.5 rounded bg-neutral-100 dark:bg-white/10">{token.slice(1, -1)}</code>;
     }
     if (token.startsWith('~~') && token.endsWith('~~')) {
       return <del key={index}>{token.slice(2, -2)}</del>;
@@ -35,7 +35,7 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({ content }) => 
     if (line.trim().startsWith('```')) {
       if (codeLines === null) codeLines = [];
       else {
-        blocks.push(<pre key={`code-${index}`} className="overflow-x-auto rounded-lg bg-neutral-950 px-4 py-3 font-mono text-xs text-neutral-200"><code>{codeLines.join('\n')}</code></pre>);
+        blocks.push(<pre key={`code-${index}`} className="type-mono overflow-x-auto rounded-lg bg-neutral-950 px-4 py-3 text-neutral-200"><code>{codeLines.join('\n')}</code></pre>);
         codeLines = null;
       }
       return;
@@ -52,7 +52,7 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({ content }) => 
     if (heading) {
       const level = heading[1].length;
       const Tag = level === 1 ? 'h1' : level === 2 ? 'h2' : 'h3';
-      blocks.push(<Tag key={index} className={level === 1 ? 'text-2xl font-medium' : level === 2 ? 'text-xl font-medium' : 'text-base font-semibold'}>{renderInline(heading[2])}</Tag>);
+      blocks.push(<Tag key={index} className={level === 1 ? 'type-modal-heading' : level === 2 ? 'type-section-heading' : 'type-body font-semibold'}>{renderInline(heading[2])}</Tag>);
       return;
     }
     const listItem = line.match(/^\s*[-*]\s+(.+)$/);
@@ -77,7 +77,7 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({ content }) => 
   });
 
   if (codeLines !== null) {
-    blocks.push(<pre key="code-open" className="overflow-x-auto rounded-lg bg-neutral-950 px-4 py-3 font-mono text-xs text-neutral-200"><code>{codeLines.join('\n')}</code></pre>);
+    blocks.push(<pre key="code-open" className="type-mono overflow-x-auto rounded-lg bg-neutral-950 px-4 py-3 text-neutral-200"><code>{codeLines.join('\n')}</code></pre>);
   }
 
   return <div className="space-y-2">{blocks}</div>;

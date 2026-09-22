@@ -45,10 +45,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     <div className="workspace-view space-y-8 pb-20">
       {/* Header */}
       <div>
-        <h2 className="font-serif text-3xl text-neutral-900 dark:text-white font-normal tracking-tight">
+        <h2 className="type-page-heading text-neutral-900 dark:text-white">
           Settings
         </h2>
-        <p className="text-neutral-500 dark:text-neutral-400 text-xs mt-1">
+        <p className="type-secondary mt-1">
           Private workspace configuration and production edge status.
         </p>
       </div>
@@ -61,10 +61,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <Cloud className="w-5 h-5 stroke-[1.7]" />
             </div>
             <div>
-              <h3 className="text-sm font-medium text-neutral-900 dark:text-white">
+              <h3 className="type-section-heading text-neutral-900 dark:text-white">
                 Cloudflare Edge Architecture
               </h3>
-              <p className="text-xs text-neutral-400">
+              <p className="type-secondary">
                 Connected to <span className="font-mono text-neutral-700 dark:text-neutral-300">rachg.com</span>
               </p>
             </div>
@@ -79,7 +79,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <RefreshCw className={`w-3.5 h-3.5 ${testingPing ? 'animate-spin' : ''}`} />
               <span>{pingLatency !== null ? `${pingLatency}ms` : 'Ping Edge'}</span>
             </button>
-            <span className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-800/30">
+          <span className="type-label flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-800/30">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
               Active
             </span>
@@ -95,12 +95,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <span className="font-medium text-neutral-900 dark:text-white">
                   R2 Storage Vault
                 </span>
-                <span className="font-mono text-neutral-400 ml-2 text-[11px]">
+                <span className="type-mono text-neutral-400 ml-2">
                   bucket: r2rachg
                 </span>
               </div>
             </div>
-            <span className="font-mono text-[11px] text-neutral-400">
+            <span className="type-mono text-neutral-400">
               transfers/ (4GB cap)
             </span>
           </div>
@@ -112,12 +112,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <span className="font-medium text-neutral-900 dark:text-white">
                   D1 Database Metadata
                 </span>
-                <span className="font-mono text-neutral-400 ml-2 text-[11px]">
+                <span className="type-mono text-neutral-400 ml-2">
                   db: d1rachg
                 </span>
               </div>
             </div>
-            <span className="font-mono text-[11px] text-neutral-400">
+            <span className="type-mono text-neutral-400">
               files table
             </span>
           </div>
@@ -129,12 +129,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <span className="font-medium text-neutral-900 dark:text-white">
                   File Service Worker
                 </span>
-                <span className="font-mono text-neutral-400 ml-2 text-[11px]">
+                <span className="type-mono text-neutral-400 ml-2">
                   rachg-file-service
                 </span>
               </div>
             </div>
-            <span className="font-mono text-[11px] text-neutral-400">
+            <span className="type-mono text-neutral-400">
               files.rachg.com
             </span>
           </div>
@@ -143,10 +143,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
       {/* Appearance */}
       <div className="workspace-card p-5 sm:p-6 space-y-4">
-        <h3 className="text-sm font-medium text-neutral-900 dark:text-white">
+        <h3 className="type-section-heading text-neutral-900 dark:text-white">
           Appearance
         </h3>
-        <p className="text-xs text-neutral-400 leading-relaxed">
+        <p className="type-secondary leading-relaxed">
           Switch between Studio Duo (dark obsidian navigation with warm paper white canvas) or Pure Obsidian dark mode.
         </p>
 
@@ -162,12 +162,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             }`}
           >
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-neutral-900 dark:text-white">
+              <span className="type-section-heading text-neutral-900 dark:text-white">
                 Studio Duo
               </span>
               <Sun className="w-4 h-4 text-neutral-400" />
             </div>
-            <p className="text-[11px] text-neutral-400 leading-relaxed">
+            <p className="type-caption leading-relaxed">
               Dark sidebar with calm, high-contrast light workspace canvas.
             </p>
           </button>
@@ -183,12 +183,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             }`}
           >
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-neutral-900 dark:text-white">
+              <span className="type-section-heading text-neutral-900 dark:text-white">
                 Obsidian Dark
               </span>
               <Moon className="w-4 h-4 text-neutral-400" />
             </div>
-            <p className="text-[11px] text-neutral-400 leading-relaxed">
+            <p className="type-caption leading-relaxed">
               Pure dark monochrome across the entire interface.
             </p>
           </button>

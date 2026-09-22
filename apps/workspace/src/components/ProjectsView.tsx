@@ -16,10 +16,10 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="font-serif text-3xl text-neutral-900 dark:text-white font-normal tracking-tight">
+          <h2 className="type-page-heading text-neutral-900 dark:text-white">
             Projects
           </h2>
-          <p className="text-neutral-500 dark:text-neutral-400 text-xs mt-1">
+          <p className="type-secondary mt-1">
             Private projects, systems, and working notes.
           </p>
         </div>
@@ -33,14 +33,14 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       </div>
 
       {projects.length === 0 ? (
-        <div className="workspace-card p-10 sm:p-16 text-center">
-          <div className="w-12 h-12 rounded-2xl bg-neutral-100 dark:bg-white/5 flex items-center justify-center mx-auto mb-4 text-neutral-400 dark:text-neutral-500">
+        <div className="workspace-card workspace-empty p-10 sm:p-16">
+          <div className="workspace-empty-icon">
             <FolderDot className="w-6 h-6 stroke-[1.5]" />
           </div>
-          <h3 className="text-sm font-medium text-neutral-900 dark:text-white">
+          <h3 className="type-section-heading text-neutral-900 dark:text-white">
             No projects yet
           </h3>
-          <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-1 max-w-sm mx-auto leading-relaxed">
+          <p className="type-secondary mt-1 max-w-sm mx-auto leading-relaxed">
             Keep private projects and working notes in one place.
           </p>
           <button
@@ -59,17 +59,17 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               className="workspace-card p-5 flex flex-col justify-between"
             >
               <div>
-                <h3 className="text-sm font-medium text-neutral-900 dark:text-white">
+                <h3 className="type-section-heading text-neutral-900 dark:text-white">
                   {project.name}
                 </h3>
-                <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+                <p className="type-secondary mt-1">
                   {project.tagline}
                 </p>
-                <p className="text-xs text-neutral-600 dark:text-neutral-300 mt-3 leading-relaxed">
+                <p className="type-body text-neutral-600 dark:text-neutral-300 mt-3">
                   {project.description}
                 </p>
               </div>
-              <div className="mt-5 pt-3 border-t border-neutral-100 dark:border-white/[0.05] flex items-center justify-between text-[11px] text-neutral-400">
+              <div className="type-caption mt-5 pt-3 border-t border-neutral-100 dark:border-white/[0.05] flex items-center justify-between">
                 <span>{project.status}</span>
                 <span>{project.updatedAt}</span>
               </div>
