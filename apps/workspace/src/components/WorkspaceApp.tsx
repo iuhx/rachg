@@ -20,6 +20,7 @@ import {
 } from '../services/fileService';
 import { createNote, deleteNote, fetchNotes, updateNote as updateNoteService } from '../services/noteService';
 import { getAccessIdentity, startAccessLogout } from '../services/accessService';
+import { clearScratchpad, fetchScratchpad, saveScratchpad } from '../services/scratchpadService';
 import type { NavTab, Project, FileItem, NoteItem } from '../types';
 
 export const WorkspaceApp: React.FC = () => {
@@ -35,6 +36,9 @@ export const WorkspaceApp: React.FC = () => {
   const [notes, setNotes] = useState<NoteItem[]>([]);
   const [isNotesLoading, setIsNotesLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
+  const [scratchpad, setScratchpad] = useState<import('../types').ScratchpadItem | null>(null);
+  const [isScratchpadLoading, setIsScratchpadLoading] = useState(true);
+  const [isScratchpadSaving, setIsScratchpadSaving] = useState(false);
 
   // Command palette & modal
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
@@ -67,6 +71,24 @@ export const WorkspaceApp: React.FC = () => {
       }
     }).catch(() => setAuthStatus('unauthenticated'));
   }, []);
+
+  useEffect(() => {
+    fetchScratchpad().then(setScratchpad).catch(() => {}).finally(() => setIsScratchpadLoading(false));
+  }, []);
+
+  const handleSaveScratchpad = async (content: string, image?: File | null) => {
+    setIsScratchpadSaving(true);
+    try { setScratchpad(await saveScratchpad(content, image)); showToast('Scratchpad saved.'); }
+    catch (error: any) { showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to save scratchpad.' : (error.message || 'Unable to save scratchpad.')); }
+    finally { setIsScratchpadSaving(false); }
+  };
+
+  const handleClearScratchpad = async () => {
+    setIsScratchpadSaving(true);
+    try { setScratchpad(await clearScratchpad()); showToast('Scratchpad cleared.'); }
+    catch (error: any) { showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to clear scratchpad.' : (error.message || 'Unable to clear scratchpad.')); }
+    finally { setIsScratchpadSaving(false); }
+  };
 
   // Load active transfers from live Worker on mount
   useEffect(() => {
@@ -214,6 +236,11 @@ export const WorkspaceApp: React.FC = () => {
           {activeTab === 'notes' && (
             <NotesView
               notes={notes}
+              scratchpad={scratchpad}
+              isScratchpadLoading={isScratchpadLoading}
+              isScratchpadSaving={isScratchpadSaving}
+              onSaveScratchpad={handleSaveScratchpad}
+              onClearScratchpad={handleClearScratchpad}
               isLoading={isNotesLoading}
               onNewNote={() => setNewModalType('note')}
               onUpdateNote={handleUpdateNote}

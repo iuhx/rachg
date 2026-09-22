@@ -6,6 +6,7 @@ import type {
   NoteListResponse,
   NoteResponse,
   NoteDeleteResponse,
+  ScratchpadResponse,
   ApiErrorResponse,
 } from '@rachg/shared';
 import {
@@ -23,8 +24,11 @@ import {
   updateNoteRecord,
   deleteNoteRecord,
   mapRecordToNoteItem,
+  getScratchpadRecord,
+  updateScratchpadRecord,
+  mapRecordToScratchpadItem,
 } from './db';
-import { buildR2Key, uploadToR2, getFromR2, deleteFromR2 } from './storage';
+import { buildR2Key, uploadToR2, getFromR2, deleteFromR2, buildScratchpadKey, getScratchpadObject, deleteScratchpadObject } from './storage';
 import { checkStorageQuota, getActiveStorageUsage } from './quota';
 import { isAuthenticated, resolveAuth } from './auth';
 
@@ -156,6 +160,43 @@ export default {
       // Routes: private Markdown notes (D1)
       // -------------------------------------------------------------
       const noteDetailMatch = url.pathname.match(/^\/v1\/notes\/([a-zA-Z0-9_-]+)$/);
+
+      if (request.method === 'GET' && url.pathname === '/v1/scratchpad') {
+        const record = await getScratchpadRecord(env.DB);
+        return jsonResponse<ScratchpadResponse>({ success: true, scratchpad: mapRecordToScratchpadItem(record, baseUrl) }, 200, origin);
+      }
+
+      if (request.method === 'PUT' && url.pathname === '/v1/scratchpad') {
+        const formData = await request.formData().catch(() => null);
+        const content = typeof formData?.get('content') === 'string' ? String(formData?.get('content')) : '';
+        if (content.length > 200_000) {
+          return jsonResponse<ApiErrorResponse>({ success: false, error: 'Scratchpad text is too large', code: 'INVALID_SCRATCHPAD', status: 400 }, 400, origin);
+        }
+        const current = await getScratchpadRecord(env.DB);
+        let imageKey = current.image_key;
+        const image = formData?.get('image');
+        const imageFile = image && typeof image !== 'string' ? image as File : null;
+        if (imageFile && imageFile.size > 0) {
+          if (!imageFile.type.startsWith('image/')) {
+            return jsonResponse<ApiErrorResponse>({ success: false, error: 'Only images can be pasted into the scratchpad', code: 'INVALID_IMAGE', status: 400 }, 400, origin);
+          }
+          if (imageFile.size > 10 * 1024 * 1024) {
+            return jsonResponse<ApiErrorResponse>({ success: false, error: 'Scratchpad images must be 10MB or smaller', code: 'IMAGE_TOO_LARGE', status: 413 }, 413, origin);
+          }
+          imageKey = buildScratchpadKey(`default-${Date.now()}`, imageFile.name || 'pasted-image');
+          await uploadToR2(env.FILES_BUCKET, imageKey, imageFile.stream(), imageFile.type, { source: 'scratchpad' });
+          if (current.image_key) await deleteScratchpadObject(env.FILES_BUCKET, current.image_key).catch(() => {});
+        }
+        const record = await updateScratchpadRecord(env.DB, content, imageKey);
+        return jsonResponse<ScratchpadResponse>({ success: true, scratchpad: mapRecordToScratchpadItem(record, baseUrl) }, 200, origin);
+      }
+
+      if (request.method === 'DELETE' && url.pathname === '/v1/scratchpad') {
+        const current = await getScratchpadRecord(env.DB);
+        if (current.image_key) await deleteScratchpadObject(env.FILES_BUCKET, current.image_key).catch(() => {});
+        const record = await updateScratchpadRecord(env.DB, '', null);
+        return jsonResponse<ScratchpadResponse>({ success: true, scratchpad: mapRecordToScratchpadItem(record, baseUrl) }, 200, origin);
+      }
 
       if (request.method === 'POST' && url.pathname === '/v1/notes') {
         const payload = await parseNotePayload(request);

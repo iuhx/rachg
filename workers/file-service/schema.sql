@@ -29,3 +29,11 @@ CREATE TABLE IF NOT EXISTS notes (
 );
 
 CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes (updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS scratchpad (
+  id TEXT PRIMARY KEY,
+  content TEXT NOT NULL DEFAULT '',
+  image_key TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);

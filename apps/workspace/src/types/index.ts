@@ -86,6 +86,19 @@ export interface NoteDeleteResponse {
   id: string;
 }
 
+export interface ScratchpadItem {
+  id: string;
+  content: string;
+  imageUrl?: string;
+  updatedAt: string;
+  updatedTimestamp: number;
+}
+
+export interface ScratchpadResponse {
+  success: boolean;
+  scratchpad: ScratchpadItem;
+}
+
 export interface ApiErrorResponse {
   success: false;
   error: string;

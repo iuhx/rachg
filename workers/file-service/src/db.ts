@@ -1,4 +1,5 @@
 import type { FileItem, FileCategory, NoteItem } from '@rachg/shared';
+import type { ScratchpadItem } from '@rachg/shared';
 
 export interface FileRecord {
   id: string;
@@ -18,6 +19,14 @@ export interface NoteRecord {
   id: string;
   title: string;
   content: string;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface ScratchpadRecord {
+  id: string;
+  content: string;
+  image_key: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -89,6 +98,16 @@ export function mapRecordToNoteItem(record: NoteRecord): NoteItem {
   };
 }
 
+export function mapRecordToScratchpadItem(record: ScratchpadRecord, baseUrl: string): ScratchpadItem {
+  return {
+    id: record.id,
+    content: record.content,
+    imageUrl: record.image_key ? `${baseUrl}/f/${record.image_key}` : undefined,
+    updatedAt: formatNoteTimestamp(record.updated_at),
+    updatedTimestamp: record.updated_at,
+  };
+}
+
 export function mapRecordToFileItem(r: FileRecord, baseUrl: string): FileItem {
   const now = Date.now();
   const msRemaining = r.expires_at - now;
@@ -142,6 +161,18 @@ export async function ensureSchema(db: D1Database): Promise<void> {
     .prepare(`CREATE INDEX IF NOT EXISTS idx_files_created ON files (created_at DESC);`)
     .run()
     .catch(() => {});
+
+  await db
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS scratchpad (
+        id TEXT PRIMARY KEY,
+        content TEXT NOT NULL DEFAULT '',
+        image_key TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );`
+    )
+    .run();
 
   await db
     .prepare(
@@ -296,4 +327,21 @@ export async function deleteNoteRecord(db: D1Database, id: string): Promise<bool
   await ensureSchema(db);
   const result = await db.prepare(`DELETE FROM notes WHERE id = ?`).bind(id).run();
   return (result.meta?.changes ?? 0) > 0;
+}
+
+export async function getScratchpadRecord(db: D1Database): Promise<ScratchpadRecord> {
+  await ensureSchema(db);
+  const existing = await db.prepare(`SELECT * FROM scratchpad WHERE id = 'default' LIMIT 1`).first<ScratchpadRecord>();
+  if (existing) return existing;
+  const now = Date.now();
+  const record: ScratchpadRecord = { id: 'default', content: '', image_key: null, created_at: now, updated_at: now };
+  await db.prepare(`INSERT INTO scratchpad (id, content, image_key, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`).bind(record.id, record.content, record.image_key, record.created_at, record.updated_at).run();
+  return record;
+}
+
+export async function updateScratchpadRecord(db: D1Database, content: string, imageKey: string | null): Promise<ScratchpadRecord> {
+  const current = await getScratchpadRecord(db);
+  const updatedAt = Date.now();
+  await db.prepare(`UPDATE scratchpad SET content = ?, image_key = ?, updated_at = ? WHERE id = 'default'`).bind(content, imageKey, updatedAt).run();
+  return { ...current, content, image_key: imageKey, updated_at: updatedAt };
 }

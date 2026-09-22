@@ -9,11 +9,17 @@
  */
 
 const TRANSFERS_PREFIX = 'transfers/';
+const SCRATCHPAD_PREFIX = 'scratchpad/';
 
 export function buildR2Key(id: string, filename: string): string {
   // Sanitize filename: replace spaces or path traversals
   const cleanFilename = filename.replace(/[/\\?%*:|"<>]/g, '_').trim();
   return `${TRANSFERS_PREFIX}${id}/${cleanFilename}`;
+}
+
+export function buildScratchpadKey(id: string, filename: string): string {
+  const cleanFilename = filename.replace(/[/\\?%*:|"<>]/g, '_').trim() || 'image';
+  return `${SCRATCHPAD_PREFIX}${id}/${cleanFilename}`;
 }
 
 /**
@@ -56,5 +62,15 @@ export async function deleteFromR2(bucket: R2Bucket, key: string): Promise<void>
   if (!key.startsWith(TRANSFERS_PREFIX)) {
     throw new Error('Access denied: key is outside transfers/ prefix');
   }
+  await bucket.delete(key);
+}
+
+export async function getScratchpadObject(bucket: R2Bucket, key: string): Promise<R2ObjectBody | null> {
+  if (!key.startsWith(SCRATCHPAD_PREFIX)) throw new Error('Access denied: key is outside scratchpad/ prefix');
+  return bucket.get(key);
+}
+
+export async function deleteScratchpadObject(bucket: R2Bucket, key: string): Promise<void> {
+  if (!key.startsWith(SCRATCHPAD_PREFIX)) throw new Error('Access denied: key is outside scratchpad/ prefix');
   await bucket.delete(key);
 }
