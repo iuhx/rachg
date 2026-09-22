@@ -5,7 +5,6 @@ export interface AccessIdentity {
 }
 
 const ACCESS_TEAM_DOMAIN = 'https://rachg.cloudflareaccess.com';
-const API_BASE_URL = 'https://files.rachg.com';
 
 function normalizeIdentity(payload: unknown): AccessIdentity | null {
   if (!payload || typeof payload !== 'object') return null;
@@ -27,12 +26,14 @@ export async function getAccessIdentity(): Promise<AccessIdentity | null> {
 }
 
 export function getAccessLoginUrl(returnTo = window.location.href): string {
-  const url = new URL('/cdn-cgi/access/login', API_BASE_URL);
+  // Start authentication on the protected workspace origin so Access returns
+  // to the page the user is looking at and refreshes the workspace cookie.
+  const url = new URL('/cdn-cgi/access/login', window.location.origin);
   url.searchParams.set('redirect_url', returnTo);
   return url.toString();
 }
 
-export function getAccessLogoutUrl(returnTo = window.location.origin): string {
+export function getAccessLogoutUrl(returnTo = `${window.location.origin}/cdn-cgi/access/login`): string {
   const url = new URL('/cdn-cgi/access/logout', ACCESS_TEAM_DOMAIN);
   url.searchParams.set('returnTo', returnTo);
   return url.toString();
