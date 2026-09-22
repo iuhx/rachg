@@ -37,12 +37,14 @@ export const TopBar: React.FC<TopBarProps> = ({
         </button>
 
         {/* User avatar circle 'R' matching screenshot */}
-        <div
+        <button
+          type="button"
           onClick={onOpenCommandPalette}
+          aria-label="Open command palette"
           className="w-8 h-8 rounded-full bg-[#1b1c20] text-white flex items-center justify-center text-xs font-serif font-normal shadow-xs border border-white/10 select-none cursor-pointer hover:ring-2 hover:ring-neutral-300 transition-colors"
         >
           R
-        </div>
+        </button>
       </div>
     </header>
   );

@@ -14,6 +14,7 @@ import type { NavTab, Project, NoteItem, FileItem } from '../types';
 
 interface CommandPaletteProps {
   isOpen: boolean;
+  onOpen: () => void;
   onClose: () => void;
   onNavigate: (tab: NavTab) => void;
   projects: Project[];
@@ -25,6 +26,7 @@ interface CommandPaletteProps {
 
 export const CommandPalette: React.FC<CommandPaletteProps> = ({
   isOpen,
+  onOpen,
   onClose,
   onNavigate,
   projects,
@@ -43,6 +45,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           onClose();
         } else {
           setQuery('');
+          onOpen();
         }
       }
       if (e.key === 'Escape' && isOpen) {
@@ -51,7 +54,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, onOpen]);
 
   if (!isOpen) return null;
 
@@ -88,6 +91,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       <div
         className="workspace-modal bg-white dark:bg-[#18191d] border border-neutral-200 dark:border-white/10 w-full max-w-xl overflow-hidden animate-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Command palette"
       >
         {/* Search Input Bar */}
         <div className="flex items-center gap-3 px-4 py-3.5 border-b border-neutral-100 dark:border-white/10">

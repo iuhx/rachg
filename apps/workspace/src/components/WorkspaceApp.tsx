@@ -224,6 +224,7 @@ export const WorkspaceApp: React.FC = () => {
       {/* Global Command Palette */}
       <CommandPalette
         isOpen={isCommandPaletteOpen}
+        onOpen={() => setIsCommandPaletteOpen(true)}
         onClose={() => setIsCommandPaletteOpen(false)}
         onNavigate={setActiveTab}
         projects={projects}

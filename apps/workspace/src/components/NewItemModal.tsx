@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import type { Project, NoteItem } from '../types';
 
@@ -19,8 +19,6 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
   onCreateNote,
   onCreateTransfer,
 }) => {
-  if (!isOpen || !type) return null;
-
   // Project form state
   const [projName, setProjName] = useState('');
   const [projTagline, setProjTagline] = useState('');
@@ -32,6 +30,18 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
 
   // Transfer form state
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setProjName('');
+    setProjTagline('');
+    setProjDesc('');
+    setNoteTitle('');
+    setNoteContent('');
+    setSelectedFile(null);
+  }, [isOpen, type]);
+
+  if (!isOpen || !type) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,15 +72,20 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
       <div
         className="workspace-modal bg-white dark:bg-[#18191d] border border-neutral-200 dark:border-white/10 rounded-2xl w-full max-w-lg p-6 shadow-2xl relative"
         onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="new-item-modal-title"
       >
         <button
+          type="button"
           onClick={onClose}
+          aria-label="Close dialog"
           className="absolute top-5 right-5 text-neutral-400 hover:text-neutral-900 dark:hover:text-white p-1 rounded-lg"
         >
           <X className="w-4 h-4" />
         </button>
 
-        <h3 className="type-modal-heading text-neutral-900 dark:text-white capitalize mb-1">
+        <h3 id="new-item-modal-title" className="type-modal-heading text-neutral-900 dark:text-white capitalize mb-1">
           {type === 'transfer' ? 'Upload to R2' : `New ${type}`}
         </h3>
         <p className="type-secondary mb-5">
@@ -134,7 +149,7 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
                   value={noteTitle}
                   onChange={(e) => setNoteTitle(e.target.value)}
                   placeholder="Note title"
-                  className="w-full px-3.5 py-2 rounded-xl text-xs bg-neutral-50 dark:bg-white/5 border border-neutral-200 dark:border-white/10 text-neutral-900 dark:text-white focus:outline-none"
+                  className="workspace-input"
                 />
               </div>
               <div>
