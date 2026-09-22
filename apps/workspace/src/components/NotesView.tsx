@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Check, Edit3, FileText, Plus, Search, Trash2, X } from 'lucide-react';
 import type { NoteItem } from '../types';
 import { MarkdownPreview } from './MarkdownPreview';
+import { ConfirmDialog } from './ConfirmDialog';
 
 interface NotesViewProps {
   notes: NoteItem[];
@@ -50,6 +51,7 @@ export const NotesView: React.FC<NotesViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [clock, setClock] = useState(() => Date.now());
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -162,12 +164,13 @@ export const NotesView: React.FC<NotesViewProps> = ({
   };
 
   const removeNote = async () => {
-    if (!activeNote || !window.confirm(`Delete “${activeNote.title}”?`)) return;
+    if (!activeNote) return;
     clearAutosaveTimer();
     setIsDeleting(true);
     setErrorMessage(null);
     try {
       await onDeleteNote(activeNote.id);
+      setIsDeleteDialogOpen(false);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Unable to delete note.');
     } finally {
@@ -270,7 +273,7 @@ export const NotesView: React.FC<NotesViewProps> = ({
                       ) : (
                         <button onClick={startEdit} className="workspace-button workspace-button-secondary min-h-8 px-3 py-1 cursor-pointer"><Edit3 className="w-3.5 h-3.5" /><span>Edit</span></button>
                       )}
-                      <button onClick={removeNote} disabled={isDeleting} title="Delete note" aria-label="Delete note" className="workspace-button workspace-button-secondary min-h-8 px-2 text-red-500 hover:text-red-600 cursor-pointer disabled:opacity-50"><Trash2 className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => setIsDeleteDialogOpen(true)} disabled={isDeleting} title="Delete note" aria-label="Delete note" className="workspace-button workspace-button-secondary min-h-8 px-2 text-red-500 hover:text-red-600 cursor-pointer disabled:opacity-50"><Trash2 className="w-3.5 h-3.5" /></button>
                     </div>
                   </div>
 
@@ -297,6 +300,16 @@ export const NotesView: React.FC<NotesViewProps> = ({
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={isDeleteDialogOpen}
+        title="Delete note?"
+        description={activeNote ? `“${activeNote.title}” will be permanently removed from your private workspace.` : 'This note will be permanently removed from your private workspace.'}
+        confirmLabel="Delete note"
+        isConfirming={isDeleting}
+        onConfirm={() => void removeNote()}
+        onCancel={() => { if (!isDeleting) setIsDeleteDialogOpen(false); }}
+      />
     </div>
   );
 };

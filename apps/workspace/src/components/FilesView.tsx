@@ -11,6 +11,7 @@ import {
   Video,
 } from 'lucide-react';
 import type { FileItem } from '../types';
+import { ConfirmDialog } from './ConfirmDialog';
 
 interface FilesViewProps {
   transfers: FileItem[];
@@ -30,6 +31,19 @@ export const FilesView: React.FC<FilesViewProps> = ({
   const [selectedExpiry, setSelectedExpiry] = useState('48 hours');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [fileToDelete, setFileToDelete] = useState<FileItem | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const confirmDelete = async () => {
+    if (!fileToDelete) return;
+    setIsDeleting(true);
+    try {
+      await onDeleteTransfer(fileToDelete.id);
+      setFileToDelete(null);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -139,7 +153,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
                   <button onClick={() => handleCopy(file.shareUrl || '', file.id)} className="workspace-button workspace-button-secondary min-h-8 px-2 cursor-pointer" title="Copy link" aria-label={`Copy link for ${file.name}`}>
                     {copiedId === file.id ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
                   </button>
-                  <button onClick={() => onDeleteTransfer(file.id)} className="workspace-button workspace-button-secondary min-h-8 px-2 text-neutral-400 hover:text-red-500 cursor-pointer" title="Delete file" aria-label={`Delete ${file.name}`}>
+                  <button onClick={() => setFileToDelete(file)} className="workspace-button workspace-button-secondary min-h-8 px-2 text-neutral-400 hover:text-red-500 cursor-pointer" title="Delete file" aria-label={`Delete ${file.name}`}>
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
@@ -148,6 +162,16 @@ export const FilesView: React.FC<FilesViewProps> = ({
           </div>
         )}
       </section>
+
+      <ConfirmDialog
+        isOpen={fileToDelete !== null}
+        title="Delete file?"
+        description={fileToDelete ? `“${fileToDelete.name}” will be permanently removed from your private file space.` : 'This file will be permanently removed from your private file space.'}
+        confirmLabel="Delete file"
+        isConfirming={isDeleting}
+        onConfirm={() => void confirmDelete()}
+        onCancel={() => { if (!isDeleting) setFileToDelete(null); }}
+      />
     </div>
   );
 };
