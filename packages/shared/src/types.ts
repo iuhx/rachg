@@ -1,4 +1,4 @@
-export type NavTab = 'home' | 'projects' | 'notes' | 'files' | 'tools' | 'settings';
+export type NavTab = 'home' | 'projects' | 'notes' | 'files' | 'settings';
 
 export type ProjectStatus = 'In Progress' | 'Planning' | 'Exploring' | 'Live' | 'Prototype' | 'Idea';
 
@@ -33,7 +33,6 @@ export interface FileItem {
   type: FileCategory;
   downloads?: number;
   status: 'active' | 'expired' | 'deleted';
-  deleteToken?: string;
   ownerId?: string; // extensible for Cloudflare Access / user identity
 }
 
@@ -47,19 +46,6 @@ export interface NoteItem {
   tags: string[];
   readTime: string;
   pinned?: boolean;
-}
-
-export interface ToolItem {
-  id: string;
-  name: string;
-  tagline: string;
-  description: string;
-  status: ProjectStatus;
-  updatedAt: string;
-  workerEndpoint: string;
-  isExternal: boolean;
-  category: 'utility' | 'experiment' | 'ai' | 'infra';
-  thumbnailGradient: string;
 }
 
 // -------------------------------------------------------------
@@ -77,7 +63,6 @@ export interface UploadResponse {
   success: boolean;
   file: FileItem;
   shareUrl: string;
-  deleteToken: string;
 }
 
 export interface FileListResponse {

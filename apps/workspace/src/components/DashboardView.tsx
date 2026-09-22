@@ -302,7 +302,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <FolderDot className="w-6 h-6 text-neutral-300 dark:text-neutral-600 mx-auto mb-2 stroke-[1.4]" />
                 <p className="text-xs text-neutral-500 dark:text-neutral-400 font-medium">No projects yet</p>
                 <p className="text-[11px] text-neutral-400 dark:text-neutral-500 mt-1">
-                  Personal software and tool tracking will live here.
+                  Your private projects will appear here.
                 </p>
               </div>
             ) : (

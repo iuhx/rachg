@@ -17,25 +17,35 @@ import {
 } from './db';
 import { buildR2Key, uploadToR2, getFromR2, deleteFromR2 } from './storage';
 import { checkStorageQuota, getActiveStorageUsage } from './quota';
-import { resolveAuth, canManageFile } from './auth';
+import { isAuthenticated, resolveAuth } from './auth';
 
 export interface Env {
   DB: D1Database;
   FILES_BUCKET: R2Bucket;
   MAX_STORAGE_BYTES?: string; // Default 4GB (4294967296)
   ALLOWED_ORIGINS?: string;
-  ADMIN_TOKEN?: string;
+  ACCESS_TEAM_DOMAIN?: string;
+  ACCESS_AUDIENCE?: string;
+  ACCESS_ADMIN_EMAIL?: string;
 }
 
-function jsonResponse<T>(data: T, status: number = 200, origin: string = '*'): Response {
+function getAllowedOrigin(request: Request, env: Env): string {
+  const requestOrigin = request.headers.get('Origin');
+  const allowed = (env.ALLOWED_ORIGINS || 'https://rachg.com')
+    .split(',').map((value) => value.trim()).filter(Boolean);
+  return requestOrigin && allowed.includes(requestOrigin) ? requestOrigin : (allowed[0] || 'https://rachg.com');
+}
+
+function jsonResponse<T>(data: T, status: number = 200, origin: string): Response {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': origin,
       'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Delete-Token',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
       'Access-Control-Allow-Credentials': 'true',
+      Vary: 'Origin',
     },
   });
 }
@@ -65,7 +75,7 @@ function parseExpiryHours(str: string | null): number {
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
-    const origin = request.headers.get('Origin') || '*';
+    const origin = getAllowedOrigin(request, env);
     const baseUrl = `${url.protocol}//${url.host}`;
     const maxStorageLimit = parseInt(env.MAX_STORAGE_BYTES || '4294967296', 10);
 
@@ -75,15 +85,23 @@ export default {
         headers: {
           'Access-Control-Allow-Origin': origin,
           'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Delete-Token',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          'Access-Control-Allow-Credentials': 'true',
           'Access-Control-Max-Age': '86400',
+          Vary: 'Origin',
         },
       });
     }
 
-    const auth = resolveAuth(request, env.ADMIN_TOKEN);
-
     try {
+      const auth = await resolveAuth(request, env);
+      if (!isAuthenticated(auth)) {
+        return jsonResponse<ApiErrorResponse>(
+          { success: false, error: 'Authentication required', code: 'UNAUTHORIZED', status: 401 },
+          401,
+          origin
+        );
+      }
       // -------------------------------------------------------------
       // Health check & Service status
       // -------------------------------------------------------------
@@ -211,7 +229,6 @@ export default {
             success: true,
             file: fileItem,
             shareUrl: fileItem.shareUrl || `${baseUrl}/f/${id}`,
-            deleteToken,
           },
           201,
           origin
@@ -275,7 +292,7 @@ export default {
 
       // -------------------------------------------------------------
       // Route: DELETE /v1/files/:id (Delete/Revoke file)
-      // Requires X-Delete-Token or Bearer/Admin authorization
+      // Requires a verified Cloudflare Access administrator identity
       // -------------------------------------------------------------
       if (request.method === 'DELETE' && v1FileDetailMatch) {
         const id = v1FileDetailMatch[1];
@@ -285,22 +302,6 @@ export default {
           return jsonResponse<ApiErrorResponse>(
             { success: false, error: 'File not found', code: 'NOT_FOUND', status: 404 },
             404,
-            origin
-          );
-        }
-
-        const providedToken =
-          request.headers.get('X-Delete-Token') || url.searchParams.get('token');
-
-        if (!canManageFile(auth, providedToken, record.delete_token)) {
-          return jsonResponse<ApiErrorResponse>(
-            {
-              success: false,
-              error: 'Unauthorized: invalid or missing delete token',
-              code: 'UNAUTHORIZED',
-              status: 401,
-            },
-            401,
             origin
           );
         }
@@ -365,7 +366,9 @@ export default {
           'Content-Disposition',
           `attachment; filename="${encodeURIComponent(record.filename)}"`
         );
-        headers.set('Access-Control-Allow-Origin', '*');
+        headers.set('Access-Control-Allow-Origin', origin);
+        headers.set('Access-Control-Allow-Credentials', 'true');
+        headers.set('Vary', 'Origin');
 
         return new Response(r2Object.body, {
           status: 200,
@@ -381,6 +384,13 @@ export default {
       );
     } catch (err: any) {
       console.error('File service error:', err);
+      if (err?.message?.includes('Access JWT') || err?.message?.includes('Cloudflare Access')) {
+        return jsonResponse<ApiErrorResponse>(
+          { success: false, error: 'Authentication required', code: 'UNAUTHORIZED', status: 401 },
+          401,
+          origin
+        );
+      }
       return jsonResponse<ApiErrorResponse>(
         {
           success: false,

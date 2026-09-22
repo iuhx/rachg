@@ -20,7 +20,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             Projects
           </h2>
           <p className="text-neutral-500 dark:text-neutral-400 text-xs mt-1">
-            Personal software initiatives, systems, and active applications.
+            Private projects, systems, and working notes.
           </p>
         </div>
         <button
@@ -41,7 +41,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             No projects yet
           </h3>
           <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-1 max-w-sm mx-auto leading-relaxed">
-            Track and curate your personal tools, experiments, and applications here as you build them.
+            Keep private projects and working notes in one place.
           </p>
           <button
             onClick={onNewProject}

@@ -17,6 +17,7 @@ import {
   fetchActiveFiles,
   uploadFileService,
   deleteFileService,
+  AuthenticationRequiredError,
 } from '../services/fileService';
 import type { NavTab, Project, FileItem, NoteItem } from '../types';
 
@@ -53,10 +54,8 @@ export const WorkspaceApp: React.FC = () => {
 
   // Load active transfers from live Worker on mount
   useEffect(() => {
-    fetchActiveFiles().then((liveFiles) => {
-      if (liveFiles && Array.isArray(liveFiles)) {
-        setTransfers(liveFiles);
-      }
+    fetchActiveFiles().then(setTransfers).catch((error: unknown) => {
+      showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to continue.' : 'Unable to load private files.');
     });
   }, []);
 
@@ -96,21 +95,22 @@ export const WorkspaceApp: React.FC = () => {
       setTransfers((prev) => [uploadedFile, ...prev.filter((f) => f.id !== uploadedFile.id)]);
       if (isLive) {
         showToast(`Uploaded "${file.name}" to Cloudflare R2.`);
-      } else {
-        showToast(`Saved "${file.name}".`);
       }
     } catch (err: any) {
-      showToast(err.message || 'Upload failed');
+      showToast(err instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to upload files.' : (err.message || 'Upload failed'));
     } finally {
       setIsUploading(false);
     }
   };
 
   const handleDeleteTransfer = async (id: string) => {
-    const item = transfers.find((t) => t.id === id);
-    await deleteFileService(id, item?.deleteToken);
-    setTransfers(transfers.filter((t) => t.id !== id));
-    showToast('File transfer revoked.');
+    try {
+      await deleteFileService(id);
+      setTransfers(transfers.filter((t) => t.id !== id));
+      showToast('File transfer revoked.');
+    } catch (err: any) {
+      showToast(err instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to delete files.' : (err.message || 'Delete failed'));
+    }
   };
 
   const handleUpdateNote = (updated: NoteItem) => {
@@ -132,7 +132,7 @@ export const WorkspaceApp: React.FC = () => {
         activeTab={activeTab}
         onTabChange={(tab) => {
           setActiveTab(tab);
-          window.scrollTo({ top: 0, behavior: 'smooth' });
+          window.scrollTo(0, 0);
         }}
       />
 

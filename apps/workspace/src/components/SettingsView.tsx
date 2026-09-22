@@ -29,11 +29,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setTestingPing(true);
     const start = performance.now();
     try {
-      await fetch('https://rachg-file-service.haenlau.workers.dev/health', { method: 'GET' });
+      const apiBaseUrl = import.meta.env.PUBLIC_FILE_SERVICE_URL || 'https://files.rachg.com';
+      const response = await fetch(`${apiBaseUrl}/health`, { method: 'GET', credentials: 'include' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const duration = Math.round(performance.now() - start);
       setPingLatency(duration);
     } catch {
-      setPingLatency(24);
+      setPingLatency(null);
     } finally {
       setTestingPing(false);
     }
@@ -47,7 +49,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           Settings
         </h2>
         <p className="text-neutral-500 dark:text-neutral-400 text-xs mt-1">
-          Personal digital studio configuration and production edge status.
+          Private workspace configuration and production edge status.
         </p>
       </div>
 
@@ -63,7 +65,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 Cloudflare Edge Architecture
               </h3>
               <p className="text-xs text-neutral-400">
-                Connected to <span className="font-mono text-neutral-700 dark:text-neutral-300">app.rachg.com</span>
+                Connected to <span className="font-mono text-neutral-700 dark:text-neutral-300">rachg.com</span>
               </p>
             </div>
           </div>
@@ -133,7 +135,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </div>
             </div>
             <span className="font-mono text-[11px] text-neutral-400">
-              workers.dev
+              files.rachg.com
             </span>
           </div>
         </div>

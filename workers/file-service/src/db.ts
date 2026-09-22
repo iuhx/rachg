@@ -76,7 +76,6 @@ export function mapRecordToFileItem(r: FileRecord, baseUrl: string): FileItem {
     type: getFileType(r.filename, r.mime_type),
     downloads: r.download_count,
     status: isExpired ? 'expired' : (r.status as 'active' | 'expired' | 'deleted'),
-    deleteToken: r.delete_token,
     ownerId: r.owner_id || undefined,
   };
 }

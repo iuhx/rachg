@@ -28,7 +28,6 @@ export interface FileItem {
   type: FileCategory;
   downloads?: number;
   status: 'active' | 'expired' | 'deleted';
-  deleteToken?: string;
   ownerId?: string;
 }
 
@@ -53,7 +52,6 @@ export interface UploadResponse {
   success: boolean;
   file: FileItem;
   shareUrl: string;
-  deleteToken: string;
 }
 
 export interface FileListResponse {

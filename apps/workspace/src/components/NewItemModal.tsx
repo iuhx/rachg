@@ -93,7 +93,7 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
                   required
                   value={projName}
                   onChange={(e) => setProjName(e.target.value)}
-                  placeholder="e.g. Personal Tool"
+                  placeholder="Project name"
                   className="w-full px-3.5 py-2 rounded-xl text-xs bg-neutral-50 dark:bg-white/5 border border-neutral-200 dark:border-white/10 text-neutral-900 dark:text-white focus:outline-none"
                 />
               </div>

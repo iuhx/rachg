@@ -1,5 +1,9 @@
 # rachg File Service (Cloudflare Worker)
 
+This API is private and must be protected by Cloudflare Access. Configure an Access application for the API hostname and allow only the administrator account. The Worker verifies `Cf-Access-Jwt-Assertion` itself; it never trusts `Cf-Access-Authenticated-User-Email`.
+
+Required Worker variables: `ACCESS_TEAM_DOMAIN`, `ACCESS_AUDIENCE`, `ACCESS_ADMIN_EMAIL`, and `ALLOWED_ORIGINS=https://rachg.com`. Keep the API hostname behind Access and do not expose a public bypass through the `workers.dev` hostname.
+
 Independent temporary file transfer micro-service powered by Cloudflare Workers, Cloudflare R2 (isolated `transfers/` prefix), and Cloudflare D1 (lightweight metadata table).
 
 ---
@@ -85,7 +89,7 @@ Local Dev URL: `http://localhost:8787`
 
 ### 5. Revoke / Delete File
 - **Method**: `DELETE /v1/files/:id`
-- **Headers**: `X-Delete-Token: <token>` (or `Authorization: Bearer <ADMIN_TOKEN>`)
+- **Authentication**: Cloudflare Access session/JWT. Anonymous requests return `401 Unauthorized`.
 - **Response** `200 OK`:
 ```json
 {

@@ -1,6 +1,6 @@
-# rachg — Personal Digital Studio / Personal Operating System
+# rachg — Private Personal Workspace
 
-A long-term personal digital studio running on Cloudflare.
+A private personal workspace running on Cloudflare.
 
 Repository: [https://github.com/iuhx/rachg](https://github.com/iuhx/rachg)
 
@@ -12,12 +12,10 @@ Repository: [https://github.com/iuhx/rachg](https://github.com/iuhx/rachg)
 GitHub (https://github.com/iuhx/rachg)
       │
       ├──> Cloudflare Pages
-      │       ├──> apps/website   (rachg.com — Personal website & essays, static Astro)
-      │       └──> apps/workspace (app.rachg.com — Studio OS control plane, static Astro + React)
+      │       └──> apps/workspace (rachg.com — private workspace, static Astro + React)
       │
       └──> Cloudflare Workers (Autonomous edge APIs)
-              ├──> workers/file-service (Temporary file sharing vault, R2 + D1)
-              └──> workers/tool-service (Edge utilities & experiments)
+              └──> workers/file-service (Private file vault, R2 + D1)
 ```
 
 - **Frontend**: Pure static Astro + React components, zero SSR overhead, hosted on Cloudflare Pages.
@@ -33,23 +31,18 @@ GitHub (https://github.com/iuhx/rachg)
 ```text
 rachg/
 ├── apps/
-│   ├── workspace/              # Personal workspace control plane (app.rachg.com)
-│   │   ├── src/                # React UI, Studio Duo design, Dashboard, Notes, Tools, Files
+│   ├── workspace/              # Private workspace control plane (rachg.com)
+│   │   ├── src/                # React UI, Dashboard, Notes, Projects, Files
 │   │   ├── public/             # Static assets
 │   │   ├── astro.config.mjs    # Static Astro configuration (output: 'static')
 │   │   └── package.json
-│   │
-│   └── website/                # [Planned] Personal public home & writing (rachg.com)
 │
 ├── workers/
-│   ├── file-service/           # Temporary file transfer service
+│   ├── file-service/           # Private file transfer service
 │   │   ├── wrangler.jsonc      # D1 & R2 bindings, 4GB quota limit
 │   │   ├── schema.sql          # D1 metadata schema (files table)
 │   │   ├── src/index.ts        # Worker API entry point
 │   │   └── package.json
-│   │
-│   └── tool-service/           # [Placeholder] Tool registry & edge services
-│
 ├── packages/
 │   └── shared/                 # Shared TypeScript interfaces & API contracts
 │       ├── src/types.ts
