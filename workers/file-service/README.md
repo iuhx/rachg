@@ -2,7 +2,7 @@
 
 This API is private and must be protected by Cloudflare Access. Configure an Access application for the API hostname and allow only the administrator account. The Worker verifies `Cf-Access-Jwt-Assertion` itself; it never trusts `Cf-Access-Authenticated-User-Email`.
 
-Required Worker variables: `ACCESS_TEAM_DOMAIN`, `ACCESS_AUDIENCE`, `ACCESS_ADMIN_EMAIL`, and `ALLOWED_ORIGINS=https://rachg.com`. Keep the API hostname behind Access and do not expose a public bypass through the `workers.dev` hostname.
+Required Worker variables: `ACCESS_TEAM_DOMAIN=https://rachg.cloudflareaccess.com`, `ACCESS_AUDIENCE`, `ACCESS_ADMIN_EMAIL`, and `ALLOWED_ORIGINS=https://rachg.com`. Keep the API hostname behind Access and do not expose a public bypass through the `workers.dev` hostname.
 
 ### Private Markdown Notes
 

@@ -27,7 +27,7 @@
     "MAX_STORAGE_BYTES": "4294967296", // 4GB max total active storage cap
     "DEFAULT_EXPIRATION_HOURS": "48",
     "ALLOWED_ORIGINS": "https://rachg.com",
-    "ACCESS_TEAM_DOMAIN": "https://haenl.cloudflareaccess.com",
+    "ACCESS_TEAM_DOMAIN": "https://rachg.cloudflareaccess.com",
     "ACCESS_AUDIENCE": "c957cd24c86488ef41c73ce7b915a92b348e6babb849441f41c4a3e4a8f791cb"
   }
 }
