@@ -29,7 +29,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setTestingPing(true);
     const start = performance.now();
     try {
-      const apiBaseUrl = import.meta.env.PUBLIC_FILE_SERVICE_URL || 'https://files.rachg.com';
+      const apiBaseUrl = 'https://files.rachg.com';
       const response = await fetch(`${apiBaseUrl}/health`, { method: 'GET', credentials: 'include' });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const duration = Math.round(performance.now() - start);

@@ -6,7 +6,7 @@ import type {
 } from '../types';
 import { AuthenticationRequiredError } from './fileService';
 
-const API_BASE_URL = import.meta.env.PUBLIC_FILE_SERVICE_URL || 'https://files.rachg.com';
+const API_BASE_URL = 'https://files.rachg.com';
 
 async function throwNoteApiError(response: Response, fallback: string): Promise<never> {
   if (response.status === 401) throw new AuthenticationRequiredError();

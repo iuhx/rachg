@@ -5,7 +5,7 @@ export interface AccessIdentity {
 }
 
 const ACCESS_TEAM_DOMAIN = import.meta.env.PUBLIC_ACCESS_TEAM_DOMAIN || 'https://haenl.cloudflareaccess.com';
-const API_BASE_URL = import.meta.env.PUBLIC_FILE_SERVICE_URL || 'https://files.rachg.com';
+const API_BASE_URL = 'https://files.rachg.com';
 
 function normalizeIdentity(payload: unknown): AccessIdentity | null {
   if (!payload || typeof payload !== 'object') return null;
