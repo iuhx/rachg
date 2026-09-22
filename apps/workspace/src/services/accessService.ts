@@ -33,7 +33,7 @@ export function getAccessLoginUrl(returnTo = window.location.href): string {
   return url.toString();
 }
 
-export function getAccessLogoutUrl(returnTo = `${window.location.origin}/cdn-cgi/access/login`): string {
+export function getAccessLogoutUrl(returnTo = window.location.origin): string {
   const url = new URL('/cdn-cgi/access/logout', ACCESS_TEAM_DOMAIN);
   url.searchParams.set('returnTo', returnTo);
   return url.toString();

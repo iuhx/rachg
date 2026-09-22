@@ -19,7 +19,7 @@ import {
   AuthenticationRequiredError,
 } from '../services/fileService';
 import { createNote, deleteNote, fetchNotes, updateNote as updateNoteService } from '../services/noteService';
-import { getAccessIdentity, startAccessLogin, startAccessLogout } from '../services/accessService';
+import { getAccessIdentity, startAccessLogout } from '../services/accessService';
 import type { NavTab, Project, FileItem, NoteItem } from '../types';
 
 export const WorkspaceApp: React.FC = () => {
@@ -185,7 +185,6 @@ export const WorkspaceApp: React.FC = () => {
           onToggleDarkMode={() => setIsDarkMode(!isDarkMode)}
           authStatus={authStatus}
           userEmail={userEmail}
-          onSignIn={startAccessLogin}
           onSignOut={startAccessLogout}
         />
 
