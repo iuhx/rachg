@@ -81,21 +81,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const activities: ActivityItem[] = [
     ...notes.slice(0, 3).map((note) => ({
       id: `note-${note.id}`,
-      label: 'Note updated',
+      label: 'Note',
       title: note.title,
       detail: note.updatedAt,
       tab: 'notes' as NavTab,
     })),
     ...transfers.slice(0, 3).map((file) => ({
       id: `file-${file.id}`,
-      label: 'File added',
+      label: 'File',
       title: file.name,
       detail: file.updatedAt,
       tab: 'files' as NavTab,
     })),
     ...projects.slice(0, 2).map((project) => ({
       id: `project-${project.id}`,
-      label: 'Project updated',
+      label: 'Project',
       title: project.name,
       detail: project.updatedAt,
       tab: 'projects' as NavTab,
@@ -125,10 +125,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
 
           {notes.length === 0 ? (
-            <div className="workspace-empty py-8">
-              <FileText className="w-6 h-6 text-neutral-300 dark:text-neutral-600 mb-3" />
-              <p className="type-section-heading text-neutral-600 dark:text-neutral-300">Start writing your first thought.</p>
-              <p className="type-caption mt-1">Your private notes will live here.</p>
+            <div className="workspace-empty py-10">
+              <FileText className="w-5 h-5 text-neutral-300 dark:text-neutral-600 mb-3" />
+              <p className="type-secondary">No notes yet.</p>
             </div>
           ) : (
             <div className="space-y-1">
@@ -151,61 +150,61 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <Paperclip className="w-4 h-4 text-neutral-400" />
           </div>
 
-          <label
-            onDragOver={(event) => { event.preventDefault(); setIsDragging(true); }}
-            onDragLeave={() => setIsDragging(false)}
-            onDrop={handleDrop}
-            className={`workspace-panel flex items-center gap-3 p-3 mb-3 border-dashed cursor-pointer transition-colors ${isDragging ? 'border-neutral-500 bg-neutral-100 dark:bg-white/10' : 'hover:border-neutral-400 dark:hover:border-white/20'}`}
-          >
-            <input ref={fileInputRef} type="file" className="hidden" disabled={isUploading} onChange={handleFileChange} />
-            <span className="w-8 h-8 rounded-lg bg-neutral-100 dark:bg-white/5 flex items-center justify-center text-neutral-500">
-              {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-            </span>
-            <span className="min-w-0">
-              <span className="type-body block text-neutral-800 dark:text-neutral-200">{isUploading ? 'Saving file…' : 'Add a file'}</span>
-              <span className="type-caption block">Drop here or browse</span>
-            </span>
-          </label>
-
           {transfers.length === 0 ? (
-            <div className="workspace-empty py-6">
-              <p className="type-section-heading text-neutral-600 dark:text-neutral-300">Your private files will appear here.</p>
-              <p className="type-caption mt-1">A small space for things you want close.</p>
+            <div className="workspace-empty py-8">
+              <FileText className="w-5 h-5 text-neutral-300 dark:text-neutral-600 mb-3" />
+              <p className="type-secondary">No recent files.</p>
+              <label className="workspace-button workspace-button-secondary mt-4 cursor-pointer">
+                <input ref={fileInputRef} type="file" className="hidden" disabled={isUploading} onChange={handleFileChange} />
+                {isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                <span>{isUploading ? 'Adding…' : 'Add a file'}</span>
+              </label>
             </div>
           ) : (
-            <div className="space-y-1">
-              {transfers.slice(0, 4).map((file) => (
-                <div key={file.id} className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-neutral-50 dark:hover:bg-white/[0.03] transition-colors">
-                  <span className="w-7 h-7 rounded-lg bg-neutral-100 dark:bg-white/5 flex items-center justify-center flex-shrink-0">{getFileIcon(file.name)}</span>
-                  <span className="min-w-0 flex-1">
-                    <span className="type-body block text-neutral-800 dark:text-neutral-200 truncate">{file.name}</span>
-                    <span className="type-caption block mt-0.5">{file.size} · Expires in {file.expiresIn}</span>
-                  </span>
-                  <button onClick={() => handleCopyLink(file.shareUrl || '', file.id)} className="workspace-button workspace-button-secondary min-h-8 px-2 cursor-pointer" aria-label={`Copy link for ${file.name}`}>
-                    {copiedId === file.id ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-                  </button>
-                </div>
-              ))}
-            </div>
+            <>
+              <label
+                onDragOver={(event) => { event.preventDefault(); setIsDragging(true); }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={handleDrop}
+                className={`workspace-panel flex items-center gap-3 p-3 mb-3 border-dashed cursor-pointer transition-colors ${isDragging ? 'border-neutral-500 bg-neutral-100 dark:bg-white/10' : 'hover:border-neutral-400 dark:hover:border-white/20'}`}
+              >
+                <input ref={fileInputRef} type="file" className="hidden" disabled={isUploading} onChange={handleFileChange} />
+                <span className="w-8 h-8 rounded-lg bg-neutral-100 dark:bg-white/5 flex items-center justify-center text-neutral-500">
+                  {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                </span>
+                <span className="min-w-0">
+                  <span className="type-body block text-neutral-800 dark:text-neutral-200">{isUploading ? 'Adding file…' : 'Add a file'}</span>
+                  <span className="type-caption block">Drop here or browse</span>
+                </span>
+              </label>
+              <div className="space-y-1">
+                {transfers.slice(0, 4).map((file) => (
+                  <div key={file.id} className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-neutral-50 dark:hover:bg-white/[0.03] transition-colors">
+                    <span className="w-7 h-7 rounded-lg bg-neutral-100 dark:bg-white/5 flex items-center justify-center flex-shrink-0">{getFileIcon(file.name)}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="type-body block text-neutral-800 dark:text-neutral-200 truncate">{file.name}</span>
+                      <span className="type-caption block mt-0.5">{file.size} · Expires in {file.expiresIn}</span>
+                    </span>
+                    <button onClick={() => handleCopyLink(file.shareUrl || '', file.id)} className="workspace-button workspace-button-secondary min-h-8 px-2 cursor-pointer" aria-label={`Copy link for ${file.name}`}>
+                      {copiedId === file.id ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </section>
       </div>
 
-      <section className="workspace-card p-5 sm:p-6" aria-labelledby="recent-activity-heading">
-        <div className="flex items-center justify-between mb-4">
-          <div className="type-section-heading flex items-center gap-2 text-neutral-900 dark:text-white">
-            <Activity className="w-4 h-4 text-neutral-400" />
-            <span id="recent-activity-heading">Recent Activity</span>
+      {activities.length > 0 && (
+        <section className="workspace-card p-5 sm:p-6" aria-labelledby="recent-activity-heading">
+          <div className="flex items-center justify-between mb-4">
+            <div className="type-section-heading flex items-center gap-2 text-neutral-900 dark:text-white">
+              <Activity className="w-4 h-4 text-neutral-400" />
+              <span id="recent-activity-heading">Recent Activity</span>
+            </div>
+            <span className="type-caption">Your workspace</span>
           </div>
-          <span className="type-caption">Your workspace, in motion</span>
-        </div>
-
-        {activities.length === 0 ? (
-          <div className="workspace-empty py-8">
-            <p className="type-section-heading text-neutral-600 dark:text-neutral-300">Your recent work will appear here.</p>
-            <p className="type-caption mt-1">Write a note or add a file to begin.</p>
-          </div>
-        ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1">
             {activities.map((activity) => (
               <button key={activity.id} onClick={() => onNavigate(activity.tab)} className="text-left p-3 rounded-lg hover:bg-neutral-50 dark:hover:bg-white/[0.03] transition-colors cursor-pointer">
@@ -215,13 +214,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </button>
             ))}
           </div>
-        )}
-      </section>
+        </section>
+      )}
 
       {projects.length > 0 && (
         <button onClick={() => onNavigate('projects')} className="type-secondary inline-flex items-center gap-1.5 text-neutral-500 hover:text-neutral-900 dark:hover:text-white transition-colors cursor-pointer">
           <FolderDot className="w-3.5 h-3.5" />
-          <span>{projects.length} project{projects.length === 1 ? '' : 's'} in your workspace</span>
+          <span>Personal project space · {projects.length}</span>
           <ArrowUpRight className="w-3.5 h-3.5" />
         </button>
       )}
