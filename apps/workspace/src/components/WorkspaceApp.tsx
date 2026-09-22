@@ -19,7 +19,7 @@ import {
   AuthenticationRequiredError,
 } from '../services/fileService';
 import { createNote, deleteNote, fetchNotes, updateNote as updateNoteService } from '../services/noteService';
-import { getAccessIdentity, startAccessLogin, startAccessLogout } from '../services/accessService';
+import { getAccessIdentity, startAccessApiLogin, startAccessLogin, startAccessLogout } from '../services/accessService';
 import type { NavTab, Project, FileItem, NoteItem } from '../types';
 
 export const WorkspaceApp: React.FC = () => {
@@ -196,7 +196,7 @@ export const WorkspaceApp: React.FC = () => {
           authStatus={authStatus}
           apiAuthRequired={apiAuthRequired}
           userEmail={userEmail}
-          onSignIn={startAccessLogin}
+          onSignIn={apiAuthRequired ? startAccessApiLogin : startAccessLogin}
           onSignOut={startAccessLogout}
         />
 
