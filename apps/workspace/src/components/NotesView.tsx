@@ -38,7 +38,7 @@ export const NotesView: React.FC<NotesViewProps> = ({
   };
 
   return (
-    <div className="space-y-8 pb-20 max-w-5xl">
+    <div className="workspace-view space-y-8 pb-20">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -59,7 +59,7 @@ export const NotesView: React.FC<NotesViewProps> = ({
       </div>
 
       {notes.length === 0 ? (
-        <div className="bg-white dark:bg-[#16171b] rounded-2xl p-16 border border-neutral-200/70 dark:border-white/[0.07] text-center shadow-xs">
+        <div className="workspace-card p-10 sm:p-16 text-center">
           <div className="w-12 h-12 rounded-2xl bg-neutral-100 dark:bg-white/5 flex items-center justify-center mx-auto mb-4 text-neutral-400 dark:text-neutral-500">
             <FileText className="w-6 h-6 stroke-[1.5]" />
           </div>
@@ -80,7 +80,7 @@ export const NotesView: React.FC<NotesViewProps> = ({
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6 min-h-[500px]">
           {/* Note List */}
-          <div className="md:col-span-5 bg-white dark:bg-[#16171b] rounded-2xl p-4 border border-neutral-200/80 dark:border-white/[0.07] shadow-xs space-y-2">
+          <div className="workspace-card md:col-span-5 p-4 space-y-2">
             {notes.map((note) => {
               const isSelected = note.id === selectedNoteId;
               return (
@@ -90,7 +90,7 @@ export const NotesView: React.FC<NotesViewProps> = ({
                     setSelectedNoteId(note.id);
                     setIsEditing(false);
                   }}
-                  className={`p-3 rounded-xl transition-all cursor-pointer ${
+                  className={`p-3 rounded-xl transition-colors cursor-pointer ${
                     isSelected
                       ? 'bg-neutral-100 dark:bg-white/10 border border-neutral-300/60 dark:border-white/15'
                       : 'hover:bg-neutral-50 dark:hover:bg-white/[0.03] border border-transparent'
@@ -108,7 +108,7 @@ export const NotesView: React.FC<NotesViewProps> = ({
           </div>
 
           {/* Reader / Editor Canvas */}
-          <div className="md:col-span-7 bg-white dark:bg-[#16171b] rounded-2xl p-7 border border-neutral-200/80 dark:border-white/[0.07] shadow-xs">
+          <div className="workspace-card md:col-span-7 p-5 sm:p-7">
             {activeNote && (
               <div>
                 <div className="flex items-center justify-between pb-4 border-b border-neutral-100 dark:border-white/[0.06]">

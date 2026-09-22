@@ -13,12 +13,12 @@ export const TopBar: React.FC<TopBarProps> = ({
   onToggleDarkMode,
 }) => {
   return (
-    <header className="w-full flex items-center justify-end px-10 pt-7 pb-3 select-none">
-      <div className="flex items-center gap-4">
+    <header className="w-full flex items-center justify-end px-4 pt-4 pb-3 sm:px-6 lg:px-8 lg:pt-6 select-none">
+      <div className="flex items-center gap-2.5 sm:gap-4">
         {/* Search Input Bar (⌘K) matching screenshot */}
         <button
           onClick={onOpenCommandPalette}
-          className="flex items-center gap-2.5 px-3.5 py-1.5 rounded-xl text-xs bg-white dark:bg-[#18191d] text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 border border-neutral-200/90 dark:border-white/10 hover:border-neutral-300 dark:hover:border-white/20 shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-all w-60 sm:w-72 cursor-pointer"
+          className="flex items-center gap-2.5 px-3 py-2 workspace-control text-xs bg-white dark:bg-[#18191d] text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 border border-neutral-200/90 dark:border-white/10 hover:border-neutral-300 dark:hover:border-white/20 shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors w-[min(62vw,18rem)] sm:w-72 cursor-pointer"
         >
           <Search className="w-3.5 h-3.5 text-neutral-400 stroke-[1.8]" />
           <span className="flex-1 text-left text-neutral-400 text-xs">Search anything...</span>
@@ -39,7 +39,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         {/* User avatar circle 'R' matching screenshot */}
         <div
           onClick={onOpenCommandPalette}
-          className="w-8 h-8 rounded-full bg-[#1b1c20] text-white flex items-center justify-center text-xs font-serif font-normal shadow-xs border border-white/10 select-none cursor-pointer hover:ring-2 hover:ring-neutral-300 transition-all"
+          className="w-8 h-8 rounded-full bg-[#1b1c20] text-white flex items-center justify-center text-xs font-serif font-normal shadow-xs border border-white/10 select-none cursor-pointer hover:ring-2 hover:ring-neutral-300 transition-colors"
         >
           R
         </div>

@@ -73,7 +73,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
   };
 
   return (
-    <div className="space-y-7 pb-16">
+    <div className="workspace-view space-y-7 pb-16">
       {/* Header */}
       <div>
         <h2 className="font-serif text-3xl text-neutral-900 dark:text-white font-normal tracking-tight">
@@ -85,7 +85,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
       </div>
 
       {/* Upload Station Card */}
-      <div className="bg-white dark:bg-[#16171b] rounded-2xl p-7 border border-neutral-200/80 dark:border-white/[0.07] shadow-xs space-y-6">
+      <div className="workspace-card p-5 sm:p-7 space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h3 className="text-sm font-medium text-neutral-900 dark:text-white">
@@ -121,7 +121,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
         <label
           onDragOver={(e) => e.preventDefault()}
           onDrop={handleDrop}
-          className={`border-2 border-dashed rounded-xl p-10 flex flex-col items-center justify-center text-center cursor-pointer transition-all ${
+          className={`border-2 border-dashed rounded-xl p-10 flex flex-col items-center justify-center text-center cursor-pointer transition-colors ${
             isUploading
               ? 'border-emerald-500 bg-emerald-50/20 dark:bg-emerald-950/20 animate-pulse'
               : 'border-neutral-200 dark:border-white/10 hover:border-neutral-400 dark:hover:border-white/25 bg-neutral-50/40 dark:bg-white/[0.01]'
@@ -152,7 +152,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
       </div>
 
       {/* Active Shares Table */}
-      <div className="bg-white dark:bg-[#16171b] rounded-2xl p-6 border border-neutral-200/80 dark:border-white/[0.07] shadow-xs space-y-4">
+      <div className="workspace-card p-5 sm:p-6 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-medium text-neutral-900 dark:text-white">
             Active Shared Links ({transfers.length})

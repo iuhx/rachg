@@ -42,7 +42,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   return (
-    <div className="space-y-8 pb-20 max-w-4xl">
+    <div className="workspace-view space-y-8 pb-20">
       {/* Header */}
       <div>
         <h2 className="font-serif text-3xl text-neutral-900 dark:text-white font-normal tracking-tight">
@@ -54,7 +54,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       </div>
 
       {/* Cloudflare Edge Status */}
-      <div className="bg-white dark:bg-[#16171b] rounded-2xl p-6 border border-neutral-200/70 dark:border-white/[0.07] shadow-xs space-y-5">
+      <div className="workspace-card p-5 sm:p-6 space-y-5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3.5">
             <div className="w-9 h-9 rounded-xl bg-neutral-100 dark:bg-white/5 text-neutral-800 dark:text-neutral-200 flex items-center justify-center">
@@ -142,7 +142,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       </div>
 
       {/* Appearance */}
-      <div className="bg-white dark:bg-[#16171b] rounded-2xl p-6 border border-neutral-200/70 dark:border-white/[0.07] shadow-xs space-y-4">
+      <div className="workspace-card p-5 sm:p-6 space-y-4">
         <h3 className="text-sm font-medium text-neutral-900 dark:text-white">
           Appearance
         </h3>
@@ -155,7 +155,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             onClick={() => {
               if (isDarkMode) onToggleDarkMode();
             }}
-            className={`p-4 rounded-xl border text-left transition-all cursor-pointer ${
+            className={`p-4 rounded-xl border text-left transition-colors cursor-pointer ${
               !isDarkMode
                 ? 'border-neutral-900 dark:border-white bg-neutral-50 dark:bg-white/5 shadow-xs'
                 : 'border-neutral-200 dark:border-white/10 hover:border-neutral-300'
@@ -176,7 +176,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             onClick={() => {
               if (!isDarkMode) onToggleDarkMode();
             }}
-            className={`p-4 rounded-xl border text-left transition-all cursor-pointer ${
+            className={`p-4 rounded-xl border text-left transition-colors cursor-pointer ${
               isDarkMode
                 ? 'border-neutral-900 dark:border-white bg-neutral-50 dark:bg-white/5 shadow-xs'
                 : 'border-neutral-200 dark:border-white/10 hover:border-neutral-300'

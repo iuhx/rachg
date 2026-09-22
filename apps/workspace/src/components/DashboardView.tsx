@@ -84,7 +84,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   }).format(new Date());
 
   return (
-    <div className="space-y-8 pb-20 max-w-6xl">
+    <div className="workspace-view space-y-8 pb-20">
       {/* Editorial Header */}
       <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-4 pt-2">
         <div>
@@ -110,7 +110,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {/* Main Grid: File Transfer (Primary Live Service) & Recent Activities */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-7">
         {/* Left: Active File Transfer Vault (7 Cols) */}
-        <div className="lg:col-span-7 bg-white dark:bg-[#16171b] rounded-2xl p-7 border border-neutral-200/70 dark:border-white/[0.07] shadow-[0_1px_3px_rgba(0,0,0,0.02)] flex flex-col justify-between transition-colors">
+        <div className="workspace-card lg:col-span-7 p-5 sm:p-7 flex flex-col justify-between transition-colors">
           <div>
             <div className="flex items-center justify-between mb-5">
               <button
@@ -135,7 +135,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               onDragLeave={() => setIsDragging(false)}
               onDrop={handleDrop}
               onClick={() => fileInputRef.current?.click()}
-              className={`rounded-xl border border-dashed py-8 px-4 text-center cursor-pointer transition-all ${
+              className={`rounded-xl border border-dashed py-8 px-4 text-center cursor-pointer transition-colors ${
                 isDragging
                   ? 'border-neutral-500 bg-neutral-100/80 dark:bg-white/10'
                   : 'border-neutral-200 dark:border-white/10 hover:border-neutral-400 dark:hover:border-white/25 bg-neutral-50/50 dark:bg-white/[0.02]'
@@ -232,7 +232,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Right: Notes & Projects Overview (5 Cols) */}
         <div className="lg:col-span-5 space-y-7">
           {/* Notes Card */}
-          <div className="bg-white dark:bg-[#16171b] rounded-2xl p-6 border border-neutral-200/70 dark:border-white/[0.07] shadow-[0_1px_3px_rgba(0,0,0,0.02)] transition-colors">
+          <div className="workspace-card p-5 sm:p-6 transition-colors">
             <div className="flex items-center justify-between mb-4">
               <button
                 onClick={() => onNavigate('notes')}
@@ -279,7 +279,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
 
           {/* Projects Card */}
-          <div className="bg-white dark:bg-[#16171b] rounded-2xl p-6 border border-neutral-200/70 dark:border-white/[0.07] shadow-[0_1px_3px_rgba(0,0,0,0.02)] transition-colors">
+          <div className="workspace-card p-5 sm:p-6 transition-colors">
             <div className="flex items-center justify-between mb-4">
               <button
                 onClick={() => onNavigate('projects')}

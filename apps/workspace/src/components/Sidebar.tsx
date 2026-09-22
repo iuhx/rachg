@@ -26,7 +26,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   return (
-    <aside className="w-[240px] h-screen bg-[#111215] text-[#f3f4f6] flex flex-col justify-between border-r border-white/[0.06] select-none flex-shrink-0 relative z-30 transition-all">
+    <aside className="workspace-sidebar w-[240px] min-h-screen bg-[#111215] text-[#f3f4f6] flex flex-col justify-between border-r border-white/[0.06] select-none flex-shrink-0 relative z-30">
       {/* Brand & Workspace Identity */}
       <div className="pt-6 px-5">
         <button

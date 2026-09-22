@@ -126,7 +126,7 @@ export const WorkspaceApp: React.FC = () => {
   };
 
   return (
-    <div className={`min-h-screen flex ${isDarkMode ? 'dark bg-[#0e0f12]' : 'bg-[#f7f7f8]'}`}>
+    <div className={`workspace-shell flex ${isDarkMode ? 'dark' : ''}`}>
       {/* Sidebar with refined brandmark */}
       <Sidebar
         activeTab={activeTab}
@@ -137,7 +137,7 @@ export const WorkspaceApp: React.FC = () => {
       />
 
       {/* Main Studio Canvas */}
-      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto">
+      <div className="flex-1 flex flex-col min-w-0 min-h-screen overflow-y-auto">
         <TopBar
           onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
           isDarkMode={isDarkMode}
@@ -145,7 +145,7 @@ export const WorkspaceApp: React.FC = () => {
         />
 
         {/* Dynamic Views */}
-        <main className="flex-1 px-10 pt-2 pb-16 w-full">
+        <main className="workspace-main flex-1 px-4 pt-2 pb-16 sm:px-6 lg:px-8">
           {activeTab === 'home' && (
             <DashboardView
               projects={projects}
