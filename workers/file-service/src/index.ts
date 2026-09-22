@@ -198,6 +198,25 @@ export default {
         return jsonResponse<ScratchpadResponse>({ success: true, scratchpad: mapRecordToScratchpadItem(record, baseUrl) }, 200, origin);
       }
 
+      if (request.method === 'GET' && url.pathname === '/v1/scratchpad/image') {
+        const record = await getScratchpadRecord(env.DB);
+        if (!record.image_key) {
+          return new Response('Scratchpad image not found.', { status: 404, headers: { 'Access-Control-Allow-Origin': origin, Vary: 'Origin' } });
+        }
+        const image = await getScratchpadObject(env.FILES_BUCKET, record.image_key);
+        if (!image) {
+          return new Response('Scratchpad image not found.', { status: 404, headers: { 'Access-Control-Allow-Origin': origin, Vary: 'Origin' } });
+        }
+        const headers = new Headers();
+        image.writeHttpMetadata(headers);
+        headers.set('etag', image.httpEtag);
+        headers.set('Cache-Control', 'private, max-age=300');
+        headers.set('Access-Control-Allow-Origin', origin);
+        headers.set('Access-Control-Allow-Credentials', 'true');
+        headers.set('Vary', 'Origin');
+        return new Response(image.body, { status: 200, headers });
+      }
+
       if (request.method === 'POST' && url.pathname === '/v1/notes') {
         const payload = await parseNotePayload(request);
         if (!payload) {

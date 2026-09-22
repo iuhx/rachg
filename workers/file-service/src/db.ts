@@ -102,7 +102,7 @@ export function mapRecordToScratchpadItem(record: ScratchpadRecord, baseUrl: str
   return {
     id: record.id,
     content: record.content,
-    imageUrl: record.image_key ? `${baseUrl}/f/${record.image_key}` : undefined,
+    imageUrl: record.image_key ? `${baseUrl}/v1/scratchpad/image` : undefined,
     updatedAt: formatNoteTimestamp(record.updated_at),
     updatedTimestamp: record.updated_at,
   };
