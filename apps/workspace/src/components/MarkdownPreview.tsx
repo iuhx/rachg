@@ -5,13 +5,16 @@ interface MarkdownPreviewProps {
 }
 
 function renderInline(text: string): React.ReactNode[] {
-  const tokens = text.split(/(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*|https?:\/\/[^\s]+)/g);
+  const tokens = text.split(/(\*\*[^*]+\*\*|~~[^~]+~~|`[^`]+`|\*[^*]+\*|https?:\/\/[^\s]+)/g);
   return tokens.filter(Boolean).map((token, index) => {
     if (token.startsWith('**') && token.endsWith('**')) {
       return <strong key={index}>{token.slice(2, -2)}</strong>;
     }
     if (token.startsWith('`') && token.endsWith('`')) {
       return <code key={index} className="px-1 py-0.5 rounded bg-neutral-100 dark:bg-white/10 font-mono text-[0.9em]">{token.slice(1, -1)}</code>;
+    }
+    if (token.startsWith('~~') && token.endsWith('~~')) {
+      return <del key={index}>{token.slice(2, -2)}</del>;
     }
     if (token.startsWith('*') && token.endsWith('*')) {
       return <em key={index}>{token.slice(1, -1)}</em>;
@@ -55,6 +58,15 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({ content }) => 
     const listItem = line.match(/^\s*[-*]\s+(.+)$/);
     if (listItem) {
       blocks.push(<div key={index} className="flex gap-2"><span className="text-neutral-400">•</span><span>{renderInline(listItem[1])}</span></div>);
+      return;
+    }
+    const orderedItem = line.match(/^\s*\d+[.)]\s+(.+)$/);
+    if (orderedItem) {
+      blocks.push(<div key={index} className="flex gap-2"><span className="text-neutral-400">{line.match(/^\s*(\d+)/)?.[1]}.</span><span>{renderInline(orderedItem[1])}</span></div>);
+      return;
+    }
+    if (/^\s*(\*\s*){3,}$/.test(line) || /^\s*(-\s*){3,}$/.test(line)) {
+      blocks.push(<hr key={index} className="border-neutral-200 dark:border-white/10" />);
       return;
     }
     if (line.startsWith('> ')) {

@@ -29,6 +29,7 @@ export const WorkspaceApp: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>(INITIAL_PROJECTS);
   const [transfers, setTransfers] = useState<FileItem[]>(INITIAL_TRANSFERS);
   const [notes, setNotes] = useState<NoteItem[]>([]);
+  const [isNotesLoading, setIsNotesLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
 
   // Command palette & modal
@@ -60,9 +61,12 @@ export const WorkspaceApp: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    fetchNotes().then(setNotes).catch((error: unknown) => {
-      showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to continue.' : 'Unable to load private notes.');
-    });
+    fetchNotes()
+      .then(setNotes)
+      .catch((error: unknown) => {
+        showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to continue.' : 'Unable to load private notes.');
+      })
+      .finally(() => setIsNotesLoading(false));
   }, []);
 
   const handleCreateProject = (p: Partial<Project>) => {
@@ -189,6 +193,7 @@ export const WorkspaceApp: React.FC = () => {
           {activeTab === 'notes' && (
             <NotesView
               notes={notes}
+              isLoading={isNotesLoading}
               onNewNote={() => setNewModalType('note')}
               onUpdateNote={handleUpdateNote}
               onDeleteNote={handleDeleteNote}

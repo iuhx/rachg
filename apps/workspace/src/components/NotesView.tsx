@@ -1,28 +1,64 @@
-import React, { useEffect, useState } from 'react';
-import { Check, Edit3, FileText, Plus, Trash2 } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Check, Edit3, FileText, Plus, Search, Trash2, X } from 'lucide-react';
 import type { NoteItem } from '../types';
 import { MarkdownPreview } from './MarkdownPreview';
 
 interface NotesViewProps {
   notes: NoteItem[];
+  isLoading?: boolean;
   onNewNote: () => void;
   onUpdateNote: (note: NoteItem) => Promise<void>;
   onDeleteNote: (id: string) => Promise<void>;
 }
 
+type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
+type EditorMode = 'write' | 'preview';
+
+function formatRelativeTime(timestamp: number, now: number): string {
+  const seconds = Math.max(0, Math.floor((now - timestamp) / 1000));
+  if (seconds < 60) return 'Just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return 'Yesterday';
+  if (days < 30) return `${days}d ago`;
+  return new Date(timestamp).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function saveStateLabel(state: SaveState): string {
+  if (state === 'dirty') return 'Unsaved changes';
+  if (state === 'saving') return 'Saving…';
+  if (state === 'saved') return 'Saved';
+  if (state === 'error') return 'Save failed';
+  return 'All changes saved';
+}
+
 export const NotesView: React.FC<NotesViewProps> = ({
   notes,
+  isLoading = false,
   onNewNote,
   onUpdateNote,
   onDeleteNote,
 }) => {
   const [selectedNoteId, setSelectedNoteId] = useState('');
   const [isEditing, setIsEditing] = useState(false);
+  const [editorMode, setEditorMode] = useState<EditorMode>('write');
   const [editTitle, setEditTitle] = useState('');
   const [editContent, setEditContent] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [saveState, setSaveState] = useState<SaveState>('idle');
   const [isDeleting, setIsDeleting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [clock, setClock] = useState(() => Date.now());
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const autosaveTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setClock(Date.now()), 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     if (!notes.some((note) => note.id === selectedNoteId)) {
@@ -32,18 +68,34 @@ export const NotesView: React.FC<NotesViewProps> = ({
   }, [notes, selectedNoteId]);
 
   const activeNote = notes.find((note) => note.id === selectedNoteId) || notes[0];
+  const isDirty = Boolean(activeNote && isEditing && (
+    editTitle.trim() !== activeNote.title || editContent !== activeNote.content
+  ));
 
-  const startEdit = () => {
-    if (!activeNote) return;
-    setEditTitle(activeNote.title);
-    setEditContent(activeNote.content);
-    setErrorMessage(null);
-    setIsEditing(true);
+  const filteredNotes = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return notes;
+    return notes.filter((note) =>
+      `${note.title}\n${note.content}`.toLowerCase().includes(query)
+    );
+  }, [notes, searchQuery]);
+
+  const clearAutosaveTimer = () => {
+    if (autosaveTimerRef.current !== null) {
+      window.clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
+    }
   };
 
-  const saveEdit = async () => {
-    if (!activeNote || !editTitle.trim()) return;
-    setIsSaving(true);
+  const saveDraft = useCallback(async (exitAfterSave = false) => {
+    if (!activeNote || !editTitle.trim()) {
+      setSaveState('error');
+      setErrorMessage('A note title is required.');
+      return;
+    }
+
+    clearAutosaveTimer();
+    setSaveState('saving');
     setErrorMessage(null);
     try {
       await onUpdateNote({
@@ -51,16 +103,67 @@ export const NotesView: React.FC<NotesViewProps> = ({
         title: editTitle.trim(),
         content: editContent,
       });
-      setIsEditing(false);
+      setSaveState('saved');
+      if (exitAfterSave) setIsEditing(false);
     } catch (error) {
+      setSaveState('error');
       setErrorMessage(error instanceof Error ? error.message : 'Unable to save note.');
-    } finally {
-      setIsSaving(false);
     }
+  }, [activeNote, editContent, editTitle, onUpdateNote]);
+
+  useEffect(() => {
+    if (!isEditing || !activeNote || !isDirty) return;
+    setSaveState('dirty');
+    autosaveTimerRef.current = window.setTimeout(() => {
+      void saveDraft();
+    }, 900);
+    return clearAutosaveTimer;
+  }, [activeNote, isDirty, isEditing, saveDraft]);
+
+  useEffect(() => () => clearAutosaveTimer(), []);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const isMod = event.metaKey || event.ctrlKey;
+      if (isMod && event.key.toLowerCase() === 's' && isEditing) {
+        event.preventDefault();
+        void saveDraft();
+      }
+      if (event.key === 'Escape' && isEditing) {
+        event.preventDefault();
+        if (isDirty) void saveDraft(true);
+        else setIsEditing(false);
+      }
+      if (event.key === '/' && !isEditing && document.activeElement?.tagName !== 'INPUT') {
+        event.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isDirty, isEditing, saveDraft]);
+
+  const startEdit = () => {
+    if (!activeNote) return;
+    setEditTitle(activeNote.title);
+    setEditContent(activeNote.content);
+    setEditorMode('write');
+    setSaveState('idle');
+    setErrorMessage(null);
+    setIsEditing(true);
+  };
+
+  const selectNote = (note: NoteItem) => {
+    clearAutosaveTimer();
+    setSelectedNoteId(note.id);
+    setIsEditing(false);
+    setSaveState('idle');
+    setErrorMessage(null);
   };
 
   const removeNote = async () => {
     if (!activeNote || !window.confirm(`Delete “${activeNote.title}”?`)) return;
+    clearAutosaveTimer();
     setIsDeleting(true);
     setErrorMessage(null);
     try {
@@ -77,9 +180,7 @@ export const NotesView: React.FC<NotesViewProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="view-heading font-serif text-neutral-900 dark:text-white font-normal tracking-tight">Notes</h2>
-          <p className="text-neutral-500 dark:text-neutral-400 text-xs mt-1">
-            Private Markdown notes, kept in your workspace.
-          </p>
+          <p className="text-neutral-500 dark:text-neutral-400 text-xs mt-1">Private Markdown notes, kept in your workspace.</p>
         </div>
         <button onClick={onNewNote} className="workspace-button workspace-button-primary cursor-pointer shadow-xs">
           <Plus className="w-3.5 h-3.5 stroke-[2]" />
@@ -88,83 +189,111 @@ export const NotesView: React.FC<NotesViewProps> = ({
       </div>
 
       {errorMessage && (
-        <div className="workspace-panel px-4 py-3 text-xs text-red-600 dark:text-red-300" role="alert">
-          {errorMessage}
-        </div>
+        <div className="workspace-panel px-4 py-3 text-xs text-red-600 dark:text-red-300" role="alert">{errorMessage}</div>
       )}
 
-      {notes.length === 0 ? (
+      {isLoading ? (
+        <div className="workspace-card p-10 sm:p-16 text-center text-xs text-neutral-400">Loading notes…</div>
+      ) : notes.length === 0 ? (
         <div className="workspace-card p-10 sm:p-16 text-center">
           <div className="w-12 h-12 rounded-2xl bg-neutral-100 dark:bg-white/5 flex items-center justify-center mx-auto mb-4 text-neutral-400 dark:text-neutral-500">
             <FileText className="w-6 h-6 stroke-[1.5]" />
           </div>
           <h3 className="text-sm font-medium text-neutral-900 dark:text-white">No notes yet</h3>
-          <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-1 max-w-sm mx-auto leading-relaxed">
-            Start with a small Markdown note. It will be saved privately to D1.
-          </p>
+          <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-1 max-w-sm mx-auto leading-relaxed">Start with a small Markdown note. It will be saved privately to D1.</p>
           <button onClick={onNewNote} className="workspace-button workspace-button-secondary mt-6 cursor-pointer">
             <Plus className="w-3.5 h-3.5" />
             <span>Create First Note</span>
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-6 md:min-h-[500px]">
-          <div className="workspace-card md:col-span-5 p-3 space-y-1">
-            {notes.map((note) => (
-              <button
-                key={note.id}
-                onClick={() => { setSelectedNoteId(note.id); setIsEditing(false); setErrorMessage(null); }}
-                className={`w-full text-left p-3 rounded-xl transition-colors cursor-pointer ${
-                  note.id === activeNote?.id
-                    ? 'bg-neutral-100 dark:bg-white/10 border border-neutral-300/60 dark:border-white/15'
-                    : 'hover:bg-neutral-50 dark:hover:bg-white/[0.03] border border-transparent'
-                }`}
-              >
-                <span className="block text-xs font-medium text-neutral-900 dark:text-white truncate">{note.title}</span>
-                <span className="block text-[11px] text-neutral-500 dark:text-neutral-400 line-clamp-1 mt-1">{note.excerpt || 'Empty note'}</span>
-                <span className="block text-[10px] text-neutral-400 mt-2">{note.updatedAt}</span>
-              </button>
-            ))}
+        <div className="space-y-4">
+          <div className="workspace-panel flex items-center gap-2 px-3 py-2">
+            <Search className="w-4 h-4 text-neutral-400 flex-shrink-0" />
+            <input
+              ref={searchInputRef}
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search notes…"
+              aria-label="Search notes"
+              className="w-full bg-transparent text-xs text-neutral-900 dark:text-white placeholder:text-neutral-400 focus:outline-none"
+            />
+            {searchQuery ? (
+              <button onClick={() => setSearchQuery('')} aria-label="Clear note search" className="p-1 text-neutral-400 hover:text-neutral-800 dark:hover:text-white cursor-pointer"><X className="w-3.5 h-3.5" /></button>
+            ) : <span className="hidden sm:inline text-[10px] font-mono text-neutral-400">/</span>}
           </div>
 
-          <div className="workspace-card md:col-span-7 p-5 sm:p-7">
-            {activeNote && (
-              <div>
-                <div className="flex items-center justify-between gap-3 pb-4 border-b border-neutral-100 dark:border-white/[0.06]">
-                  <span className="text-[11px] font-mono text-neutral-400">Updated {activeNote.updatedAt}</span>
-                  <div className="flex items-center gap-1.5">
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-6 md:min-h-[500px]">
+            <div className="workspace-card md:col-span-5 p-3 space-y-1">
+              {filteredNotes.length === 0 ? (
+                <div className="p-8 text-center text-xs text-neutral-400">No matching notes.</div>
+              ) : filteredNotes.map((note) => (
+                <button
+                  key={note.id}
+                  onClick={() => selectNote(note)}
+                  className={`w-full text-left p-3 rounded-xl transition-colors cursor-pointer ${
+                    note.id === activeNote?.id
+                      ? 'bg-neutral-100 dark:bg-white/10 border border-neutral-300/60 dark:border-white/15'
+                      : 'hover:bg-neutral-50 dark:hover:bg-white/[0.03] border border-transparent'
+                  }`}
+                >
+                  <span className="block text-xs font-medium text-neutral-900 dark:text-white truncate">{note.title}</span>
+                  <span className="block text-[11px] text-neutral-500 dark:text-neutral-400 line-clamp-1 mt-1">{note.excerpt || 'Empty note'}</span>
+                  <span className="block text-[10px] text-neutral-400 mt-2">{formatRelativeTime(note.updatedTimestamp, clock)}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="workspace-card md:col-span-7 p-5 sm:p-7">
+              {filteredNotes.length === 0 ? (
+                <div className="h-full min-h-[16rem] flex items-center justify-center text-center text-xs text-neutral-400">
+                  No note matches “{searchQuery}”.
+                </div>
+              ) : activeNote && (
+                <div>
+                  <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-neutral-100 dark:border-white/[0.06]">
+                    <div className="flex items-center gap-2 text-[11px] font-mono text-neutral-400">
+                      <span>{formatRelativeTime(activeNote.updatedTimestamp, clock)}</span>
+                      {isEditing && <><span>·</span><span className={saveState === 'error' ? 'text-red-500' : saveState === 'saved' ? 'text-emerald-600 dark:text-emerald-400' : ''}>{saveStateLabel(saveState)}</span></>}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {isEditing ? (
+                        <>
+                          <div className="flex items-center gap-0.5 workspace-panel p-0.5">
+                            <button onClick={() => setEditorMode('write')} className={`workspace-button min-h-7 px-2 py-1 ${editorMode === 'write' ? 'workspace-button-primary' : 'workspace-button-secondary'}`}>Write</button>
+                            <button onClick={() => setEditorMode('preview')} className={`workspace-button min-h-7 px-2 py-1 ${editorMode === 'preview' ? 'workspace-button-primary' : 'workspace-button-secondary'}`}>Preview</button>
+                          </div>
+                          <button onClick={() => void saveDraft()} disabled={saveState === 'saving' || !editTitle.trim()} className="workspace-button workspace-button-primary min-h-8 px-3 py-1 cursor-pointer disabled:opacity-50">
+                            <Check className="w-3.5 h-3.5" /><span>{saveState === 'saving' ? 'Saving…' : 'Save'}</span>
+                          </button>
+                        </>
+                      ) : (
+                        <button onClick={startEdit} className="workspace-button workspace-button-secondary min-h-8 px-3 py-1 cursor-pointer"><Edit3 className="w-3.5 h-3.5" /><span>Edit</span></button>
+                      )}
+                      <button onClick={removeNote} disabled={isDeleting} title="Delete note" aria-label="Delete note" className="workspace-button workspace-button-secondary min-h-8 px-2 text-red-500 hover:text-red-600 cursor-pointer disabled:opacity-50"><Trash2 className="w-3.5 h-3.5" /></button>
+                    </div>
+                  </div>
+
+                  <div className="pt-5">
                     {isEditing ? (
-                      <button onClick={saveEdit} disabled={isSaving || !editTitle.trim()} className="workspace-button workspace-button-primary min-h-8 px-3 py-1 cursor-pointer disabled:opacity-50">
-                        <Check className="w-3.5 h-3.5" />
-                        <span>{isSaving ? 'Saving…' : 'Save'}</span>
-                      </button>
+                      <div className="space-y-3">
+                        <input value={editTitle} onChange={(event) => setEditTitle(event.target.value)} aria-label="Note title" className="w-full bg-transparent text-2xl font-serif text-neutral-900 dark:text-white border-b border-neutral-200 dark:border-white/10 pb-2 focus:outline-none focus:border-neutral-500" />
+                        {editorMode === 'write' ? (
+                          <>
+                            <textarea autoFocus value={editContent} onChange={(event) => setEditContent(event.target.value)} rows={18} aria-label="Markdown content" className="w-full bg-neutral-50 dark:bg-black/20 p-4 rounded-xl font-mono text-xs leading-relaxed text-neutral-800 dark:text-neutral-200 border border-neutral-200 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-neutral-300/50 dark:focus:ring-white/15" />
+                            <p className="text-[10px] text-neutral-400">Markdown · {editContent.length.toLocaleString()} characters · Ctrl/⌘ + S to save · Esc to save and close</p>
+                          </>
+                        ) : (
+                          <article className="workspace-panel min-h-[26rem] p-5 text-sm leading-relaxed text-neutral-700 dark:text-neutral-300"><h3 className="font-serif text-2xl font-normal text-neutral-900 dark:text-white mb-5">{editTitle || 'Untitled note'}</h3><MarkdownPreview content={editContent} /></article>
+                        )}
+                      </div>
                     ) : (
-                      <button onClick={startEdit} className="workspace-button workspace-button-secondary min-h-8 px-3 py-1 cursor-pointer">
-                        <Edit3 className="w-3.5 h-3.5" />
-                        <span>Edit</span>
-                      </button>
+                      <article className="text-sm leading-relaxed text-neutral-700 dark:text-neutral-300"><h3 className="font-serif text-2xl font-normal text-neutral-900 dark:text-white mb-5">{activeNote.title}</h3><MarkdownPreview content={activeNote.content} /></article>
                     )}
-                    <button onClick={removeNote} disabled={isDeleting} title="Delete note" aria-label="Delete note" className="workspace-button workspace-button-secondary min-h-8 px-2 text-red-500 hover:text-red-600 cursor-pointer disabled:opacity-50">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
                   </div>
                 </div>
-
-                <div className="pt-5">
-                  {isEditing ? (
-                    <div className="space-y-3">
-                      <input value={editTitle} onChange={(event) => setEditTitle(event.target.value)} aria-label="Note title" className="w-full bg-transparent text-2xl font-serif text-neutral-900 dark:text-white border-b border-neutral-200 dark:border-white/10 pb-2 focus:outline-none focus:border-neutral-500" />
-                      <textarea value={editContent} onChange={(event) => setEditContent(event.target.value)} rows={18} aria-label="Markdown content" className="w-full bg-neutral-50 dark:bg-black/20 p-4 rounded-xl font-mono text-xs leading-relaxed text-neutral-800 dark:text-neutral-200 border border-neutral-200 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-neutral-300/50 dark:focus:ring-white/15" />
-                    </div>
-                  ) : (
-                    <article className="text-sm leading-relaxed text-neutral-700 dark:text-neutral-300">
-                      <h3 className="font-serif text-2xl font-normal text-neutral-900 dark:text-white mb-5">{activeNote.title}</h3>
-                      <MarkdownPreview content={activeNote.content} />
-                    </article>
-                  )}
-                </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       )}
