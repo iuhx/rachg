@@ -28,6 +28,7 @@ export const WorkspaceApp: React.FC = () => {
   // Authentic data states — no mock data
   const [projects, setProjects] = useState<Project[]>(INITIAL_PROJECTS);
   const [transfers, setTransfers] = useState<FileItem[]>(INITIAL_TRANSFERS);
+  const [isFilesLoading, setIsFilesLoading] = useState(true);
   const [notes, setNotes] = useState<NoteItem[]>([]);
   const [isNotesLoading, setIsNotesLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
@@ -55,9 +56,12 @@ export const WorkspaceApp: React.FC = () => {
 
   // Load active transfers from live Worker on mount
   useEffect(() => {
-    fetchActiveFiles().then(setTransfers).catch((error: unknown) => {
-      showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to continue.' : 'Unable to load private files.');
-    });
+    fetchActiveFiles()
+      .then(setTransfers)
+      .catch((error: unknown) => {
+        showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to continue.' : 'Unable to load private files.');
+      })
+      .finally(() => setIsFilesLoading(false));
   }, []);
 
   useEffect(() => {
@@ -182,11 +186,11 @@ export const WorkspaceApp: React.FC = () => {
 
           {activeTab === 'files' && (
             <FilesView
-              files={transfers}
               transfers={transfers}
               onUploadFile={handleUploadFile}
               onDeleteTransfer={handleDeleteTransfer}
               isUploading={isUploading}
+              isLoading={isFilesLoading}
             />
           )}
 
