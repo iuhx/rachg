@@ -4,6 +4,8 @@ This API is private and must be protected by Cloudflare Access. Configure an Acc
 
 Required Worker variables: `ACCESS_TEAM_DOMAIN=https://rachg.cloudflareaccess.com`, `ACCESS_AUDIENCE`, `ACCESS_ADMIN_EMAIL`, and `ALLOWED_ORIGINS=https://rachg.com`. Keep the API hostname behind Access and do not expose a public bypass through the `workers.dev` hostname.
 
+Private mail endpoints are `GET /v1/mail`, `GET /v1/mail/:id`, and `DELETE /v1/mail/:id`. The raw RFC 822 message is stored in R2 under `mail/`; D1 contains only its index and preview. The detail endpoint parses and returns plain text, never the original HTML. All routes pass through the same Access JWT verification as the existing private APIs.
+
 ### Private Markdown Notes
 
 All note routes require the same Cloudflare Access JWT as the file routes:

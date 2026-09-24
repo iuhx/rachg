@@ -5,6 +5,7 @@ import {
   FolderDot,
   FileText,
   Paperclip,
+  Mail,
   Settings,
   Plus,
   Sun,
@@ -62,6 +63,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     { label: 'Overview', tab: 'home' as NavTab, icon: LayoutDashboard },
     { label: 'Files', tab: 'files' as NavTab, icon: Paperclip },
     { label: 'Notes', tab: 'notes' as NavTab, icon: FileText },
+    { label: 'Mail', tab: 'mail' as NavTab, icon: Mail },
     { label: 'Projects', tab: 'projects' as NavTab, icon: FolderDot },
     { label: 'Settings', tab: 'settings' as NavTab, icon: Settings },
   ];

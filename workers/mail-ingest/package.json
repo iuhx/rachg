@@ -1,15 +1,13 @@
 {
-  "name": "@rachg/file-service",
+  "name": "@rachg/mail-ingest",
   "version": "0.1.0",
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@rachg/shared": "workspace:*",
     "postal-mime": "^3.0.0"
   },
   "devDependencies": {

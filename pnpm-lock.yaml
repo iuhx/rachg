@@ -59,6 +59,25 @@ importers:
       '@rachg/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      postal-mime:
+        specifier: ^3.0.0
+        version: 3.0.0
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: ^4.20250224.0
+        version: 4.20260702.1
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      wrangler:
+        specifier: ^3.114.0
+        version: 3.114.17(@cloudflare/workers-types@4.20260702.1)
+
+  workers/mail-ingest:
+    dependencies:
+      postal-mime:
+        specifier: ^3.0.0
+        version: 3.0.0
     devDependencies:
       '@cloudflare/workers-types':
         specifier: ^4.20250224.0
@@ -1868,6 +1887,9 @@ packages:
   picomatch@4.0.7:
     resolution: {integrity: sha512-qcJu88Q2IWqJsDD529JKMdwGm/dvInW4HvQnRwiH9JtihJvzGOscDtHE3x1pBKeUOTysQ8kVmLnJ2kJu7yhcGA==}
     engines: {node: '>=12'}
+
+  postal-mime@3.0.0:
+    resolution: {integrity: sha512-Z4a9ar2Bv3YpK3IXag+Yda30k7bMZfpRuUGyqtHnZ2pjHG8Bl62EhZIk4n1dzv00gfzP9g+94e9kd8+XmjVWLA==}
 
   postcss@8.5.28:
     resolution: {integrity: sha512-RRuzqDtt5Y9h3quz5hWhK+TPnsmVs6WwSU6LkJMeY4HstUEDuYTG8UJSdawMRzmzAtV+KEoG8N3Qg2qLy5vM/A==}
@@ -3888,6 +3910,8 @@ snapshots:
   picomatch@2.3.2: {}
 
   picomatch@4.0.7: {}
+
+  postal-mime@3.0.0: {}
 
   postcss@8.5.28:
     dependencies:

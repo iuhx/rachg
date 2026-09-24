@@ -1,4 +1,4 @@
-export type NavTab = 'home' | 'files' | 'notes' | 'projects' | 'settings';
+export type NavTab = 'home' | 'files' | 'notes' | 'projects' | 'mail' | 'settings';
 
 export type ProjectStatus = 'Planning' | 'In Progress' | 'Live' | 'Archived';
 
@@ -38,6 +38,29 @@ export interface NoteItem {
   content: string;
   updatedAt: string;
   updatedTimestamp: number;
+}
+
+export interface MailItem {
+  id: string;
+  from: string;
+  to: string;
+  subject: string;
+  receivedAt: number;
+  preview: string;
+}
+
+export interface MailMessage extends MailItem {
+  text: string;
+}
+
+export interface MailListResponse {
+  success: boolean;
+  messages: MailItem[];
+}
+
+export interface MailResponse {
+  success: boolean;
+  message: MailMessage;
 }
 
 // -------------------------------------------------------------

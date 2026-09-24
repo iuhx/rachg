@@ -31,6 +31,17 @@ export interface ScratchpadRecord {
   updated_at: number;
 }
 
+export interface MailRecord {
+  id: string;
+  from_address: string;
+  to_address: string;
+  subject: string;
+  received_at: number;
+  preview: string;
+  r2_key: string;
+  message_id: string | null;
+}
+
 function getFileType(filename: string, mime: string): FileCategory {
   const ext = filename.split('.').pop()?.toLowerCase() || '';
   if (['png', 'jpg', 'jpeg', 'svg', 'webp', 'gif'].includes(ext) || mime.startsWith('image/')) {
@@ -190,6 +201,43 @@ export async function ensureSchema(db: D1Database): Promise<void> {
     .prepare(`CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes (updated_at DESC);`)
     .run()
     .catch(() => {});
+
+  await db.prepare(`CREATE TABLE IF NOT EXISTS mail (
+    id TEXT PRIMARY KEY,
+    from_address TEXT NOT NULL,
+    to_address TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    received_at INTEGER NOT NULL,
+    preview TEXT NOT NULL DEFAULT '',
+    r2_key TEXT NOT NULL,
+    message_id TEXT
+  );`).run();
+
+  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_mail_received ON mail (received_at DESC);`).run().catch(() => {});
+}
+
+export async function insertMailRecord(db: D1Database, record: MailRecord): Promise<void> {
+  await ensureSchema(db);
+  await db.prepare(`INSERT INTO mail (id, from_address, to_address, subject, received_at, preview, r2_key, message_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).bind(record.id, record.from_address, record.to_address, record.subject,
+      record.received_at, record.preview, record.r2_key, record.message_id).run();
+}
+
+export async function listMailRecords(db: D1Database): Promise<MailRecord[]> {
+  await ensureSchema(db);
+  const result = await db.prepare(`SELECT * FROM mail ORDER BY received_at DESC LIMIT 100`).all<MailRecord>();
+  return result.results ?? [];
+}
+
+export async function getMailRecord(db: D1Database, id: string): Promise<MailRecord | null> {
+  await ensureSchema(db);
+  return (await db.prepare(`SELECT * FROM mail WHERE id = ? LIMIT 1`).bind(id).first<MailRecord>()) ?? null;
+}
+
+export async function deleteMailRecord(db: D1Database, id: string): Promise<boolean> {
+  await ensureSchema(db);
+  const result = await db.prepare(`DELETE FROM mail WHERE id = ?`).bind(id).run();
+  return (result.meta?.changes ?? 0) > 0;
 }
 
 /**

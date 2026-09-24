@@ -4,6 +4,7 @@ import {
   FolderDot,
   FileText,
   Paperclip,
+  Mail,
   Settings,
 } from 'lucide-react';
 import type { NavTab } from '../types';
@@ -22,6 +23,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'files', label: 'Files', icon: Paperclip },
     { id: 'notes', label: 'Notes', icon: FileText },
     { id: 'projects', label: 'Projects', icon: FolderDot },
+    { id: 'mail', label: 'Mail', icon: Mail },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 

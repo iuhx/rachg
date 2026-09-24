@@ -10,6 +10,7 @@
 
 const TRANSFERS_PREFIX = 'transfers/';
 const SCRATCHPAD_PREFIX = 'scratchpad/';
+const MAIL_PREFIX = 'mail/';
 
 export function buildR2Key(id: string, filename: string): string {
   // Sanitize filename: replace spaces or path traversals
@@ -72,5 +73,15 @@ export async function getScratchpadObject(bucket: R2Bucket, key: string): Promis
 
 export async function deleteScratchpadObject(bucket: R2Bucket, key: string): Promise<void> {
   if (!key.startsWith(SCRATCHPAD_PREFIX)) throw new Error('Access denied: key is outside scratchpad/ prefix');
+  await bucket.delete(key);
+}
+
+export async function getMailObject(bucket: R2Bucket, key: string): Promise<R2ObjectBody | null> {
+  if (!key.startsWith(MAIL_PREFIX)) throw new Error('Access denied: key is outside mail/ prefix');
+  return bucket.get(key);
+}
+
+export async function deleteMailObject(bucket: R2Bucket, key: string): Promise<void> {
+  if (!key.startsWith(MAIL_PREFIX)) throw new Error('Access denied: key is outside mail/ prefix');
   await bucket.delete(key);
 }

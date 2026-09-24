@@ -37,3 +37,17 @@ CREATE TABLE IF NOT EXISTS scratchpad (
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
+
+-- Private received email index. Raw messages are stored in R2 under mail/.
+CREATE TABLE IF NOT EXISTS mail (
+  id TEXT PRIMARY KEY,
+  from_address TEXT NOT NULL,
+  to_address TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  received_at INTEGER NOT NULL,
+  preview TEXT NOT NULL DEFAULT '',
+  r2_key TEXT NOT NULL,
+  message_id TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_mail_received ON mail (received_at DESC);

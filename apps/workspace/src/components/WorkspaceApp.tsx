@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import { DashboardView } from './DashboardView';
@@ -6,6 +6,7 @@ import { ProjectsView } from './ProjectsView';
 import { NotesView } from './NotesView';
 import { FilesView } from './FilesView';
 import { SettingsView } from './SettingsView';
+import { MailView } from './MailView';
 import { CommandPalette } from './CommandPalette';
 import { NewItemModal } from './NewItemModal';
 import {
@@ -21,7 +22,8 @@ import {
 import { createNote, deleteNote, fetchNotes, updateNote as updateNoteService } from '../services/noteService';
 import { getAccessIdentity, startAccessLogout } from '../services/accessService';
 import { clearScratchpad, fetchScratchpad, saveScratchpad } from '../services/scratchpadService';
-import type { NavTab, Project, FileItem, NoteItem } from '../types';
+import { deleteMailMessage, fetchMail, fetchMailMessage } from '../services/mailService';
+import type { NavTab, Project, FileItem, NoteItem, MailItem, MailMessage } from '../types';
 
 export const WorkspaceApp: React.FC = () => {
   const [activeTab, setActiveTab] = useState<NavTab>('home');
@@ -39,6 +41,10 @@ export const WorkspaceApp: React.FC = () => {
   const [scratchpad, setScratchpad] = useState<import('../types').ScratchpadItem | null>(null);
   const [isScratchpadLoading, setIsScratchpadLoading] = useState(true);
   const [isScratchpadSaving, setIsScratchpadSaving] = useState(false);
+  const [mailMessages, setMailMessages] = useState<MailItem[]>([]);
+  const [selectedMail, setSelectedMail] = useState<MailMessage | null>(null);
+  const [isMailLoading, setIsMailLoading] = useState(false);
+  const [isMailMessageLoading, setIsMailMessageLoading] = useState(false);
 
   // Command palette & modal
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
@@ -85,6 +91,44 @@ export const WorkspaceApp: React.FC = () => {
     try { setScratchpad(await saveScratchpad(content, image)); showToast('Scratchpad saved.'); }
     catch (error: any) { showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to save scratchpad.' : (error.message || 'Unable to save scratchpad.')); }
     finally { setIsScratchpadSaving(false); }
+  };
+
+  const loadMail = useCallback(async () => {
+    if (authStatus !== 'authenticated') return;
+    setIsMailLoading(true);
+    try {
+      const messages = await fetchMail();
+      setMailMessages(messages);
+      setSelectedMail((current) => current && messages.some((message) => message.id === current.id) ? current : null);
+    } catch (error) {
+      showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to continue.' : 'Unable to load mail.');
+    } finally {
+      setIsMailLoading(false);
+    }
+  }, [authStatus]);
+
+  useEffect(() => {
+    if (authStatus === 'authenticated') void loadMail();
+  }, [authStatus, loadMail]);
+
+  const handleSelectMail = async (item: MailItem) => {
+    setSelectedMail({ ...item, text: '' });
+    setIsMailMessageLoading(true);
+    try { setSelectedMail(await fetchMailMessage(item.id)); }
+    catch (error: any) { showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to continue.' : (error.message || 'Unable to open email.')); }
+    finally { setIsMailMessageLoading(false); }
+  };
+
+  const handleDeleteMail = async (id: string) => {
+    try {
+      await deleteMailMessage(id);
+      setMailMessages((current) => current.filter((message) => message.id !== id));
+      setSelectedMail((current) => current?.id === id ? null : current);
+      showToast('Email deleted.');
+    } catch (error: any) {
+      showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to delete mail.' : (error.message || 'Unable to delete email.'));
+      throw error;
+    }
   };
 
   const handleClearScratchpad = async () => {
@@ -265,6 +309,18 @@ export const WorkspaceApp: React.FC = () => {
             <ProjectsView
               projects={projects}
               onNewProject={() => setNewModalType('project')}
+            />
+          )}
+
+          {activeTab === 'mail' && (
+            <MailView
+              messages={mailMessages}
+              selectedMessage={selectedMail}
+              isLoading={isMailLoading}
+              isMessageLoading={isMailMessageLoading}
+              onSelect={handleSelectMail}
+              onRefresh={loadMail}
+              onDelete={handleDeleteMail}
             />
           )}
 

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://unpkg.com/wrangler/config-schema.json",
+  "name": "quiet-king-d2c8",
+  "account_id": "183126450d0d9188448b6265c97e595f",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "keep_vars": true,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "d1rachg",
+      "database_id": "804f589f-b81d-4884-8878-91bd8e6611f3"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "FILES_BUCKET",
+      "bucket_name": "r2rachg"
+    }
+  ]
+}

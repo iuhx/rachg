@@ -8,7 +8,13 @@ import type {
   NoteDeleteResponse,
   ScratchpadResponse,
   ApiErrorResponse,
+  MailItem,
+  MailMessage,
+  MailListResponse,
+  MailResponse,
+  MailDeleteResponse,
 } from '@rachg/shared';
+import PostalMime from 'postal-mime';
 import {
   ensureSchema,
   insertFileRecord,
@@ -27,8 +33,12 @@ import {
   getScratchpadRecord,
   updateScratchpadRecord,
   mapRecordToScratchpadItem,
+  listMailRecords,
+  getMailRecord,
+  deleteMailRecord,
+  type MailRecord,
 } from './db';
-import { buildR2Key, uploadToR2, getFromR2, deleteFromR2, buildScratchpadKey, getScratchpadObject, deleteScratchpadObject } from './storage';
+import { buildR2Key, uploadToR2, getFromR2, deleteFromR2, buildScratchpadKey, getScratchpadObject, deleteScratchpadObject, getMailObject, deleteMailObject } from './storage';
 import { checkStorageQuota, getActiveStorageUsage } from './quota';
 import { isAuthenticated, resolveAuth } from './auth';
 
@@ -83,6 +93,33 @@ function parseExpiryHours(str: string | null): number {
   if (lower.includes('7 day') || lower === '7d' || lower === '168h') return 168;
   const num = parseInt(str, 10);
   return isNaN(num) ? 48 : Math.max(1, Math.min(168, num));
+}
+
+function mapMailItem(record: MailRecord): MailItem {
+  return {
+    id: record.id,
+    from: record.from_address,
+    to: record.to_address,
+    subject: record.subject,
+    receivedAt: record.received_at,
+    preview: record.preview,
+  };
+}
+
+function htmlToPlainText(html: string): string {
+  return html
+    .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, '')
+    .replace(/<\/(p|div|li|br|tr|h[1-6])\s*>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&quot;/gi, '"')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 interface NotePayload {
@@ -160,6 +197,31 @@ export default {
       // Routes: private Markdown notes (D1)
       // -------------------------------------------------------------
       const noteDetailMatch = url.pathname.match(/^\/v1\/notes\/([a-zA-Z0-9_-]+)$/);
+      const mailDetailMatch = url.pathname.match(/^\/v1\/mail\/([a-zA-Z0-9_-]+)$/);
+
+      if (request.method === 'GET' && url.pathname === '/v1/mail') {
+        const records = await listMailRecords(env.DB);
+        return jsonResponse<MailListResponse>({ success: true, messages: records.map(mapMailItem) }, 200, origin);
+      }
+
+      if (request.method === 'GET' && mailDetailMatch) {
+        const record = await getMailRecord(env.DB, mailDetailMatch[1]);
+        if (!record) return jsonResponse<ApiErrorResponse>({ success: false, error: 'Email not found', code: 'NOT_FOUND', status: 404 }, 404, origin);
+        const object = await getMailObject(env.FILES_BUCKET, record.r2_key);
+        if (!object) return jsonResponse<ApiErrorResponse>({ success: false, error: 'Email content is missing', code: 'NOT_FOUND', status: 404 }, 404, origin);
+        const parsed = await PostalMime.parse(await object.arrayBuffer());
+        const item = mapMailItem(record);
+        const message: MailMessage = { ...item, text: parsed.text?.trim() || htmlToPlainText(parsed.html || '') };
+        return jsonResponse<MailResponse>({ success: true, message }, 200, origin);
+      }
+
+      if (request.method === 'DELETE' && mailDetailMatch) {
+        const record = await getMailRecord(env.DB, mailDetailMatch[1]);
+        if (!record) return jsonResponse<ApiErrorResponse>({ success: false, error: 'Email not found', code: 'NOT_FOUND', status: 404 }, 404, origin);
+        await deleteMailObject(env.FILES_BUCKET, record.r2_key);
+        await deleteMailRecord(env.DB, record.id);
+        return jsonResponse<MailDeleteResponse>({ success: true, message: 'Email deleted', id: record.id }, 200, origin);
+      }
 
       if (request.method === 'GET' && url.pathname === '/v1/scratchpad') {
         const record = await getScratchpadRecord(env.DB);

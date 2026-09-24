@@ -1,4 +1,4 @@
-export type NavTab = 'home' | 'projects' | 'notes' | 'files' | 'settings';
+export type NavTab = 'home' | 'projects' | 'notes' | 'files' | 'mail' | 'settings';
 
 export type ProjectStatus = 'In Progress' | 'Planning' | 'Exploring' | 'Live' | 'Prototype' | 'Idea';
 
@@ -108,6 +108,35 @@ export interface ScratchpadItem {
 export interface ScratchpadResponse {
   success: boolean;
   scratchpad: ScratchpadItem;
+}
+
+export interface MailItem {
+  id: string;
+  from: string;
+  to: string;
+  subject: string;
+  receivedAt: number;
+  preview: string;
+}
+
+export interface MailMessage extends MailItem {
+  text: string;
+}
+
+export interface MailListResponse {
+  success: boolean;
+  messages: MailItem[];
+}
+
+export interface MailResponse {
+  success: boolean;
+  message: MailMessage;
+}
+
+export interface MailDeleteResponse {
+  success: boolean;
+  message: string;
+  id: string;
 }
 
 export interface ApiErrorResponse {
