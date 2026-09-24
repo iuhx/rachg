@@ -28,6 +28,7 @@ export const MailView: React.FC<MailViewProps> = ({ messages, selectedMessage, i
     if (!pendingDelete) return;
     setIsDeleting(true);
     try { await onDelete(pendingDelete.id); setPendingDelete(null); }
+    catch { /* WorkspaceApp already reports the failure in its toast. */ }
     finally { setIsDeleting(false); }
   };
 
