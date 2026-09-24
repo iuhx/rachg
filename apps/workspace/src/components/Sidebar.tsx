@@ -32,9 +32,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <button
           onClick={() => onTabChange('home')}
           aria-label="Return to rachg overview"
-          className="w-full text-left py-2 px-2 rounded-xl hover:bg-white/[0.04] transition-colors cursor-pointer group"
+          className="w-full text-left py-2 px-3 cursor-pointer"
         >
-          <span className="brand-wordmark text-white antialiased group-hover:text-white/95">
+          <span className="brand-wordmark text-white antialiased">
             rachg
           </span>
         </button>
