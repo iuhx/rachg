@@ -101,7 +101,7 @@ export const WorkspaceApp: React.FC = () => {
       setMailMessages(messages);
       setSelectedMail((current) => current && messages.some((message) => message.id === current.id) ? current : null);
     } catch (error) {
-      showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to continue.' : 'Unable to load mail.');
+      showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to continue.' : error instanceof Error ? error.message : 'Unable to load mail.');
     } finally {
       setIsMailLoading(false);
     }
