@@ -52,9 +52,11 @@ export default {
     const receivedAt = Date.now();
     const r2Key = `mail/${receivedAt}-${id}.eml`;
     const [rawForStorage, rawForHeaders] = message.raw.tee();
-    const storagePromise = env.FILES_BUCKET.put(r2Key, rawForStorage, {
+    const fixedLength = new FixedLengthStream(message.rawSize);
+    const storagePromise = env.FILES_BUCKET.put(r2Key, fixedLength.readable, {
       httpMetadata: { contentType: 'message/rfc822' },
     });
+    const pipePromise = rawForStorage.pipeTo(fixedLength.writable);
     const raw = await new Response(rawForHeaders).arrayBuffer();
     const headerText = new TextDecoder('utf-8').decode(raw.slice(0, Math.min(raw.byteLength, 128 * 1024)));
     const headerBlock = headerText.split(/\r?\n\r?\n/, 1)[0].replace(/\r?\n[ \t]+/g, ' ');
@@ -68,7 +70,7 @@ export default {
     const subject = decodeMimeWords(header('Subject')).trim() || '(无标题)';
     const messageId = header('Message-ID').slice(0, 998) || null;
 
-    await storagePromise;
+    await Promise.all([storagePromise, pipePromise]);
 
     try {
       await env.DB.prepare(`CREATE TABLE IF NOT EXISTS mail (

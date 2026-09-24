@@ -61,13 +61,14 @@ export default {
     const id = makeId();
     const receivedAt = Date.now();
     const r2Key = `mail/${receivedAt}-${id}.eml`;
-    const [rawForStore, rawForParse] = message.raw.tee();
-
-    const storePromise = env.FILES_BUCKET.put(r2Key, rawForStore, {
+    const [rawForStorage, rawForParse] = message.raw.tee();
+    const fixedLength = new FixedLengthStream(message.rawSize);
+    const storePromise = env.FILES_BUCKET.put(r2Key, fixedLength.readable, {
       httpMetadata: { contentType: 'message/rfc822' },
     });
+    const pipePromise = rawForStorage.pipeTo(fixedLength.writable);
     const parsePromise = PostalMime.parse(rawForParse);
-    const [, parsed] = await Promise.all([storePromise, parsePromise]);
+    const [parsed] = await Promise.all([parsePromise, storePromise, pipePromise]);
 
     const from = message.from || parsed.from?.address || 'Unknown sender';
     const to = message.to || parsed.to?.map((address) => address.address).filter(Boolean).join(', ') || 'Unknown recipient';
