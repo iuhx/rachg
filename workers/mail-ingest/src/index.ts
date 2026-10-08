@@ -53,7 +53,7 @@ async function notifyTelegram(env: Env, from: string, to: string, subject: strin
 
 export default {
   async email(message: ForwardableEmailMessage, env: Env, ctx: ExecutionContext): Promise<void> {
-    if (message.to.toLowerCase() !== 'hello@rachg.com') {
+    if (!message.to.toLowerCase().endsWith('@rachg.com')) {
       message.setReject('This address is not configured for the rachg inbox.');
       return;
     }

@@ -43,7 +43,7 @@ async function sendTelegram(env, from, to, subject) {
 
 export default {
   async email(message, env, ctx) {
-    if (message.to.toLowerCase() !== 'hello@rachg.com') {
+    if (!message.to.toLowerCase().endsWith('@rachg.com')) {
       message.setReject('This address is not configured for the rachg inbox.');
       return;
     }

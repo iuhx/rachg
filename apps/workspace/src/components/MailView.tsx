@@ -35,7 +35,7 @@ export const MailView: React.FC<MailViewProps> = ({ messages, selectedMessage, i
   return (
     <div className="workspace-view space-y-6 pb-20">
       <header className="flex items-end justify-between gap-4 pt-2">
-        <div><h1 className="type-display text-neutral-900 dark:text-white">Mail</h1><p className="type-secondary mt-2">Messages received at hello@rachg.com.</p></div>
+        <div><h1 className="type-display text-neutral-900 dark:text-white">Mail</h1><p className="type-secondary mt-2">Messages sent to any @rachg.com address.</p></div>
         <button type="button" onClick={onRefresh} disabled={isLoading} aria-label="Refresh mail" className="workspace-button workspace-button-secondary cursor-pointer disabled:opacity-50"><RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} /><span>Refresh</span></button>
       </header>
 
@@ -43,7 +43,7 @@ export const MailView: React.FC<MailViewProps> = ({ messages, selectedMessage, i
         <div className="workspace-card workspace-empty p-10 sm:p-16">
           <div className="workspace-empty-icon"><Inbox className="w-6 h-6 stroke-[1.5]" /></div>
           <h2 className="type-section-heading text-neutral-900 dark:text-white">Your inbox is quiet</h2>
-          <p className="type-secondary mt-1 max-w-sm leading-relaxed">New messages sent to hello@rachg.com will appear here.</p>
+          <p className="type-secondary mt-1 max-w-sm leading-relaxed">New messages sent to any @rachg.com address will appear here.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 min-h-[30rem]">
