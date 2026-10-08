@@ -5486,6 +5486,25 @@ function htmlToPlainText(html) {
   return html.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, "").replace(/<\/(p|div|li|br|tr|h[1-6])\s*>/gi, "\n").replace(/<[^>]+>/g, " ").replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&#39;|&apos;/gi, "'").replace(/&quot;/gi, '"').replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 __name(htmlToPlainText, "htmlToPlainText");
+function isEmailAddress(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+__name(isEmailAddress, "isEmailAddress");
+async function parseMailSendPayload(request) {
+  const body = await request.json().catch(() => null);
+  if (!body || typeof body !== "object")
+    return null;
+  const candidate = body;
+  if (typeof candidate.to !== "string" || typeof candidate.subject !== "string" || typeof candidate.text !== "string")
+    return null;
+  const to = candidate.to.trim();
+  const subject = candidate.subject.trim();
+  const text = candidate.text.trim();
+  if (!isEmailAddress(to) || !subject || subject.length > 200 || !text || text.length > 1e6)
+    return null;
+  return { to, subject, text };
+}
+__name(parseMailSendPayload, "parseMailSendPayload");
 async function parseNotePayload(request) {
   const body = await request.json().catch(() => null);
   if (!body || typeof body !== "object")
@@ -5549,6 +5568,35 @@ var src_default = {
       }
       const noteDetailMatch = url.pathname.match(/^\/v1\/notes\/([a-zA-Z0-9_-]+)$/);
       const mailDetailMatch = url.pathname.match(/^\/v1\/mail\/([a-zA-Z0-9_-]+)$/);
+      if (request.method === "POST" && url.pathname === "/v1/mail/send") {
+        const payload = await parseMailSendPayload(request);
+        if (!payload) {
+          return jsonResponse({ success: false, error: "A valid recipient, subject, and message are required", code: "INVALID_MAIL", status: 400 }, 400, origin);
+        }
+        if (!env2.RESEND_API_KEY) {
+          return jsonResponse({ success: false, error: "Mail sending is not configured", code: "MAIL_NOT_CONFIGURED", status: 503 }, 503, origin);
+        }
+        const resendResponse = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${env2.RESEND_API_KEY}`,
+            "Content-Type": "application/json",
+            Accept: "application/json"
+          },
+          body: JSON.stringify({
+            from: env2.RESEND_FROM_EMAIL || "hello@rachg.com",
+            to: [payload.to],
+            subject: payload.subject,
+            text: payload.text
+          })
+        });
+        const resendBody = await resendResponse.json().catch(() => null);
+        if (!resendResponse.ok || !resendBody?.id) {
+          console.error("Resend send failed:", resendResponse.status, resendBody?.message || "Unknown error");
+          return jsonResponse({ success: false, error: "Unable to send email", code: "MAIL_SEND_FAILED", status: 502 }, 502, origin);
+        }
+        return jsonResponse({ success: true, id: resendBody.id }, 200, origin);
+      }
       if (request.method === "GET" && url.pathname === "/v1/mail") {
         const records = await listMailRecords(env2.DB);
         return jsonResponse({ success: true, messages: records.map(mapMailItem) }, 200, origin);

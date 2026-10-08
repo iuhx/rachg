@@ -11,16 +11,23 @@ interface MailViewProps {
   onSelect: (message: MailItem) => void;
   onRefresh: () => void;
   onDelete: (id: string) => Promise<void>;
+  onSend: (payload: { to: string; subject: string; text: string }) => Promise<void>;
 }
 
 function formatDate(timestamp: number): string {
   return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(timestamp);
 }
 
-export const MailView: React.FC<MailViewProps> = ({ messages, selectedMessage, isLoading, isMessageLoading, onSelect, onRefresh, onDelete }) => {
+export const MailView: React.FC<MailViewProps> = ({ messages, selectedMessage, isLoading, isMessageLoading, onSelect, onRefresh, onDelete, onSend }) => {
   const [search, setSearch] = useState('');
   const [pendingDelete, setPendingDelete] = useState<MailItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isComposeOpen, setIsComposeOpen] = useState(false);
+  const [recipient, setRecipient] = useState('');
+  const [subject, setSubject] = useState('');
+  const [body, setBody] = useState('');
+  const [isSending, setIsSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
   const filteredMessages = useMemo(() => messages.filter((message) =>
     `${message.from} ${message.subject} ${message.preview}`.toLowerCase().includes(search.toLowerCase())), [messages, search]);
 
@@ -32,11 +39,28 @@ export const MailView: React.FC<MailViewProps> = ({ messages, selectedMessage, i
     finally { setIsDeleting(false); }
   };
 
+  const submitMessage = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setSendError(null);
+    setIsSending(true);
+    try {
+      await onSend({ to: recipient, subject, text: body });
+      setRecipient('');
+      setSubject('');
+      setBody('');
+      setIsComposeOpen(false);
+    } catch (error) {
+      setSendError(error instanceof Error ? error.message : 'Unable to send email.');
+    } finally {
+      setIsSending(false);
+    }
+  };
+
   return (
     <div className="workspace-view space-y-6 pb-20">
       <header className="flex items-end justify-between gap-4 pt-2">
         <div><h1 className="type-display text-neutral-900 dark:text-white">Mail</h1><p className="type-secondary mt-2">Messages sent to any @rachg.com address.</p></div>
-        <button type="button" onClick={onRefresh} disabled={isLoading} aria-label="Refresh mail" className="workspace-button workspace-button-secondary cursor-pointer disabled:opacity-50"><RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} /><span>Refresh</span></button>
+        <div className="flex items-center gap-2"><button type="button" onClick={() => { setSendError(null); setIsComposeOpen(true); }} className="workspace-button workspace-button-primary cursor-pointer">Compose</button><button type="button" onClick={onRefresh} disabled={isLoading} aria-label="Refresh mail" className="workspace-button workspace-button-secondary cursor-pointer disabled:opacity-50"><RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} /><span>Refresh</span></button></div>
       </header>
 
       {messages.length === 0 && !isLoading ? (
@@ -79,6 +103,21 @@ export const MailView: React.FC<MailViewProps> = ({ messages, selectedMessage, i
       )}
 
       <ConfirmDialog isOpen={pendingDelete !== null} title="Delete email?" description={pendingDelete ? `“${pendingDelete.subject || '(无标题)'}” and its stored message will be permanently removed.` : 'This message will be permanently removed.'} confirmLabel="Delete email" isConfirming={isDeleting} onConfirm={() => void removeMessage()} onCancel={() => !isDeleting && setPendingDelete(null)} />
+
+      {isComposeOpen && (
+        <div className="workspace-modal-overlay fixed inset-0 z-40 flex items-start justify-center bg-black/50 p-4 pt-16 sm:pt-24" onMouseDown={(event) => { if (event.target === event.currentTarget && !isSending) setIsComposeOpen(false); }}>
+          <form onSubmit={submitMessage} className="workspace-modal w-full max-w-xl bg-white dark:bg-[#18191d] border border-neutral-200 dark:border-white/10 p-5 sm:p-6" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="flex items-start justify-between gap-4"><div><h2 className="type-modal-heading text-neutral-900 dark:text-white">New message</h2><p className="type-secondary mt-1">Sent from your verified Resend address.</p></div><button type="button" onClick={() => setIsComposeOpen(false)} disabled={isSending} className="type-secondary cursor-pointer">Cancel</button></div>
+            <div className="space-y-3 mt-5">
+              <input required type="email" value={recipient} onChange={(event) => setRecipient(event.target.value)} placeholder="To" aria-label="Recipient" className="workspace-input" />
+              <input required value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Subject" aria-label="Subject" className="workspace-input" />
+              <textarea required value={body} onChange={(event) => setBody(event.target.value)} placeholder="Write a message…" aria-label="Message" rows={10} className="workspace-input resize-y" />
+            </div>
+            {sendError && <p className="type-secondary mt-3 text-red-600 dark:text-red-300" role="alert">{sendError}</p>}
+            <div className="flex justify-end mt-5"><button type="submit" disabled={isSending} className="workspace-button workspace-button-primary cursor-pointer disabled:opacity-50">{isSending ? 'Sending…' : 'Send email'}</button></div>
+          </form>
+        </div>
+      )}
     </div>
   );
 };

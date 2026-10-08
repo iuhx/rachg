@@ -13,6 +13,8 @@ import type {
   MailListResponse,
   MailResponse,
   MailDeleteResponse,
+  MailSendRequest,
+  MailSendResponse,
 } from '@rachg/shared';
 import PostalMime from 'postal-mime';
 import {
@@ -50,6 +52,8 @@ export interface Env {
   ACCESS_TEAM_DOMAIN?: string;
   ACCESS_AUDIENCE?: string;
   ACCESS_ADMIN_EMAIL?: string;
+  RESEND_API_KEY?: string;
+  RESEND_FROM_EMAIL?: string;
 }
 
 function getAllowedOrigin(request: Request, env: Env): string {
@@ -120,6 +124,22 @@ function htmlToPlainText(html: string): string {
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+function isEmailAddress(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+async function parseMailSendPayload(request: Request): Promise<MailSendRequest | null> {
+  const body = await request.json().catch(() => null) as unknown;
+  if (!body || typeof body !== 'object') return null;
+  const candidate = body as Record<string, unknown>;
+  if (typeof candidate.to !== 'string' || typeof candidate.subject !== 'string' || typeof candidate.text !== 'string') return null;
+  const to = candidate.to.trim();
+  const subject = candidate.subject.trim();
+  const text = candidate.text.trim();
+  if (!isEmailAddress(to) || !subject || subject.length > 200 || !text || text.length > 1_000_000) return null;
+  return { to, subject, text };
 }
 
 interface NotePayload {
@@ -198,6 +218,36 @@ export default {
       // -------------------------------------------------------------
       const noteDetailMatch = url.pathname.match(/^\/v1\/notes\/([a-zA-Z0-9_-]+)$/);
       const mailDetailMatch = url.pathname.match(/^\/v1\/mail\/([a-zA-Z0-9_-]+)$/);
+
+      if (request.method === 'POST' && url.pathname === '/v1/mail/send') {
+        const payload = await parseMailSendPayload(request);
+        if (!payload) {
+          return jsonResponse<ApiErrorResponse>({ success: false, error: 'A valid recipient, subject, and message are required', code: 'INVALID_MAIL', status: 400 }, 400, origin);
+        }
+        if (!env.RESEND_API_KEY) {
+          return jsonResponse<ApiErrorResponse>({ success: false, error: 'Mail sending is not configured', code: 'MAIL_NOT_CONFIGURED', status: 503 }, 503, origin);
+        }
+        const resendResponse = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${env.RESEND_API_KEY}`,
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          body: JSON.stringify({
+            from: env.RESEND_FROM_EMAIL || 'hello@rachg.com',
+            to: [payload.to],
+            subject: payload.subject,
+            text: payload.text,
+          }),
+        });
+        const resendBody = await resendResponse.json().catch(() => null) as { id?: string; message?: string } | null;
+        if (!resendResponse.ok || !resendBody?.id) {
+          console.error('Resend send failed:', resendResponse.status, resendBody?.message || 'Unknown error');
+          return jsonResponse<ApiErrorResponse>({ success: false, error: 'Unable to send email', code: 'MAIL_SEND_FAILED', status: 502 }, 502, origin);
+        }
+        return jsonResponse<MailSendResponse>({ success: true, id: resendBody.id }, 200, origin);
+      }
 
       if (request.method === 'GET' && url.pathname === '/v1/mail') {
         const records = await listMailRecords(env.DB);

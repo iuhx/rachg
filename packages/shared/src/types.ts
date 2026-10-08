@@ -139,6 +139,17 @@ export interface MailDeleteResponse {
   id: string;
 }
 
+export interface MailSendRequest {
+  to: string;
+  subject: string;
+  text: string;
+}
+
+export interface MailSendResponse {
+  success: boolean;
+  id: string;
+}
+
 export interface ApiErrorResponse {
   success: false;
   error: string;

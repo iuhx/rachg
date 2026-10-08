@@ -1,4 +1,4 @@
-import type { ApiErrorResponse, MailItem, MailListResponse, MailMessage, MailResponse } from '../types';
+import type { ApiErrorResponse, MailItem, MailListResponse, MailMessage, MailResponse, MailSendRequest, MailSendResponse } from '../types';
 import { AuthenticationRequiredError } from './fileService';
 
 const API_BASE_URL = 'https://files.rachg.com';
@@ -30,4 +30,17 @@ export async function fetchMailMessage(id: string): Promise<MailMessage> {
 export async function deleteMailMessage(id: string): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/v1/mail/${encodeURIComponent(id)}`, { method: 'DELETE', credentials: 'include' });
   if (!response.ok || response.redirected || response.url.includes('/cdn-cgi/access/login')) await throwMailError(response, 'Unable to delete email');
+}
+
+export async function sendMail(payload: MailSendRequest): Promise<string> {
+  const response = await fetch(`${API_BASE_URL}/v1/mail/send`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok || response.redirected || response.url.includes('/cdn-cgi/access/login')) await throwMailError(response, 'Unable to send email');
+  const data = await response.json() as MailSendResponse;
+  if (!data.success || !data.id) throw new Error('Malformed send response');
+  return data.id;
 }

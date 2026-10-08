@@ -63,6 +63,17 @@ export interface MailResponse {
   message: MailMessage;
 }
 
+export interface MailSendRequest {
+  to: string;
+  subject: string;
+  text: string;
+}
+
+export interface MailSendResponse {
+  success: boolean;
+  id: string;
+}
+
 // -------------------------------------------------------------
 // Versioned API Contracts (v1)
 // Base: /v1/files

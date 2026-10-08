@@ -22,7 +22,7 @@ import {
 import { createNote, deleteNote, fetchNotes, updateNote as updateNoteService } from '../services/noteService';
 import { getAccessIdentity, startAccessLogout } from '../services/accessService';
 import { clearScratchpad, fetchScratchpad, saveScratchpad } from '../services/scratchpadService';
-import { deleteMailMessage, fetchMail, fetchMailMessage } from '../services/mailService';
+import { deleteMailMessage, fetchMail, fetchMailMessage, sendMail } from '../services/mailService';
 import type { NavTab, Project, FileItem, NoteItem, MailItem, MailMessage } from '../types';
 
 export const WorkspaceApp: React.FC = () => {
@@ -127,6 +127,16 @@ export const WorkspaceApp: React.FC = () => {
       showToast('Email deleted.');
     } catch (error: any) {
       showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to delete mail.' : (error.message || 'Unable to delete email.'));
+      throw error;
+    }
+  };
+
+  const handleSendMail = async (payload: { to: string; subject: string; text: string }) => {
+    try {
+      await sendMail(payload);
+      showToast('Email sent.');
+    } catch (error: any) {
+      showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to send email.' : (error.message || 'Unable to send email.'));
       throw error;
     }
   };
@@ -321,6 +331,7 @@ export const WorkspaceApp: React.FC = () => {
               onSelect={handleSelectMail}
               onRefresh={loadMail}
               onDelete={handleDeleteMail}
+              onSend={handleSendMail}
             />
           )}
 
