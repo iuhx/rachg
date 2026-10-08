@@ -51,6 +51,8 @@ export interface MailItem {
 
 export interface MailMessage extends MailItem {
   text: string;
+  messageId?: string;
+  references?: string;
 }
 
 export interface MailListResponse {
@@ -67,11 +69,40 @@ export interface MailSendRequest {
   to: string;
   subject: string;
   text: string;
+  inReplyTo?: string;
+  references?: string;
 }
 
 export interface MailSendResponse {
   success: boolean;
   id: string;
+  resendId: string;
+}
+
+export interface SentMailItem {
+  id: string;
+  resendId: string | null;
+  to: string;
+  subject: string;
+  sentAt: number;
+  preview: string;
+  status: 'sending' | 'sent' | 'failed';
+}
+
+export interface SentMailMessage extends SentMailItem {
+  text: string;
+  inReplyTo?: string;
+  references?: string;
+}
+
+export interface SentMailListResponse {
+  success: boolean;
+  messages: SentMailItem[];
+}
+
+export interface SentMailResponse {
+  success: boolean;
+  message: SentMailMessage;
 }
 
 // -------------------------------------------------------------

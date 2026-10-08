@@ -22,8 +22,8 @@ import {
 import { createNote, deleteNote, fetchNotes, updateNote as updateNoteService } from '../services/noteService';
 import { getAccessIdentity, startAccessLogout } from '../services/accessService';
 import { clearScratchpad, fetchScratchpad, saveScratchpad } from '../services/scratchpadService';
-import { deleteMailMessage, fetchMail, fetchMailMessage, sendMail } from '../services/mailService';
-import type { NavTab, Project, FileItem, NoteItem, MailItem, MailMessage } from '../types';
+import { deleteMailMessage, fetchMail, fetchMailMessage, fetchSentMail, fetchSentMailMessage, sendMail } from '../services/mailService';
+import type { NavTab, Project, FileItem, NoteItem, MailItem, MailMessage, SentMailItem, SentMailMessage, MailSendRequest } from '../types';
 
 export const WorkspaceApp: React.FC = () => {
   const [activeTab, setActiveTab] = useState<NavTab>('home');
@@ -45,6 +45,10 @@ export const WorkspaceApp: React.FC = () => {
   const [selectedMail, setSelectedMail] = useState<MailMessage | null>(null);
   const [isMailLoading, setIsMailLoading] = useState(false);
   const [isMailMessageLoading, setIsMailMessageLoading] = useState(false);
+  const [sentMessages, setSentMessages] = useState<SentMailItem[]>([]);
+  const [selectedSentMail, setSelectedSentMail] = useState<SentMailMessage | null>(null);
+  const [isSentMailLoading, setIsSentMailLoading] = useState(false);
+  const [isSentMailMessageLoading, setIsSentMailMessageLoading] = useState(false);
 
   // Command palette & modal
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
@@ -107,9 +111,26 @@ export const WorkspaceApp: React.FC = () => {
     }
   }, [authStatus]);
 
+  const loadSentMail = useCallback(async () => {
+    if (authStatus !== 'authenticated') return;
+    setIsSentMailLoading(true);
+    try {
+      const messages = await fetchSentMail();
+      setSentMessages(messages);
+      setSelectedSentMail((current) => current && messages.some((message) => message.id === current.id) ? current : null);
+    } catch (error) {
+      showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to continue.' : error instanceof Error ? error.message : 'Unable to load sent mail.');
+    } finally {
+      setIsSentMailLoading(false);
+    }
+  }, [authStatus]);
+
   useEffect(() => {
-    if (authStatus === 'authenticated') void loadMail();
-  }, [authStatus, loadMail]);
+    if (authStatus === 'authenticated') {
+      void loadMail();
+      void loadSentMail();
+    }
+  }, [authStatus, loadMail, loadSentMail]);
 
   const handleSelectMail = async (item: MailItem) => {
     setSelectedMail({ ...item, text: '' });
@@ -117,6 +138,14 @@ export const WorkspaceApp: React.FC = () => {
     try { setSelectedMail(await fetchMailMessage(item.id)); }
     catch (error: any) { showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to continue.' : (error.message || 'Unable to open email.')); }
     finally { setIsMailMessageLoading(false); }
+  };
+
+  const handleSelectSentMail = async (item: SentMailItem) => {
+    setSelectedSentMail({ ...item, text: '' });
+    setIsSentMailMessageLoading(true);
+    try { setSelectedSentMail(await fetchSentMailMessage(item.id)); }
+    catch (error: any) { showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to continue.' : (error.message || 'Unable to open sent email.')); }
+    finally { setIsSentMailMessageLoading(false); }
   };
 
   const handleDeleteMail = async (id: string) => {
@@ -131,9 +160,10 @@ export const WorkspaceApp: React.FC = () => {
     }
   };
 
-  const handleSendMail = async (payload: { to: string; subject: string; text: string }) => {
+  const handleSendMail = async (payload: MailSendRequest) => {
     try {
       await sendMail(payload);
+      await loadSentMail();
       showToast('Email sent.');
     } catch (error: any) {
       showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to send email.' : (error.message || 'Unable to send email.'));
@@ -325,11 +355,17 @@ export const WorkspaceApp: React.FC = () => {
           {activeTab === 'mail' && (
             <MailView
               messages={mailMessages}
+              sentMessages={sentMessages}
               selectedMessage={selectedMail}
+              selectedSentMessage={selectedSentMail}
               isLoading={isMailLoading}
               isMessageLoading={isMailMessageLoading}
+              isSentLoading={isSentMailLoading}
+              isSentMessageLoading={isSentMailMessageLoading}
               onSelect={handleSelectMail}
+              onSelectSent={handleSelectSentMail}
               onRefresh={loadMail}
+              onRefreshSent={loadSentMail}
               onDelete={handleDeleteMail}
               onSend={handleSendMail}
             />

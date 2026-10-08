@@ -42,6 +42,19 @@ export interface MailRecord {
   message_id: string | null;
 }
 
+export interface SentMailRecord {
+  id: string;
+  resend_id: string | null;
+  to_address: string;
+  subject: string;
+  text: string;
+  sent_at: number;
+  preview: string;
+  status: 'sending' | 'sent' | 'failed';
+  in_reply_to: string | null;
+  references_header: string | null;
+}
+
 function getFileType(filename: string, mime: string): FileCategory {
   const ext = filename.split('.').pop()?.toLowerCase() || '';
   if (['png', 'jpg', 'jpeg', 'svg', 'webp', 'gif'].includes(ext) || mime.startsWith('image/')) {
@@ -214,6 +227,21 @@ export async function ensureSchema(db: D1Database): Promise<void> {
   );`).run();
 
   await db.prepare(`CREATE INDEX IF NOT EXISTS idx_mail_received ON mail (received_at DESC);`).run().catch(() => {});
+
+  await db.prepare(`CREATE TABLE IF NOT EXISTS sent_mail (
+    id TEXT PRIMARY KEY,
+    resend_id TEXT,
+    to_address TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    text TEXT NOT NULL,
+    sent_at INTEGER NOT NULL,
+    preview TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'sending',
+    in_reply_to TEXT,
+    references_header TEXT
+  );`).run();
+
+  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_sent_mail_sent_at ON sent_mail (sent_at DESC);`).run().catch(() => {});
 }
 
 export async function insertMailRecord(db: D1Database, record: MailRecord): Promise<void> {
@@ -238,6 +266,29 @@ export async function deleteMailRecord(db: D1Database, id: string): Promise<bool
   await ensureSchema(db);
   const result = await db.prepare(`DELETE FROM mail WHERE id = ?`).bind(id).run();
   return (result.meta?.changes ?? 0) > 0;
+}
+
+export async function insertSentMailRecord(db: D1Database, record: SentMailRecord): Promise<void> {
+  await ensureSchema(db);
+  await db.prepare(`INSERT INTO sent_mail (id, resend_id, to_address, subject, text, sent_at, preview, status, in_reply_to, references_header)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(record.id, record.resend_id, record.to_address, record.subject,
+      record.text, record.sent_at, record.preview, record.status, record.in_reply_to, record.references_header).run();
+}
+
+export async function updateSentMailStatus(db: D1Database, id: string, status: SentMailRecord['status'], resendId: string | null): Promise<void> {
+  await ensureSchema(db);
+  await db.prepare(`UPDATE sent_mail SET status = ?, resend_id = ? WHERE id = ?`).bind(status, resendId, id).run();
+}
+
+export async function listSentMailRecords(db: D1Database): Promise<SentMailRecord[]> {
+  await ensureSchema(db);
+  const result = await db.prepare(`SELECT * FROM sent_mail ORDER BY sent_at DESC LIMIT 100`).all<SentMailRecord>();
+  return result.results ?? [];
+}
+
+export async function getSentMailRecord(db: D1Database, id: string): Promise<SentMailRecord | null> {
+  await ensureSchema(db);
+  return (await db.prepare(`SELECT * FROM sent_mail WHERE id = ? LIMIT 1`).bind(id).first<SentMailRecord>()) ?? null;
 }
 
 /**

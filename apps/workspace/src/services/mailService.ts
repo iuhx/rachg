@@ -1,4 +1,4 @@
-import type { ApiErrorResponse, MailItem, MailListResponse, MailMessage, MailResponse, MailSendRequest, MailSendResponse } from '../types';
+import type { ApiErrorResponse, MailItem, MailListResponse, MailMessage, MailResponse, MailSendRequest, MailSendResponse, SentMailItem, SentMailListResponse, SentMailMessage, SentMailResponse } from '../types';
 import { AuthenticationRequiredError } from './fileService';
 
 const API_BASE_URL = 'https://files.rachg.com';
@@ -19,6 +19,14 @@ export async function fetchMail(): Promise<MailItem[]> {
   return data.messages;
 }
 
+export async function fetchSentMail(): Promise<SentMailItem[]> {
+  const response = await fetch(`${API_BASE_URL}/v1/mail/sent`, { credentials: 'include', headers: { Accept: 'application/json' } });
+  if (!response.ok || response.redirected || response.url.includes('/cdn-cgi/access/login')) await throwMailError(response, 'Unable to load sent mail');
+  const data = await response.json() as SentMailListResponse;
+  if (!data.success || !Array.isArray(data.messages)) throw new Error('Malformed sent mail response');
+  return data.messages;
+}
+
 export async function fetchMailMessage(id: string): Promise<MailMessage> {
   const response = await fetch(`${API_BASE_URL}/v1/mail/${encodeURIComponent(id)}`, { credentials: 'include', headers: { Accept: 'application/json' } });
   if (!response.ok || response.redirected || response.url.includes('/cdn-cgi/access/login')) await throwMailError(response, 'Unable to open email');
@@ -27,12 +35,20 @@ export async function fetchMailMessage(id: string): Promise<MailMessage> {
   return data.message;
 }
 
+export async function fetchSentMailMessage(id: string): Promise<SentMailMessage> {
+  const response = await fetch(`${API_BASE_URL}/v1/mail/sent/${encodeURIComponent(id)}`, { credentials: 'include', headers: { Accept: 'application/json' } });
+  if (!response.ok || response.redirected || response.url.includes('/cdn-cgi/access/login')) await throwMailError(response, 'Unable to open sent email');
+  const data = await response.json() as SentMailResponse;
+  if (!data.success || !data.message) throw new Error('Malformed sent email response');
+  return data.message;
+}
+
 export async function deleteMailMessage(id: string): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/v1/mail/${encodeURIComponent(id)}`, { method: 'DELETE', credentials: 'include' });
   if (!response.ok || response.redirected || response.url.includes('/cdn-cgi/access/login')) await throwMailError(response, 'Unable to delete email');
 }
 
-export async function sendMail(payload: MailSendRequest): Promise<string> {
+export async function sendMail(payload: MailSendRequest): Promise<MailSendResponse> {
   const response = await fetch(`${API_BASE_URL}/v1/mail/send`, {
     method: 'POST',
     credentials: 'include',
@@ -41,6 +57,6 @@ export async function sendMail(payload: MailSendRequest): Promise<string> {
   });
   if (!response.ok || response.redirected || response.url.includes('/cdn-cgi/access/login')) await throwMailError(response, 'Unable to send email');
   const data = await response.json() as MailSendResponse;
-  if (!data.success || !data.id) throw new Error('Malformed send response');
-  return data.id;
+  if (!data.success || !data.id || !data.resendId) throw new Error('Malformed send response');
+  return data;
 }

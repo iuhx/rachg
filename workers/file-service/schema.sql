@@ -51,3 +51,19 @@ CREATE TABLE IF NOT EXISTS mail (
 );
 
 CREATE INDEX IF NOT EXISTS idx_mail_received ON mail (received_at DESC);
+
+-- Private outgoing plain-text mail sent through Resend.
+CREATE TABLE IF NOT EXISTS sent_mail (
+  id TEXT PRIMARY KEY,
+  resend_id TEXT,
+  to_address TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  text TEXT NOT NULL,
+  sent_at INTEGER NOT NULL,
+  preview TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'sending',
+  in_reply_to TEXT,
+  references_header TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_sent_mail_sent_at ON sent_mail (sent_at DESC);

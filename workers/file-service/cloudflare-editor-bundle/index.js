@@ -5103,6 +5103,20 @@ async function ensureSchema(db) {
   );`).run();
   await db.prepare(`CREATE INDEX IF NOT EXISTS idx_mail_received ON mail (received_at DESC);`).run().catch(() => {
   });
+  await db.prepare(`CREATE TABLE IF NOT EXISTS sent_mail (
+    id TEXT PRIMARY KEY,
+    resend_id TEXT,
+    to_address TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    text TEXT NOT NULL,
+    sent_at INTEGER NOT NULL,
+    preview TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'sending',
+    in_reply_to TEXT,
+    references_header TEXT
+  );`).run();
+  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_sent_mail_sent_at ON sent_mail (sent_at DESC);`).run().catch(() => {
+  });
 }
 __name(ensureSchema, "ensureSchema");
 async function listMailRecords(db) {
@@ -5122,6 +5136,39 @@ async function deleteMailRecord(db, id) {
   return (result.meta?.changes ?? 0) > 0;
 }
 __name(deleteMailRecord, "deleteMailRecord");
+async function insertSentMailRecord(db, record) {
+  await ensureSchema(db);
+  await db.prepare(`INSERT INTO sent_mail (id, resend_id, to_address, subject, text, sent_at, preview, status, in_reply_to, references_header)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
+    record.id,
+    record.resend_id,
+    record.to_address,
+    record.subject,
+    record.text,
+    record.sent_at,
+    record.preview,
+    record.status,
+    record.in_reply_to,
+    record.references_header
+  ).run();
+}
+__name(insertSentMailRecord, "insertSentMailRecord");
+async function updateSentMailStatus(db, id, status, resendId) {
+  await ensureSchema(db);
+  await db.prepare(`UPDATE sent_mail SET status = ?, resend_id = ? WHERE id = ?`).bind(status, resendId, id).run();
+}
+__name(updateSentMailStatus, "updateSentMailStatus");
+async function listSentMailRecords(db) {
+  await ensureSchema(db);
+  const result = await db.prepare(`SELECT * FROM sent_mail ORDER BY sent_at DESC LIMIT 100`).all();
+  return result.results ?? [];
+}
+__name(listSentMailRecords, "listSentMailRecords");
+async function getSentMailRecord(db, id) {
+  await ensureSchema(db);
+  return await db.prepare(`SELECT * FROM sent_mail WHERE id = ? LIMIT 1`).bind(id).first() ?? null;
+}
+__name(getSentMailRecord, "getSentMailRecord");
 async function insertFileRecord(db, record) {
   await ensureSchema(db);
   await db.prepare(
@@ -5482,6 +5529,18 @@ function mapMailItem(record) {
   };
 }
 __name(mapMailItem, "mapMailItem");
+function mapSentMailItem(record) {
+  return {
+    id: record.id,
+    resendId: record.resend_id,
+    to: record.to_address,
+    subject: record.subject,
+    sentAt: record.sent_at,
+    preview: record.preview,
+    status: record.status
+  };
+}
+__name(mapSentMailItem, "mapSentMailItem");
 function htmlToPlainText(html) {
   return html.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, "").replace(/<\/(p|div|li|br|tr|h[1-6])\s*>/gi, "\n").replace(/<[^>]+>/g, " ").replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&#39;|&apos;/gi, "'").replace(/&quot;/gi, '"').replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 }
@@ -5499,10 +5558,14 @@ async function parseMailSendPayload(request) {
     return null;
   const to = candidate.to.trim();
   const subject = candidate.subject.trim();
-  const text = candidate.text.trim();
-  if (!isEmailAddress(to) || !subject || subject.length > 200 || !text || text.length > 1e6)
+  const text = candidate.text;
+  if (!isEmailAddress(to) || !subject || subject.length > 200 || !text.trim() || text.length > 1e6)
     return null;
-  return { to, subject, text };
+  const inReplyTo = typeof candidate.inReplyTo === "string" ? candidate.inReplyTo.trim() : void 0;
+  const references = typeof candidate.references === "string" ? candidate.references.trim() : void 0;
+  if (inReplyTo && (inReplyTo.length > 998 || /[\r\n]/.test(inReplyTo)) || references && (references.length > 4e3 || /[\r\n]/.test(references)))
+    return null;
+  return { to, subject, text, inReplyTo, references };
 }
 __name(parseMailSendPayload, "parseMailSendPayload");
 async function parseNotePayload(request) {
@@ -5576,26 +5639,73 @@ var src_default = {
         if (!env2.RESEND_API_KEY) {
           return jsonResponse({ success: false, error: "Mail sending is not configured", code: "MAIL_NOT_CONFIGURED", status: 503 }, 503, origin);
         }
-        const resendResponse = await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${env2.RESEND_API_KEY}`,
-            "Content-Type": "application/json",
-            Accept: "application/json"
-          },
-          body: JSON.stringify({
-            from: env2.RESEND_FROM_EMAIL || "me@rachg.com",
-            to: [payload.to],
-            subject: payload.subject,
-            text: payload.text
-          })
+        const id = generateCode(24);
+        const sentAt = Date.now();
+        await insertSentMailRecord(env2.DB, {
+          id,
+          resend_id: null,
+          to_address: payload.to,
+          subject: payload.subject,
+          text: payload.text,
+          sent_at: sentAt,
+          preview: payload.text.replace(/\s+/g, " ").trim().slice(0, 240),
+          status: "sending",
+          in_reply_to: payload.inReplyTo ?? null,
+          references_header: payload.references ?? payload.inReplyTo ?? null
         });
-        const resendBody = await resendResponse.json().catch(() => null);
-        if (!resendResponse.ok || !resendBody?.id) {
-          console.error("Resend send failed:", resendResponse.status, resendBody?.message || "Unknown error");
+        try {
+          const mailHeaders = {};
+          if (payload.inReplyTo)
+            mailHeaders["In-Reply-To"] = payload.inReplyTo;
+          const references = payload.references || payload.inReplyTo;
+          if (references)
+            mailHeaders.References = references;
+          const resendResponse = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${env2.RESEND_API_KEY}`,
+              "Content-Type": "application/json",
+              Accept: "application/json"
+            },
+            body: JSON.stringify({
+              from: env2.RESEND_FROM_EMAIL || "me@rachg.com",
+              to: [payload.to],
+              subject: payload.subject,
+              text: payload.text,
+              ...Object.keys(mailHeaders).length ? { headers: mailHeaders } : {}
+            })
+          });
+          const resendBody = await resendResponse.json().catch(() => null);
+          if (!resendResponse.ok || !resendBody?.id) {
+            console.error("Resend send failed:", resendResponse.status, resendBody?.message || "Unknown error");
+            await updateSentMailStatus(env2.DB, id, "failed", null);
+            return jsonResponse({ success: false, error: "Unable to send email", code: "MAIL_SEND_FAILED", status: 502 }, 502, origin);
+          }
+          await updateSentMailStatus(env2.DB, id, "sent", resendBody.id);
+          return jsonResponse({ success: true, id, resendId: resendBody.id }, 200, origin);
+        } catch (error3) {
+          await updateSentMailStatus(env2.DB, id, "failed", null).catch(() => {
+          });
+          console.error("Resend send request failed:", error3);
           return jsonResponse({ success: false, error: "Unable to send email", code: "MAIL_SEND_FAILED", status: 502 }, 502, origin);
         }
-        return jsonResponse({ success: true, id: resendBody.id }, 200, origin);
+      }
+      if (request.method === "GET" && url.pathname === "/v1/mail/sent") {
+        const records = await listSentMailRecords(env2.DB);
+        return jsonResponse({ success: true, messages: records.map(mapSentMailItem) }, 200, origin);
+      }
+      const sentMailDetailMatch = url.pathname.match(/^\/v1\/mail\/sent\/([a-zA-Z0-9_-]+)$/);
+      if (request.method === "GET" && sentMailDetailMatch) {
+        const record = await getSentMailRecord(env2.DB, sentMailDetailMatch[1]);
+        if (!record)
+          return jsonResponse({ success: false, error: "Sent email not found", code: "NOT_FOUND", status: 404 }, 404, origin);
+        const message = {
+          ...mapSentMailItem(record),
+          text: record.text,
+          inReplyTo: record.in_reply_to ?? void 0,
+          references: record.references_header ?? void 0
+        };
+        return jsonResponse({ success: true, message }, 200, origin);
       }
       if (request.method === "GET" && url.pathname === "/v1/mail") {
         const records = await listMailRecords(env2.DB);
@@ -5610,7 +5720,12 @@ var src_default = {
           return jsonResponse({ success: false, error: "Email content is missing", code: "NOT_FOUND", status: 404 }, 404, origin);
         const parsed = await PostalMime.parse(await object.arrayBuffer());
         const item = mapMailItem(record);
-        const message = { ...item, text: parsed.text?.trim() || htmlToPlainText(parsed.html || "") };
+        const message = {
+          ...item,
+          text: parsed.text?.trim() || htmlToPlainText(parsed.html || ""),
+          messageId: parsed.messageId,
+          references: parsed.references
+        };
         return jsonResponse({ success: true, message }, 200, origin);
       }
       if (request.method === "DELETE" && mailDetailMatch) {

@@ -15,6 +15,10 @@ import type {
   MailDeleteResponse,
   MailSendRequest,
   MailSendResponse,
+  SentMailItem,
+  SentMailMessage,
+  SentMailListResponse,
+  SentMailResponse,
 } from '@rachg/shared';
 import PostalMime from 'postal-mime';
 import {
@@ -38,7 +42,12 @@ import {
   listMailRecords,
   getMailRecord,
   deleteMailRecord,
+  insertSentMailRecord,
+  updateSentMailStatus,
+  listSentMailRecords,
+  getSentMailRecord,
   type MailRecord,
+  type SentMailRecord,
 } from './db';
 import { buildR2Key, uploadToR2, getFromR2, deleteFromR2, buildScratchpadKey, getScratchpadObject, deleteScratchpadObject, getMailObject, deleteMailObject } from './storage';
 import { checkStorageQuota, getActiveStorageUsage } from './quota';
@@ -110,6 +119,18 @@ function mapMailItem(record: MailRecord): MailItem {
   };
 }
 
+function mapSentMailItem(record: SentMailRecord): SentMailItem {
+  return {
+    id: record.id,
+    resendId: record.resend_id,
+    to: record.to_address,
+    subject: record.subject,
+    sentAt: record.sent_at,
+    preview: record.preview,
+    status: record.status,
+  };
+}
+
 function htmlToPlainText(html: string): string {
   return html
     .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, '')
@@ -137,9 +158,13 @@ async function parseMailSendPayload(request: Request): Promise<MailSendRequest |
   if (typeof candidate.to !== 'string' || typeof candidate.subject !== 'string' || typeof candidate.text !== 'string') return null;
   const to = candidate.to.trim();
   const subject = candidate.subject.trim();
-  const text = candidate.text.trim();
-  if (!isEmailAddress(to) || !subject || subject.length > 200 || !text || text.length > 1_000_000) return null;
-  return { to, subject, text };
+  const text = candidate.text;
+  if (!isEmailAddress(to) || !subject || subject.length > 200 || !text.trim() || text.length > 1_000_000) return null;
+  const inReplyTo = typeof candidate.inReplyTo === 'string' ? candidate.inReplyTo.trim() : undefined;
+  const references = typeof candidate.references === 'string' ? candidate.references.trim() : undefined;
+  if ((inReplyTo && (inReplyTo.length > 998 || /[\r\n]/.test(inReplyTo))) ||
+      (references && (references.length > 4000 || /[\r\n]/.test(references)))) return null;
+  return { to, subject, text, inReplyTo, references };
 }
 
 interface NotePayload {
@@ -227,26 +252,71 @@ export default {
         if (!env.RESEND_API_KEY) {
           return jsonResponse<ApiErrorResponse>({ success: false, error: 'Mail sending is not configured', code: 'MAIL_NOT_CONFIGURED', status: 503 }, 503, origin);
         }
-        const resendResponse = await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${env.RESEND_API_KEY}`,
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-          },
-          body: JSON.stringify({
-            from: env.RESEND_FROM_EMAIL || 'me@rachg.com',
-            to: [payload.to],
-            subject: payload.subject,
-            text: payload.text,
-          }),
+        const id = generateCode(24);
+        const sentAt = Date.now();
+        await insertSentMailRecord(env.DB, {
+          id,
+          resend_id: null,
+          to_address: payload.to,
+          subject: payload.subject,
+          text: payload.text,
+          sent_at: sentAt,
+          preview: payload.text.replace(/\s+/g, ' ').trim().slice(0, 240),
+          status: 'sending',
+          in_reply_to: payload.inReplyTo ?? null,
+          references_header: payload.references ?? payload.inReplyTo ?? null,
         });
-        const resendBody = await resendResponse.json().catch(() => null) as { id?: string; message?: string } | null;
-        if (!resendResponse.ok || !resendBody?.id) {
-          console.error('Resend send failed:', resendResponse.status, resendBody?.message || 'Unknown error');
+        try {
+          const mailHeaders: Record<string, string> = {};
+          if (payload.inReplyTo) mailHeaders['In-Reply-To'] = payload.inReplyTo;
+          const references = payload.references || payload.inReplyTo;
+          if (references) mailHeaders.References = references;
+          const resendResponse = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${env.RESEND_API_KEY}`,
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+            },
+            body: JSON.stringify({
+              from: env.RESEND_FROM_EMAIL || 'me@rachg.com',
+              to: [payload.to],
+              subject: payload.subject,
+              text: payload.text,
+              ...(Object.keys(mailHeaders).length ? { headers: mailHeaders } : {}),
+            }),
+          });
+          const resendBody = await resendResponse.json().catch(() => null) as { id?: string; message?: string } | null;
+          if (!resendResponse.ok || !resendBody?.id) {
+            console.error('Resend send failed:', resendResponse.status, resendBody?.message || 'Unknown error');
+            await updateSentMailStatus(env.DB, id, 'failed', null);
+            return jsonResponse<ApiErrorResponse>({ success: false, error: 'Unable to send email', code: 'MAIL_SEND_FAILED', status: 502 }, 502, origin);
+          }
+          await updateSentMailStatus(env.DB, id, 'sent', resendBody.id);
+          return jsonResponse<MailSendResponse>({ success: true, id, resendId: resendBody.id }, 200, origin);
+        } catch (error) {
+          await updateSentMailStatus(env.DB, id, 'failed', null).catch(() => {});
+          console.error('Resend send request failed:', error);
           return jsonResponse<ApiErrorResponse>({ success: false, error: 'Unable to send email', code: 'MAIL_SEND_FAILED', status: 502 }, 502, origin);
         }
-        return jsonResponse<MailSendResponse>({ success: true, id: resendBody.id }, 200, origin);
+      }
+
+      if (request.method === 'GET' && url.pathname === '/v1/mail/sent') {
+        const records = await listSentMailRecords(env.DB);
+        return jsonResponse<SentMailListResponse>({ success: true, messages: records.map(mapSentMailItem) }, 200, origin);
+      }
+
+      const sentMailDetailMatch = url.pathname.match(/^\/v1\/mail\/sent\/([a-zA-Z0-9_-]+)$/);
+      if (request.method === 'GET' && sentMailDetailMatch) {
+        const record = await getSentMailRecord(env.DB, sentMailDetailMatch[1]);
+        if (!record) return jsonResponse<ApiErrorResponse>({ success: false, error: 'Sent email not found', code: 'NOT_FOUND', status: 404 }, 404, origin);
+        const message: SentMailMessage = {
+          ...mapSentMailItem(record),
+          text: record.text,
+          inReplyTo: record.in_reply_to ?? undefined,
+          references: record.references_header ?? undefined,
+        };
+        return jsonResponse<SentMailResponse>({ success: true, message }, 200, origin);
       }
 
       if (request.method === 'GET' && url.pathname === '/v1/mail') {
@@ -261,7 +331,12 @@ export default {
         if (!object) return jsonResponse<ApiErrorResponse>({ success: false, error: 'Email content is missing', code: 'NOT_FOUND', status: 404 }, 404, origin);
         const parsed = await PostalMime.parse(await object.arrayBuffer());
         const item = mapMailItem(record);
-        const message: MailMessage = { ...item, text: parsed.text?.trim() || htmlToPlainText(parsed.html || '') };
+        const message: MailMessage = {
+          ...item,
+          text: parsed.text?.trim() || htmlToPlainText(parsed.html || ''),
+          messageId: parsed.messageId,
+          references: parsed.references,
+        };
         return jsonResponse<MailResponse>({ success: true, message }, 200, origin);
       }
 
