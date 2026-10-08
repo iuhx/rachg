@@ -5584,7 +5584,7 @@ var src_default = {
             Accept: "application/json"
           },
           body: JSON.stringify({
-            from: env2.RESEND_FROM_EMAIL || "hello@rachg.com",
+            from: env2.RESEND_FROM_EMAIL || "me@rachg.com",
             to: [payload.to],
             subject: payload.subject,
             text: payload.text

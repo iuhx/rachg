@@ -235,7 +235,7 @@ export default {
             Accept: 'application/json',
           },
           body: JSON.stringify({
-            from: env.RESEND_FROM_EMAIL || 'hello@rachg.com',
+            from: env.RESEND_FROM_EMAIL || 'me@rachg.com',
             to: [payload.to],
             subject: payload.subject,
             text: payload.text,
