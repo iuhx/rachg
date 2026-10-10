@@ -4948,6 +4948,32 @@ var PostalMime = class {
 };
 __name(PostalMime, "PostalMime");
 
+// src/expiry.ts
+function getFileExpiry(expiry, now) {
+  const value = expiry?.trim().toLowerCase() || "48 hours";
+  if (value === "permanent")
+    return 0;
+  let hours = 48;
+  if (value.includes("1 hour") || value === "1h")
+    hours = 1;
+  else if (value.includes("24 hour") || value === "24h" || value === "1 day")
+    hours = 24;
+  else if (value.includes("48 hour") || value === "48h" || value === "2 days")
+    hours = 48;
+  else if (value.includes("7 day") || value === "7d" || value === "168h")
+    hours = 168;
+  else {
+    const numericHours = parseInt(value, 10);
+    hours = isNaN(numericHours) ? 48 : Math.max(1, Math.min(168, numericHours));
+  }
+  return now + hours * 3600 * 1e3;
+}
+__name(getFileExpiry, "getFileExpiry");
+function isFileExpired(expiresAt, now = Date.now()) {
+  return expiresAt !== 0 && expiresAt <= now;
+}
+__name(isFileExpired, "isFileExpired");
+
 // src/db.ts
 function getFileType(filename, mime) {
   const ext = filename.split(".").pop()?.toLowerCase() || "";
@@ -5034,15 +5060,15 @@ __name(mapRecordToScratchpadItem, "mapRecordToScratchpadItem");
 function mapRecordToFileItem(r, baseUrl) {
   const now = Date.now();
   const msRemaining = r.expires_at - now;
-  const isExpired = r.status === "expired" || msRemaining <= 0;
+  const isExpired = r.status === "expired" || isFileExpired(r.expires_at, now);
   return {
     id: r.id,
     name: r.filename,
     size: formatBytes(r.size_bytes),
     sizeBytes: r.size_bytes,
     updatedAt: new Date(r.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    expiresIn: isExpired ? "Expired" : formatTimeRemaining(msRemaining),
-    expiresTimestamp: r.expires_at,
+    expiresIn: isExpired ? "Expired" : r.expires_at === 0 ? "Permanent" : formatTimeRemaining(msRemaining),
+    expiresTimestamp: r.expires_at === 0 ? void 0 : r.expires_at,
     shareUrl: `${baseUrl}/f/${r.id}`,
     type: getFileType(r.filename, r.mime_type),
     downloads: r.download_count,
@@ -5199,10 +5225,10 @@ __name(getFileRecordById, "getFileRecordById");
 async function listActiveFiles(db) {
   await ensureSchema(db);
   const now = Date.now();
-  await db.prepare(`UPDATE files SET status = 'expired' WHERE status = 'active' AND expires_at <= ?`).bind(now).run();
+  await db.prepare(`UPDATE files SET status = 'expired' WHERE status = 'active' AND expires_at != 0 AND expires_at <= ?`).bind(now).run();
   const results = await db.prepare(
     `SELECT * FROM files
-       WHERE status = 'active' AND expires_at > ?
+       WHERE status = 'active' AND (expires_at = 0 OR expires_at > ?)
        ORDER BY created_at DESC
        LIMIT 50`
   ).bind(now).all();
@@ -5342,7 +5368,7 @@ async function getActiveStorageUsage(db) {
   const row = await db.prepare(
     `SELECT COALESCE(SUM(size_bytes), 0) AS total_bytes
        FROM files
-       WHERE status = 'active' AND expires_at > ?`
+       WHERE status = 'active' AND (expires_at = 0 OR expires_at > ?)`
   ).bind(now).first();
   return row?.total_bytes ?? 0;
 }
@@ -5502,22 +5528,6 @@ function generateCode(length = 6) {
   return res;
 }
 __name(generateCode, "generateCode");
-function parseExpiryHours(str) {
-  if (!str)
-    return 48;
-  const lower = str.toLowerCase();
-  if (lower.includes("1 hour") || lower === "1h")
-    return 1;
-  if (lower.includes("24 hour") || lower === "24h" || lower === "1 day")
-    return 24;
-  if (lower.includes("48 hour") || lower === "48h" || lower === "2 days")
-    return 48;
-  if (lower.includes("7 day") || lower === "7d" || lower === "168h")
-    return 168;
-  const num = parseInt(str, 10);
-  return isNaN(num) ? 48 : Math.max(1, Math.min(168, num));
-}
-__name(parseExpiryHours, "parseExpiryHours");
 function mapMailItem(record) {
   return {
     id: record.id,
@@ -5938,8 +5948,7 @@ var src_default = {
         const deleteToken = generateCode(24);
         const r2Key = buildR2Key(id, filename);
         const now = Date.now();
-        const expiryHours = parseExpiryHours(expiryParam);
-        const expiresAt = now + expiryHours * 3600 * 1e3;
+        const expiresAt = getFileExpiry(expiryParam, now);
         await uploadToR2(env2.FILES_BUCKET, r2Key, fileStream, mimeType, {
           fileId: id,
           filename,
@@ -5998,7 +6007,7 @@ var src_default = {
             origin
           );
         }
-        if (record.status === "expired" || record.expires_at <= Date.now()) {
+        if (record.status === "expired" || isFileExpired(record.expires_at)) {
           return jsonResponse(
             { success: false, error: "File has expired", code: "EXPIRED", status: 410 },
             410,
@@ -6047,7 +6056,7 @@ var src_default = {
             headers: { "Content-Type": "text/plain; charset=utf-8" }
           });
         }
-        if (record.status === "expired" || record.expires_at <= Date.now()) {
+        if (record.status === "expired" || isFileExpired(record.expires_at)) {
           return new Response("This shared file has expired and is no longer available.", {
             status: 410,
             headers: { "Content-Type": "text/plain; charset=utf-8" }

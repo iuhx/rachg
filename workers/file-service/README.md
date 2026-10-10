@@ -50,7 +50,8 @@ Local Dev URL: `http://localhost:8787`
 - **Method**: `POST /v1/files/upload`
 - **Content-Type**: `multipart/form-data`
   - `file`: File binary
-  - `expiry`: (optional) `"1 hour"` | `"24 hours"` | `"48 hours"` | `"7 days"` (default: 48 hours)
+  - `expiry`: (optional) `"1 hour"` | `"24 hours"` | `"48 hours"` | `"7 days"` | `"permanent"` (default: 48 hours)
+  - Permanent files use `expires_at = 0`, stay accessible until manually deleted, and count toward the existing storage quota. Their API label is `Permanent` and they omit `expiresTimestamp`.
 - **Response** `201 Created`:
 ```json
 {

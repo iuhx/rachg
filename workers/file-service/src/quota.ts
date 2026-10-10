@@ -11,7 +11,7 @@ export async function getActiveStorageUsage(db: D1Database): Promise<number> {
     .prepare(
       `SELECT COALESCE(SUM(size_bytes), 0) AS total_bytes
        FROM files
-       WHERE status = 'active' AND expires_at > ?`
+       WHERE status = 'active' AND (expires_at = 0 OR expires_at > ?)`
     )
     .bind(now)
     .first<{ total_bytes: number }>();

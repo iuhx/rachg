@@ -1,5 +1,6 @@
 import type { FileItem, FileCategory, NoteItem } from '@rachg/shared';
 import type { ScratchpadItem } from '@rachg/shared';
+import { isFileExpired } from './expiry';
 
 export interface FileRecord {
   id: string;
@@ -135,7 +136,7 @@ export function mapRecordToScratchpadItem(record: ScratchpadRecord, baseUrl: str
 export function mapRecordToFileItem(r: FileRecord, baseUrl: string): FileItem {
   const now = Date.now();
   const msRemaining = r.expires_at - now;
-  const isExpired = r.status === 'expired' || msRemaining <= 0;
+  const isExpired = r.status === 'expired' || isFileExpired(r.expires_at, now);
 
   return {
     id: r.id,
@@ -143,8 +144,8 @@ export function mapRecordToFileItem(r: FileRecord, baseUrl: string): FileItem {
     size: formatBytes(r.size_bytes),
     sizeBytes: r.size_bytes,
     updatedAt: new Date(r.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    expiresIn: isExpired ? 'Expired' : formatTimeRemaining(msRemaining),
-    expiresTimestamp: r.expires_at,
+    expiresIn: isExpired ? 'Expired' : r.expires_at === 0 ? 'Permanent' : formatTimeRemaining(msRemaining),
+    expiresTimestamp: r.expires_at === 0 ? undefined : r.expires_at,
     shareUrl: `${baseUrl}/f/${r.id}`,
     type: getFileType(r.filename, r.mime_type),
     downloads: r.download_count,
@@ -340,14 +341,14 @@ export async function listActiveFiles(db: D1Database): Promise<FileRecord[]> {
 
   // Lazy mark expired
   await db
-    .prepare(`UPDATE files SET status = 'expired' WHERE status = 'active' AND expires_at <= ?`)
+    .prepare(`UPDATE files SET status = 'expired' WHERE status = 'active' AND expires_at != 0 AND expires_at <= ?`)
     .bind(now)
     .run();
 
   const results = await db
     .prepare(
       `SELECT * FROM files
-       WHERE status = 'active' AND expires_at > ?
+       WHERE status = 'active' AND (expires_at = 0 OR expires_at > ?)
        ORDER BY created_at DESC
        LIMIT 50`
     )

@@ -85,10 +85,10 @@ export const FilesView: React.FC<FilesViewProps> = ({
             <h3 id="add-file-heading" className="type-section-heading text-neutral-900 dark:text-white">Add a file</h3>
             <p className="type-secondary mt-0.5">Choose how long it should stay available.</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="type-label text-neutral-400">Keep for</span>
-            <div className="workspace-segment" role="group" aria-label="File expiration">
-              {['1 hour', '24 hours', '48 hours', '7 days'].map((expiry) => (
+            <div className="workspace-segment flex-wrap" role="group" aria-label="File expiration">
+              {['1 hour', '24 hours', '48 hours', '7 days', 'permanent'].map((expiry) => (
                 <button
                   key={expiry}
                   type="button"
@@ -96,7 +96,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
                   aria-pressed={selectedExpiry === expiry}
                   className={`workspace-segment-item cursor-pointer ${selectedExpiry === expiry ? 'workspace-segment-item-active' : ''}`}
                 >
-                  {expiry}
+                  {expiry === 'permanent' ? 'Permanent' : expiry}
                 </button>
               ))}
             </div>
@@ -116,7 +116,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
             {isUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
           </span>
           <span className="type-section-heading text-neutral-900 dark:text-white">{isUploading ? 'Saving file…' : 'Drop a file here or browse'}</span>
-          <span className="type-caption mt-1">Files are kept private and expire automatically.</span>
+          <span className="type-caption mt-1">{selectedExpiry === 'permanent' ? 'Private. Kept until you delete it.' : 'Private. Expires after the selected time.'}</span>
         </label>
       </section>
 
@@ -142,7 +142,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
                   <div className="w-8 h-8 rounded-lg bg-neutral-100 dark:bg-white/5 flex items-center justify-center flex-shrink-0">{getFileIcon(file.name)}</div>
                   <div className="min-w-0">
                     <p className="type-body font-medium text-neutral-900 dark:text-white truncate">{file.name}</p>
-                    <p className="type-caption mt-0.5">{file.size} · Expires in {file.expiresIn} · {file.downloads || 0} downloads</p>
+                    <p className="type-caption mt-0.5">{file.size} · {file.expiresIn === 'Permanent' ? 'Permanent' : `Expires in ${file.expiresIn}`} · {file.downloads || 0} downloads</p>
                   </div>
                 </div>
 

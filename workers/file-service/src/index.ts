@@ -52,6 +52,7 @@ import {
 import { buildR2Key, uploadToR2, getFromR2, deleteFromR2, buildScratchpadKey, getScratchpadObject, deleteScratchpadObject, getMailObject, deleteMailObject } from './storage';
 import { checkStorageQuota, getActiveStorageUsage } from './quota';
 import { isAuthenticated, resolveAuth } from './auth';
+import { getFileExpiry, isFileExpired } from './expiry';
 
 export interface Env {
   DB: D1Database;
@@ -95,17 +96,6 @@ function generateCode(length: number = 6): string {
     res += chars[randomBytes[i] % chars.length];
   }
   return res;
-}
-
-function parseExpiryHours(str: string | null): number {
-  if (!str) return 48; // default 48h
-  const lower = str.toLowerCase();
-  if (lower.includes('1 hour') || lower === '1h') return 1;
-  if (lower.includes('24 hour') || lower === '24h' || lower === '1 day') return 24;
-  if (lower.includes('48 hour') || lower === '48h' || lower === '2 days') return 48;
-  if (lower.includes('7 day') || lower === '7d' || lower === '168h') return 168;
-  const num = parseInt(str, 10);
-  return isNaN(num) ? 48 : Math.max(1, Math.min(168, num));
 }
 
 function mapMailItem(record: MailRecord): MailItem {
@@ -570,8 +560,7 @@ export default {
         const r2Key = buildR2Key(id, filename);
 
         const now = Date.now();
-        const expiryHours = parseExpiryHours(expiryParam);
-        const expiresAt = now + expiryHours * 3600 * 1000;
+        const expiresAt = getFileExpiry(expiryParam, now);
 
         // 1. Upload to R2 under transfers/ prefix
         await uploadToR2(env.FILES_BUCKET, r2Key, fileStream, mimeType, {
@@ -648,7 +637,7 @@ export default {
           );
         }
 
-        if (record.status === 'expired' || record.expires_at <= Date.now()) {
+        if (record.status === 'expired' || isFileExpired(record.expires_at)) {
           return jsonResponse<ApiErrorResponse>(
             { success: false, error: 'File has expired', code: 'EXPIRED', status: 410 },
             410,
@@ -715,7 +704,7 @@ export default {
           });
         }
 
-        if (record.status === 'expired' || record.expires_at <= Date.now()) {
+        if (record.status === 'expired' || isFileExpired(record.expires_at)) {
           return new Response('This shared file has expired and is no longer available.', {
             status: 410,
             headers: { 'Content-Type': 'text/plain; charset=utf-8' },
