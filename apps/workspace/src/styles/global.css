@@ -264,6 +264,7 @@ a {
 
 .tool-qr-input { min-height: 13rem; }
 .tool-markdown-input { min-height: 22rem; }
+.project-status-select { width: auto; min-width: 9.5rem; }
 
 .workspace-input-heading {
   font-family: var(--font-display);

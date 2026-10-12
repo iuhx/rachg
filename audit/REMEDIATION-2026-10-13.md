@@ -1,6 +1,7 @@
 # Audit remediation status — 2026-10-13
 
 Latest functional follow-up: [71-test review and fixes](FOLLOWUP-2026-10-13.md).
+Projects persistence follow-up: [usage, release and 90-test verification](../docs/PROJECTS.md).
 
 The verified changes are ready for Git submission on `fix/audit-hardening`.
 This report describes the current implementation, replacing the earlier intermediate
@@ -17,7 +18,7 @@ The final chat reports the actual Git push result.
 | A03 — scratchpad attachments | Old images remain until metadata commits; replaced/orphaned images have a one-hour cleanup grace period and current references are checked. |
 | A04 — mail parsing | Bounded forward-only HTML-to-text scan replaces the quadratic conversion path; malformed tags and Unicode offsets are tested. |
 | A05 — active attachments | New SVG attachments are rejected. Legacy SVG is not served as an active document; raster responses use attachment, sandbox CSP and nosniff. |
-| A06 — temporary projects | New-project creation is disabled, including submission from the command palette. The UI explains that saving is unavailable and points to Notes. Projects persistence has not been implemented. |
+| A06 — temporary projects | Replaced by D1-backed create/edit/delete, statuses and local search/filter. Stable create IDs prevent duplicates; revision checks reject stale edits/deletes. Failed saves keep the draft. See the Projects follow-up above. |
 | A07 — quota races | A conditional D1 INSERT reserves capacity before R2 writes, using measured body bytes and counting pending/expired/purging objects until cleanup. |
 | A08 — outgoing mail | A 15-second provider timeout; explicit `unknown` outcomes for ambiguous responses; accepted messages return success even if status persistence fails. Only the database status write is retried, never the provider send. End-to-end idempotency remains open. |
 | A09 — totals | File usage totals include all accounted rows, independent of the first page. Full browsing/search pagination remains open. |

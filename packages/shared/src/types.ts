@@ -1,23 +1,27 @@
 export type NavTab = 'home' | 'projects' | 'notes' | 'files' | 'mail' | 'tools' | 'settings';
 
-export type ProjectStatus = 'In Progress' | 'Planning' | 'Exploring' | 'Live' | 'Prototype' | 'Idea';
+export const PROJECT_STATUSES = ['Planning', 'In Progress', 'Completed', 'Archived'] as const;
+export type ProjectStatus = typeof PROJECT_STATUSES[number];
+export const PROJECT_LIMITS = { name: 120, tagline: 200, descriptionBytes: 10_000, externalUrl: 2048, count: 200 } as const;
 
-export interface Project {
-  id: string;
+export interface ProjectInput {
   name: string;
   tagline: string;
   description: string;
   status: ProjectStatus;
+  externalUrl: string;
+}
+
+export interface Project extends ProjectInput {
+  id: string;
+  revision: number;
+  createdTimestamp: number;
   updatedAt: string;
   updatedTimestamp: number;
-  thumbnailGradient: string;
-  thumbnailStyle?: 'gradient' | 'plant' | 'minimal' | 'monochrome';
-  externalUrl?: string;
-  workerUrl?: string;
-  stack: string[];
-  stars?: number;
-  category: 'core' | 'experiment' | 'utility';
 }
+
+export interface ProjectListResponse { success: boolean; projects: Project[]; limit: number }
+export interface ProjectResponse { success: boolean; project: Project }
 
 export type FileCategory = 'image' | 'pdf' | 'archive' | 'video' | 'text' | 'keynote' | 'code';
 

@@ -21,7 +21,7 @@ GitHub (https://github.com/iuhx/rachg)
 - **Frontend**: Pure static Astro + React components, zero SSR overhead, hosted on Cloudflare Pages.
 - **Backend**: Autonomous Cloudflare Workers microservices communicating over standard HTTPS.
 - **Storage**:
-  - **Cloudflare D1**: Lightweight structured metadata (files, expiration, counters).
+  - **Cloudflare D1**: Structured workspace data (files, notes, mail and projects).
   - **Cloudflare R2**: Isolated object storage (`transfers/` prefix isolation, 4GB cap).
 
 ## Tools
@@ -35,6 +35,13 @@ an explicit review and confirmation, then served as an escaped text page by the 
 Worker. Share links retain Cloudflare Access protection; they are not public links.
 
 See [Tools usage and release notes](docs/TOOLS.md) for workflows and limits.
+
+## Projects
+
+Create a project with just a name, then add a summary, details and an optional link.
+Edit, search, filter by status, archive or delete projects from the Projects tab.
+Changes persist in the existing private D1 database, with protection against stale edits
+and duplicate create requests. See [Projects usage and release notes](docs/PROJECTS.md).
 
 ---
 

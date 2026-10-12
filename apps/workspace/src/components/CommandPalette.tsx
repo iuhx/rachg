@@ -175,6 +175,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             </div>
           </div>
 
+          {matchedProjects.length > 0 && <div>
+            <div className="type-caption px-3 py-1 uppercase tracking-wider text-neutral-400">Projects</div>
+            {matchedProjects.map(project => <button key={project.id} onClick={() => { onNavigate('projects'); onClose(); }} className="w-full flex justify-between gap-3 text-left px-3 py-2 rounded-xl type-secondary hover:bg-neutral-100 dark:hover:bg-white/5"><span className="truncate">{project.name}</span><span className="type-caption shrink-0">{project.status}</span></button>)}
+          </div>}
+
           {/* Files */}
           {matchedFiles.length > 0 && (
             <div>

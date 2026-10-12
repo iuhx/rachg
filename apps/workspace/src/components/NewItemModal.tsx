@@ -4,7 +4,7 @@ import type { NoteItem } from '../types';
 
 interface NewItemModalProps {
   isOpen: boolean;
-  type: 'project' | 'note' | 'transfer' | null;
+  type: 'note' | 'transfer' | null;
   onClose: () => void;
   onCreateNote: (n: Partial<NoteItem>) => Promise<void>;
   onCreateTransfer: (file: File) => Promise<unknown>;
@@ -39,7 +39,7 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (submittingRef.current || type === 'project') return;
+    if (submittingRef.current) return;
     if ((type === 'note' && !noteTitle.trim()) || (type === 'transfer' && !selectedFile)) {
       setSubmitError(type === 'note' ? 'A note title is required.' : 'Choose a file before uploading.');
       return;
@@ -85,9 +85,7 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
           {type === 'transfer' ? 'Upload to R2' : `New ${type}`}
         </h3>
         <p className="type-secondary mb-5">
-          {type === 'project'
-            ? 'Project saving is not available yet. Use Notes to keep your work.'
-            : type === 'transfer'
+          {type === 'transfer'
             ? 'Select a file to stream directly into Cloudflare R2.'
             : 'Add a new record to your workspace.'}
         </p>
@@ -150,7 +148,7 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={isSubmitting || type === 'project'}
+              disabled={isSubmitting}
               className="workspace-button workspace-button-primary cursor-pointer"
             >
               Confirm

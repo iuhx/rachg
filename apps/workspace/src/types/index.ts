@@ -1,18 +1,6 @@
 export type NavTab = 'home' | 'files' | 'notes' | 'projects' | 'mail' | 'tools' | 'settings';
 
-export type ProjectStatus = 'Planning' | 'In Progress' | 'Live' | 'Archived';
-
-export interface Project {
-  id: string;
-  name: string;
-  tagline: string;
-  description: string;
-  status: ProjectStatus;
-  updatedAt: string;
-  updatedTimestamp: number;
-  externalUrl?: string;
-  stack?: string[];
-}
+export type { Project, ProjectInput, ProjectStatus, ProjectListResponse, ProjectResponse } from '@rachg/shared';
 
 export type FileCategory = 'image' | 'pdf' | 'archive' | 'video' | 'text' | 'keynote' | 'code';
 

@@ -77,11 +77,11 @@ test('overview has read-only date and activity displays without the scratchpad e
   assert.equal(elements(h.tree).filter(n=>n.props['aria-current']==='date').length,1);h.unmount();
 });
 
-test('project creation cannot imply a successful save while persistence is unavailable',async()=>{
-  const f=components(),{NewItemModal}=f.load('apps/workspace/src/components/NewItemModal.tsx');let closed=false;
-  const h=f.mount(NewItemModal,{isOpen:true,type:'project',onClose(){closed=true;},onCreateNote:async()=>{},onCreateTransfer:async()=>{}});
-  assert.match(label(h.tree),/Project saving is not available yet/);
-  assert.equal(find(h,n=>n.type==='button'&&n.props.type==='submit').props.disabled,true);
-  await find(h,n=>n.type==='form').props.onSubmit({preventDefault(){}});
-  assert.equal(closed,false);assert.equal(elements(h.tree).some(n=>n.type==='input'||n.type==='textarea'),false);h.unmount();
+test('the global new-project command opens Projects instead of the obsolete placeholder',()=>{
+  const f=components(),{WorkspaceApp}=f.load('apps/workspace/src/components/WorkspaceApp.tsx');
+  const h=f.mount(WorkspaceApp,{});
+  find(h,n=>n.type?.name==='CommandPalette').props.onOpenNewModal('project');h.render();
+  const projects=find(h,n=>n.type?.name==='ProjectsView');
+  assert.equal(projects.props.isActive,true);assert.equal(projects.props.createRequest,1);
+  assert.equal(find(h,n=>n.type?.name==='NewItemModal').props.isOpen,false);h.unmount();
 });

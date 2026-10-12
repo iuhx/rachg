@@ -59,6 +59,7 @@ import { cleanupStorage } from './cleanup';
 import { parseByteRange } from './download';
 import { textShareResponse } from './text-share';
 import { formatOutgoingMail } from './mail-format';
+import { routeProjects } from './projects';
 import { boundedForm, boundedJson, InputError, mailPlainText, MAX_FILE_BYTES, MAX_MAIL_BYTES, MAX_TEXT_BYTES, readBounded, utf8Size } from '../../common/content';
 
 export interface Env {
@@ -222,6 +223,10 @@ export default {
       // -------------------------------------------------------------
       // Health check & Service status
       // -------------------------------------------------------------
+      if (url.pathname === '/v1/projects' || url.pathname.startsWith('/v1/projects/')) {
+        const result = await routeProjects(request, env.DB);
+        return jsonResponse(result.body, result.status, origin);
+      }
       if (url.pathname === '/' || url.pathname === '/health') {
         await ensureSchema(env.DB);
         const usage = await getActiveStorageUsage(env.DB);

@@ -14,13 +14,11 @@ import {
 interface SettingsViewProps {
   isDarkMode: boolean;
   onToggleDarkMode: () => void;
-  onResetWorkspace: () => void;
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
   isDarkMode,
   onToggleDarkMode,
-  onResetWorkspace,
 }) => {
   const [testingPing, setTestingPing] = useState(false);
   const [pingLatency, setPingLatency] = useState<number | null>(null);

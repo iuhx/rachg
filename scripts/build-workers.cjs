@@ -3,7 +3,9 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { createRequire } = require('node:module');
+const { execFileSync } = require('node:child_process');
 const root = path.resolve(__dirname, '..');
+execFileSync(process.execPath, [require.resolve('typescript/bin/tsc'), '-p', path.join(root, 'packages/shared/tsconfig.json')], { stdio: 'inherit' });
 const wranglerPackage = fs.realpathSync(path.join(root, 'workers/file-service/node_modules/wrangler/package.json'));
 const { build } = createRequire(wranglerPackage)('esbuild');
 const targets = [

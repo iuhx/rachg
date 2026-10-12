@@ -181,4 +181,25 @@ test('release Worker runs reliably in workerd with actual D1 and R2 bindings', {
     assert.equal(outgoingMail.headers['In-Reply-To'], '<parent@example.invalid>');
     assert.equal((await db.prepare('SELECT text FROM sent_mail WHERE id=?').bind(body.id).first()).text, outgoingMail.text);
   });
+
+  await t.test('projects persist in real D1, reject stale edits/deletes and require Access', async () => {
+    const payload = { id: crypto.randomUUID(), name: '真实项目', tagline: 'Persistent', description: '第一步\nNext step', status: 'Planning', externalUrl: 'https://example.com/project' };
+    const post = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) };
+    const denied = await request('/v1/projects', { ...post, headers: { ...post.headers, 'cf-access-jwt-assertion': '' } });
+    assert.equal(denied.status, 401); await denied.text();
+    const created = await request('/v1/projects', post); assert.equal(created.status, 201);
+    const saved = (await created.json()).project;
+    const retry = await request('/v1/projects', post); assert.equal(retry.status, 200); await retry.text();
+    const list = await request('/v1/projects'); assert.equal((await list.json()).projects[0].id, saved.id);
+    assert.equal((await db.prepare('SELECT description FROM workspace_projects WHERE id=?').bind(saved.id).first()).description, payload.description);
+    const update = await request(`/v1/projects/${saved.id}`, { ...post, method: 'PUT', body: JSON.stringify({ ...payload, status: 'Completed', revision: 1 }) });
+    assert.equal(update.status, 200); assert.equal((await update.json()).project.revision, 2);
+    const stale = await request(`/v1/projects/${saved.id}`, { ...post, method: 'PUT', body: JSON.stringify({ ...payload, revision: 1 }) });
+    assert.equal(stale.status, 409); await stale.text();
+    const staleDelete = await request(`/v1/projects/${saved.id}`, { ...post, method: 'DELETE', body: JSON.stringify({ revision: 1 }) });
+    assert.equal(staleDelete.status, 409); await staleDelete.text();
+    const deleted = await request(`/v1/projects/${saved.id}`, { ...post, method: 'DELETE', body: JSON.stringify({ revision: 2 }) });
+    assert.equal(deleted.status, 200); await deleted.text();
+    assert.equal((await db.prepare('SELECT COUNT(*) n FROM workspace_projects').first()).n, 0);
+  });
 });

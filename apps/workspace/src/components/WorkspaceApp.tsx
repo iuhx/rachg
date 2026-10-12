@@ -12,7 +12,6 @@ import { NewItemModal } from './NewItemModal';
 import type { FileQrRequest } from './ToolsView';
 
 import {
-  INITIAL_PROJECTS,
   INITIAL_TRANSFERS,
 } from '../data/mockData';
 import {
@@ -24,7 +23,8 @@ import {
 import { createNote, deleteNote, fetchNotes, updateNote as updateNoteService } from '../services/noteService';
 import { getAccessIdentity, startAccessLogout } from '../services/accessService';
 import { deleteMailMessage, fetchMail, fetchMailMessage, fetchSentMail, fetchSentMailMessage, sendMail } from '../services/mailService';
-import type { NavTab, Project, FileItem, NoteItem, MailItem, MailMessage, SentMailItem, SentMailMessage, MailSendRequest } from '../types';
+import { fetchProjects, saveProject, deleteProject } from '../services/projectService';
+import type { NavTab, Project, ProjectInput, FileItem, NoteItem, MailItem, MailMessage, SentMailItem, SentMailMessage, MailSendRequest } from '../types';
 
 const ToolsView = React.lazy(() => import('./ToolsView').then(module => ({ default: module.ToolsView })));
 
@@ -35,7 +35,14 @@ export const WorkspaceApp: React.FC = () => {
   const [userEmail, setUserEmail] = useState<string>();
 
   // Authentic data states — no mock data
-  const [projects, setProjects] = useState<Project[]>(INITIAL_PROJECTS);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [isProjectsLoading, setIsProjectsLoading] = useState(false);
+  const [isProjectSaving, setIsProjectSaving] = useState(false);
+  const [projectsError, setProjectsError] = useState('');
+  const [projectsVisited, setProjectsVisited] = useState(false);
+  const [projectCreateRequest, setProjectCreateRequest] = useState(0);
+  const projectLoadVersion = useRef(0);
+  const projectsMutating = useRef(false);
   const [transfers, setTransfers] = useState<FileItem[]>(INITIAL_TRANSFERS);
   const [isFilesLoading, setIsFilesLoading] = useState(true);
   const [notes, setNotes] = useState<NoteItem[]>([]);
@@ -65,7 +72,7 @@ export const WorkspaceApp: React.FC = () => {
 
   // Command palette & modal
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
-  const [newModalType, setNewModalType] = useState<'project' | 'note' | 'transfer' | null>(null);
+  const [newModalType, setNewModalType] = useState<'note' | 'transfer' | null>(null);
 
   // Toast feedback
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -94,6 +101,41 @@ export const WorkspaceApp: React.FC = () => {
       }
     }).catch(() => setAuthStatus('unauthenticated'));
   }, []);
+
+  const loadProjects = useCallback(async () => {
+    if (authStatus !== 'authenticated' || projectsMutating.current) return;
+    const version = ++projectLoadVersion.current;
+    setIsProjectsLoading(true); setProjectsError('');
+    try { const loaded = await fetchProjects(); if (version === projectLoadVersion.current) setProjects(loaded); }
+    catch (error) { if (version === projectLoadVersion.current) setProjectsError(error instanceof Error ? error.message : 'Unable to load projects.'); }
+    finally { if (version === projectLoadVersion.current) setIsProjectsLoading(false); }
+  }, [authStatus]);
+  useEffect(() => {
+    if (activeTab === 'projects') { setProjectsVisited(true); void loadProjects(); }
+  }, [activeTab, loadProjects]);
+  const mutateProject = async (operation: () => Promise<void>) => {
+    if (authStatus !== 'authenticated') throw new Error('Sign in to manage projects.');
+    if (projectsMutating.current) throw new Error('Wait for the current project change to finish.');
+    projectsMutating.current = true; setIsProjectSaving(true);
+    // Invalidate any list snapshot started before this change.
+    projectLoadVersion.current++; setIsProjectsLoading(false);
+    try { await operation(); setProjectsError(''); }
+    finally { projectsMutating.current = false; setIsProjectSaving(false); }
+  };
+  const handleSaveProject = (id: string, input: ProjectInput, revision?: number) => mutateProject(async () => {
+    const project = await saveProject(id, input, revision);
+    setProjects(current => [project, ...current.filter(item => item.id !== project.id)]);
+    showToast('Project saved.');
+  });
+  const handleDeleteProject = (project: Project) => mutateProject(async () => {
+    await deleteProject(project.id, project.revision);
+    setProjects(current => current.filter(item => item.id !== project.id));
+    showToast('Project deleted.');
+  });
+  const openNewItem = (type: 'project' | 'note' | 'transfer') => {
+    if (type === 'project') { setProjectCreateRequest(current => current + 1); setActiveTab('projects'); window.scrollTo(0, 0); }
+    else setNewModalType(type);
+  };
 
   const loadMail = useCallback(async () => {
     if (authStatus !== 'authenticated') return;
@@ -278,13 +320,6 @@ export const WorkspaceApp: React.FC = () => {
     }
   };
 
-  const handleResetWorkspace = () => {
-    setProjects([]);
-    setTransfers([]);
-    setNotes([]);
-    showToast('Workspace reset.');
-  };
-
   return (
     <div className={`workspace-shell flex ${isDarkMode ? 'dark' : ''}`}>
       {/* Sidebar with refined brandmark */}
@@ -309,7 +344,7 @@ export const WorkspaceApp: React.FC = () => {
 
         {/* Dynamic Views */}
         <main className="workspace-main flex-1 px-4 pt-2 pb-16 sm:px-6 lg:px-8">
-          {authStatus === 'unauthenticated' && <p role="status" className="workspace-panel type-secondary p-3 mb-5">Sign in using the account menu to load private files, notes and mail. Local tools remain available.</p>}
+          {authStatus === 'unauthenticated' && <p role="status" className="workspace-panel type-secondary p-3 mb-5">Sign in using the account menu to load private files, notes, projects and mail. Local tools remain available.</p>}
           {activeTab === 'home' && (
             <DashboardView
               transfers={transfers}
@@ -354,12 +389,15 @@ export const WorkspaceApp: React.FC = () => {
             </React.Suspense>
           </div>}
 
-          {activeTab === 'projects' && (
+          {(activeTab === 'projects' || projectsVisited) && <div hidden={activeTab !== 'projects'}>
             <ProjectsView
               projects={projects}
-              onNewProject={() => setNewModalType('project')}
+              isActive={activeTab === 'projects'} canManage={authStatus === 'authenticated'}
+              isLoading={isProjectsLoading} isSaving={isProjectSaving} error={projectsError}
+              createRequest={projectCreateRequest} onRefresh={loadProjects}
+              onSave={handleSaveProject} onDelete={handleDeleteProject}
             />
-          )}
+          </div>}
 
           {(activeTab === 'mail' || mailVisited) && <div hidden={activeTab !== 'mail'}>
             <MailView
@@ -385,7 +423,6 @@ export const WorkspaceApp: React.FC = () => {
             <SettingsView
               isDarkMode={isDarkMode}
               onToggleDarkMode={() => setIsDarkMode(!isDarkMode)}
-              onResetWorkspace={handleResetWorkspace}
             />
           )}
         </main>
@@ -400,7 +437,7 @@ export const WorkspaceApp: React.FC = () => {
         projects={projects}
         notes={notes}
         transfers={transfers}
-        onOpenNewModal={(type) => setNewModalType(type)}
+        onOpenNewModal={openNewItem}
         onToggleTheme={() => setIsDarkMode(!isDarkMode)}
       />
 
