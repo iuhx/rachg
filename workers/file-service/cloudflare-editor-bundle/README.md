@@ -1,1 +1,3 @@
-This folder contains the built output assets for the worker "rachg-file-service" generated at 2026-10-10T03:23:16.409Z.
+This folder contains the generated Dashboard editor artifact for `rachg-file-service`.
+Run `node scripts/build-workers.cjs` from the repository root to rebuild both Workers
+from TypeScript. Do not edit the generated JavaScript independently.

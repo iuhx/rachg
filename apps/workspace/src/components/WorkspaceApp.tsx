@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import { DashboardView } from './DashboardView';
@@ -49,6 +49,8 @@ export const WorkspaceApp: React.FC = () => {
   const [selectedSentMail, setSelectedSentMail] = useState<SentMailMessage | null>(null);
   const [isSentMailLoading, setIsSentMailLoading] = useState(false);
   const [isSentMailMessageLoading, setIsSentMailMessageLoading] = useState(false);
+  const mailSelection = useRef(0);
+  const sentSelection = useRef(0);
 
   // Command palette & modal
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
@@ -93,7 +95,7 @@ export const WorkspaceApp: React.FC = () => {
   const handleSaveScratchpad = async (content: string, image?: File | null) => {
     setIsScratchpadSaving(true);
     try { setScratchpad(await saveScratchpad(content, image)); showToast('Scratchpad saved.'); }
-    catch (error: any) { showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to save scratchpad.' : (error.message || 'Unable to save scratchpad.')); }
+    catch (error: any) { showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to save scratchpad.' : (error.message || 'Unable to save scratchpad.')); throw error; }
     finally { setIsScratchpadSaving(false); }
   };
 
@@ -133,24 +135,27 @@ export const WorkspaceApp: React.FC = () => {
   }, [authStatus, loadMail, loadSentMail]);
 
   const handleSelectMail = async (item: MailItem) => {
+    const selection = ++mailSelection.current;
     setSelectedMail({ ...item, text: '' });
     setIsMailMessageLoading(true);
-    try { setSelectedMail(await fetchMailMessage(item.id)); }
-    catch (error: any) { showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to continue.' : (error.message || 'Unable to open email.')); }
-    finally { setIsMailMessageLoading(false); }
+    try { const message = await fetchMailMessage(item.id); if (selection === mailSelection.current) setSelectedMail(message); }
+    catch (error: any) { if (selection === mailSelection.current) showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to continue.' : (error.message || 'Unable to open email.')); }
+    finally { if (selection === mailSelection.current) setIsMailMessageLoading(false); }
   };
 
   const handleSelectSentMail = async (item: SentMailItem) => {
+    const selection = ++sentSelection.current;
     setSelectedSentMail({ ...item, text: '' });
     setIsSentMailMessageLoading(true);
-    try { setSelectedSentMail(await fetchSentMailMessage(item.id)); }
-    catch (error: any) { showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to continue.' : (error.message || 'Unable to open sent email.')); }
-    finally { setIsSentMailMessageLoading(false); }
+    try { const message = await fetchSentMailMessage(item.id); if (selection === sentSelection.current) setSelectedSentMail(message); }
+    catch (error: any) { if (selection === sentSelection.current) showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to continue.' : (error.message || 'Unable to open sent email.')); }
+    finally { if (selection === sentSelection.current) setIsSentMailMessageLoading(false); }
   };
 
   const handleDeleteMail = async (id: string) => {
     try {
       await deleteMailMessage(id);
+      if (selectedMail?.id === id) { mailSelection.current++; setIsMailMessageLoading(false); }
       setMailMessages((current) => current.filter((message) => message.id !== id));
       setSelectedMail((current) => current?.id === id ? null : current);
       showToast('Email deleted.');
@@ -244,7 +249,7 @@ export const WorkspaceApp: React.FC = () => {
   const handleDeleteTransfer = async (id: string) => {
     try {
       await deleteFileService(id);
-      setTransfers(transfers.filter((t) => t.id !== id));
+      setTransfers((current) => current.filter((t) => t.id !== id));
       showToast('File transfer revoked.');
     } catch (err: any) {
       showToast(err instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to delete files.' : (err.message || 'Delete failed'));
@@ -330,15 +335,16 @@ export const WorkspaceApp: React.FC = () => {
             />
           )}
 
-          {activeTab === 'notes' && (
+          <div hidden={activeTab !== 'notes'}>
             <NotesView
               notes={notes}
+              isActive={activeTab === 'notes'}
               isLoading={isNotesLoading}
               onNewNote={() => setNewModalType('note')}
               onUpdateNote={handleUpdateNote}
               onDeleteNote={handleDeleteNote}
             />
-          )}
+          </div>
 
           {activeTab === 'projects' && (
             <ProjectsView

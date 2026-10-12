@@ -64,7 +64,7 @@ export const MailView: React.FC<MailViewProps> = ({
     const replySubject = /^re\s*:/i.test(selectedMessage.subject) ? selectedMessage.subject : `Re: ${selectedMessage.subject}`;
     const quoted = selectedMessage.text.split('\n').map((line) => `> ${line}`).join('\n');
     const references = [selectedMessage.references, selectedMessage.messageId].filter(Boolean).join(' ');
-    setRecipient(selectedMessage.from);
+    setRecipient(selectedMessage.replyTo || selectedMessage.from);
     setSubject(replySubject);
     setBody(`\n\nOn ${formatDate(selectedMessage.receivedAt)}, ${selectedMessage.from} wrote:\n${quoted}`);
     setReplyHeaders({

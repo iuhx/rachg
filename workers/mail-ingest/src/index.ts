@@ -1,4 +1,5 @@
 import PostalMime from 'postal-mime';
+import { mailPlainText, MAX_MAIL_BYTES, readBounded } from '../../common/content';
 
 interface Env {
   DB: D1Database;
@@ -13,19 +14,7 @@ function makeId(): string {
 }
 
 function plainTextFromHtml(html: string): string {
-  return html
-    .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, '')
-    .replace(/<\/(p|div|li|br|tr|h[1-6])\s*>/gi, '\n')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&quot;/gi, '"')
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+  return mailPlainText(html);
 }
 
 function escapeHtml(value: string): string {
@@ -57,22 +46,20 @@ export default {
       message.setReject('This address is not configured for the rachg inbox.');
       return;
     }
+    if (message.rawSize > MAX_MAIL_BYTES) {
+      message.setReject('This mailbox accepts messages up to 5 MiB including attachments.');
+      return;
+    }
 
     const id = makeId();
     const receivedAt = Date.now();
     const r2Key = `mail/${receivedAt}-${id}.eml`;
-    const [rawForStorage, rawForParse] = message.raw.tee();
-    const fixedLength = new FixedLengthStream(message.rawSize);
-    const storePromise = env.FILES_BUCKET.put(r2Key, fixedLength.readable, {
-      httpMetadata: { contentType: 'message/rfc822' },
-    });
-    const pipePromise = rawForStorage.pipeTo(fixedLength.writable);
-    const parsePromise = PostalMime.parse(rawForParse);
-    const [parsed] = await Promise.all([parsePromise, storePromise, pipePromise]);
+    const raw = await readBounded(message.raw, MAX_MAIL_BYTES);
+    const parsed = await PostalMime.parse(raw);
 
-    const from = message.from || parsed.from?.address || 'Unknown sender';
+    const from = parsed.from?.address || message.from || 'Unknown sender';
     const to = message.to || parsed.to?.map((address) => address.address).filter(Boolean).join(', ') || 'Unknown recipient';
-    const subject = parsed.subject?.trim() || '(无标题)';
+    const subject = parsed.subject?.trim().slice(0, 200) || '(无标题)';
     const text = parsed.text?.trim() || plainTextFromHtml(parsed.html || '');
     const preview = text.replace(/\s+/g, ' ').slice(0, 240);
     const messageId = parsed.messageId?.slice(0, 998) || null;
@@ -88,11 +75,19 @@ export default {
       message_id TEXT
     )`).run();
     await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_mail_received ON mail (received_at DESC)`).run();
+    await env.FILES_BUCKET.put(r2Key, raw, {
+      httpMetadata: { contentType: 'message/rfc822' },
+    });
     try {
       await env.DB.prepare(`INSERT INTO mail (id, from_address, to_address, subject, received_at, preview, r2_key, message_id)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, from, to, subject, receivedAt, preview, r2Key, messageId).run();
     } catch (error) {
-      await env.FILES_BUCKET.delete(r2Key).catch(() => {});
+      // An INSERT can commit even if its response is lost. Check the reference
+      // before compensating; never delete an object still referenced by mail.
+      try {
+        const saved = await env.DB.prepare('SELECT id FROM mail WHERE id = ?').bind(id).first();
+        if (!saved) await env.FILES_BUCKET.delete(r2Key);
+      } catch { console.error('Mail storage needs reconciliation', { id, r2Key }); }
       throw error;
     }
 

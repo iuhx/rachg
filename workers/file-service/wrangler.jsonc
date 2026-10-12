@@ -3,6 +3,7 @@
   "name": "rachg-file-service",
   "account_id": "183126450d0d9188448b6265c97e595f",
   "keep_vars": true,
+  "triggers": { "crons": ["*/15 * * * *"] },
   "main": "src/index.ts",
   "compatibility_date": "2026-09-01",
   "compatibility_flags": ["nodejs_compat"],

@@ -27,7 +27,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   React.useEffect(() => setScratchContent(scratchpad?.content || ''), [scratchpad?.content]);
-  const saveScratch = async () => { await onSaveScratchpad(scratchContent, pendingImage); setPendingImage(null); };
+  const saveScratch = async () => {
+    try { await onSaveScratchpad(scratchContent, pendingImage); setPendingImage(null); }
+    catch { /* The parent reports the error; preserve the attachment for retry. */ }
+  };
   const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const image = Array.from(event.clipboardData.files).find((file) => file.type.startsWith('image/'));
     if (image) { event.preventDefault(); setPendingImage(image); }

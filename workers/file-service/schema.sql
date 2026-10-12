@@ -67,3 +67,9 @@ CREATE TABLE IF NOT EXISTS sent_mail (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sent_mail_sent_at ON sent_mail (sent_at DESC);
+
+-- Deferred deletion protects currently referenced images during failed/concurrent saves.
+CREATE TABLE IF NOT EXISTS scratchpad_cleanup (
+  r2_key TEXT PRIMARY KEY,
+  not_before INTEGER NOT NULL
+);

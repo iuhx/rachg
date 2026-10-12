@@ -13,7 +13,7 @@ export interface FileRecord {
   download_count: number;
   delete_token: string;
   owner_id?: string | null;
-  status: 'active' | 'expired' | 'deleted';
+  status: 'active' | 'expired' | 'deleted' | 'uploading' | 'purged';
 }
 
 export interface NoteRecord {
@@ -127,7 +127,7 @@ export function mapRecordToScratchpadItem(record: ScratchpadRecord, baseUrl: str
   return {
     id: record.id,
     content: record.content,
-    imageUrl: record.image_key ? `${baseUrl}/v1/scratchpad/image` : undefined,
+    imageUrl: record.image_key ? `${baseUrl}/v1/scratchpad/image?v=${encodeURIComponent(record.image_key)}` : undefined,
     updatedAt: formatNoteTimestamp(record.updated_at),
     updatedTimestamp: record.updated_at,
   };
@@ -136,7 +136,7 @@ export function mapRecordToScratchpadItem(record: ScratchpadRecord, baseUrl: str
 export function mapRecordToFileItem(r: FileRecord, baseUrl: string): FileItem {
   const now = Date.now();
   const msRemaining = r.expires_at - now;
-  const isExpired = r.status === 'expired' || isFileExpired(r.expires_at, now);
+  const isExpired = r.status === 'expired' || r.status === 'purged' || isFileExpired(r.expires_at, now);
 
   return {
     id: r.id,
@@ -158,7 +158,17 @@ export function mapRecordToFileItem(r: FileRecord, baseUrl: string): FileItem {
  * Ensure database table and indexes exist.
  * This runs natively inside the Worker with native D1 bindings.
  */
-export async function ensureSchema(db: D1Database): Promise<void> {
+const schemaReady = new WeakMap<D1Database, Promise<void>>();
+export function ensureSchema(db: D1Database): Promise<void> {
+  let pending = schemaReady.get(db);
+  if (!pending) {
+    pending = initializeSchema(db).catch((error) => { schemaReady.delete(db); throw error; });
+    schemaReady.set(db, pending);
+  }
+  return pending;
+}
+
+async function initializeSchema(db: D1Database): Promise<void> {
   await db
     .prepare(
       `CREATE TABLE IF NOT EXISTS files (
@@ -179,13 +189,11 @@ export async function ensureSchema(db: D1Database): Promise<void> {
 
   await db
     .prepare(`CREATE INDEX IF NOT EXISTS idx_files_status_expires ON files (status, expires_at);`)
-    .run()
-    .catch(() => {});
+    .run();
 
   await db
     .prepare(`CREATE INDEX IF NOT EXISTS idx_files_created ON files (created_at DESC);`)
-    .run()
-    .catch(() => {});
+    .run();
 
   await db
     .prepare(
@@ -213,8 +221,7 @@ export async function ensureSchema(db: D1Database): Promise<void> {
 
   await db
     .prepare(`CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes (updated_at DESC);`)
-    .run()
-    .catch(() => {});
+    .run();
 
   await db.prepare(`CREATE TABLE IF NOT EXISTS mail (
     id TEXT PRIMARY KEY,
@@ -227,7 +234,7 @@ export async function ensureSchema(db: D1Database): Promise<void> {
     message_id TEXT
   );`).run();
 
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_mail_received ON mail (received_at DESC);`).run().catch(() => {});
+  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_mail_received ON mail (received_at DESC);`).run();
 
   await db.prepare(`CREATE TABLE IF NOT EXISTS sent_mail (
     id TEXT PRIMARY KEY,
@@ -242,7 +249,10 @@ export async function ensureSchema(db: D1Database): Promise<void> {
     references_header TEXT
   );`).run();
 
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_sent_mail_sent_at ON sent_mail (sent_at DESC);`).run().catch(() => {});
+  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_sent_mail_sent_at ON sent_mail (sent_at DESC);`).run();
+  await db.prepare(`CREATE TABLE IF NOT EXISTS scratchpad_cleanup (
+    r2_key TEXT PRIMARY KEY, not_before INTEGER NOT NULL
+  );`).run();
 }
 
 export async function insertMailRecord(db: D1Database, record: MailRecord): Promise<void> {
@@ -283,7 +293,7 @@ export async function updateSentMailStatus(db: D1Database, id: string, status: S
 
 export async function listSentMailRecords(db: D1Database): Promise<SentMailRecord[]> {
   await ensureSchema(db);
-  const result = await db.prepare(`SELECT * FROM sent_mail ORDER BY sent_at DESC LIMIT 100`).all<SentMailRecord>();
+  const result = await db.prepare(`SELECT id, resend_id, to_address, subject, sent_at, preview, status FROM sent_mail ORDER BY sent_at DESC LIMIT 100`).all<SentMailRecord>();
   return result.results ?? [];
 }
 
@@ -295,13 +305,15 @@ export async function getSentMailRecord(db: D1Database, id: string): Promise<Sen
 /**
  * Insert a new file record into D1.
  */
-export async function insertFileRecord(db: D1Database, record: FileRecord): Promise<void> {
+export async function insertFileRecord(db: D1Database, record: FileRecord, maxStorageBytes = Number.MAX_SAFE_INTEGER): Promise<boolean> {
   await ensureSchema(db);
-  await db
+  const result = await db
     .prepare(
       `INSERT INTO files (
         id, filename, size_bytes, mime_type, r2_key, created_at, expires_at, download_count, delete_token, owner_id, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        WHERE (SELECT COALESCE(SUM(size_bytes), 0) FROM files
+          WHERE status NOT IN ('deleted', 'purged')) + ? <= ?`
     )
     .bind(
       record.id,
@@ -314,9 +326,12 @@ export async function insertFileRecord(db: D1Database, record: FileRecord): Prom
       record.download_count,
       record.delete_token,
       record.owner_id ?? null,
-      record.status
+      record.status,
+      record.size_bytes,
+      maxStorageBytes
     )
     .run();
+  return (result.meta?.changes ?? 0) > 0;
 }
 
 /**
@@ -435,8 +450,14 @@ export async function getScratchpadRecord(db: D1Database): Promise<ScratchpadRec
   if (existing) return existing;
   const now = Date.now();
   const record: ScratchpadRecord = { id: 'default', content: '', image_key: null, created_at: now, updated_at: now };
-  await db.prepare(`INSERT INTO scratchpad (id, content, image_key, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`).bind(record.id, record.content, record.image_key, record.created_at, record.updated_at).run();
-  return record;
+  await db.prepare(`INSERT OR IGNORE INTO scratchpad (id, content, image_key, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`).bind(record.id, record.content, record.image_key, record.created_at, record.updated_at).run();
+  return (await db.prepare(`SELECT * FROM scratchpad WHERE id = 'default'`).first<ScratchpadRecord>())!;
+}
+
+export async function queueScratchpadCleanup(db: D1Database, key: string): Promise<void> {
+  await ensureSchema(db);
+  if (!key.startsWith('scratchpad/')) throw new Error('Invalid scratchpad cleanup key');
+  await db.prepare('INSERT OR IGNORE INTO scratchpad_cleanup (r2_key, not_before) VALUES (?, ?)').bind(key, Date.now() + 3600_000).run();
 }
 
 export async function updateScratchpadRecord(db: D1Database, content: string, imageKey: string | null): Promise<ScratchpadRecord> {

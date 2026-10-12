@@ -2,18 +2,16 @@ import { ensureSchema } from './db';
 
 /**
  * 4GB Storage Quota Management.
- * Checks total storage occupied by active non-expired files in D1.
+ * Includes expired and uploading objects until physical cleanup succeeds.
  */
 export async function getActiveStorageUsage(db: D1Database): Promise<number> {
-  await ensureSchema(db).catch(() => {});
-  const now = Date.now();
+  await ensureSchema(db);
   const row = await db
     .prepare(
       `SELECT COALESCE(SUM(size_bytes), 0) AS total_bytes
        FROM files
-       WHERE status = 'active' AND (expires_at = 0 OR expires_at > ?)`
+       WHERE status NOT IN ('deleted', 'purged')`
     )
-    .bind(now)
     .first<{ total_bytes: number }>();
 
   return row?.total_bytes ?? 0;
@@ -28,6 +26,7 @@ export async function checkStorageQuota(
   maxSizeBytes: number = 4 * 1024 * 1024 * 1024
 ): Promise<{ allowed: boolean; currentTotal: number; maxLimit: number }> {
   const currentTotal = await getActiveStorageUsage(db);
+  if (!Number.isSafeInteger(newSizeBytes) || newSizeBytes < 0 || !Number.isSafeInteger(maxSizeBytes) || maxSizeBytes <= 0) throw new Error('Invalid storage size configuration');
   const projectedTotal = currentTotal + newSizeBytes;
   const allowed = projectedTotal <= maxSizeBytes;
 

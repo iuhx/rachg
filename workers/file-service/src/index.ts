@@ -46,13 +46,16 @@ import {
   updateSentMailStatus,
   listSentMailRecords,
   getSentMailRecord,
+  queueScratchpadCleanup,
   type MailRecord,
   type SentMailRecord,
 } from './db';
-import { buildR2Key, uploadToR2, getFromR2, deleteFromR2, buildScratchpadKey, getScratchpadObject, deleteScratchpadObject, getMailObject, deleteMailObject } from './storage';
+import { buildR2Key, uploadToR2, getFromR2, deleteFromR2, buildScratchpadKey, getScratchpadObject, getMailObject, deleteMailObject } from './storage';
 import { checkStorageQuota, getActiveStorageUsage } from './quota';
 import { isAuthenticated, resolveAuth } from './auth';
 import { getFileExpiry, isFileExpired } from './expiry';
+import { cleanupStorage } from './cleanup';
+import { boundedForm, boundedJson, InputError, mailPlainText, MAX_FILE_BYTES, MAX_MAIL_BYTES, MAX_TEXT_BYTES, readBounded, utf8Size } from '../../common/content';
 
 export interface Env {
   DB: D1Database;
@@ -78,6 +81,9 @@ function jsonResponse<T>(data: T, status: number = 200, origin: string): Respons
     status,
     headers: {
       'Content-Type': 'application/json',
+      'Cache-Control': 'private, no-store',
+      'X-Content-Type-Options': 'nosniff',
+      'Referrer-Policy': 'no-referrer',
       'Access-Control-Allow-Origin': origin,
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
@@ -122,19 +128,7 @@ function mapSentMailItem(record: SentMailRecord): SentMailItem {
 }
 
 function htmlToPlainText(html: string): string {
-  return html
-    .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, '')
-    .replace(/<\/(p|div|li|br|tr|h[1-6])\s*>/gi, '\n')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&quot;/gi, '"')
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+  return mailPlainText(html);
 }
 
 function isEmailAddress(value: string): boolean {
@@ -142,14 +136,14 @@ function isEmailAddress(value: string): boolean {
 }
 
 async function parseMailSendPayload(request: Request): Promise<MailSendRequest | null> {
-  const body = await request.json().catch(() => null) as unknown;
+  const body = await boundedJson(request);
   if (!body || typeof body !== 'object') return null;
   const candidate = body as Record<string, unknown>;
   if (typeof candidate.to !== 'string' || typeof candidate.subject !== 'string' || typeof candidate.text !== 'string') return null;
   const to = candidate.to.trim();
   const subject = candidate.subject.trim();
   const text = candidate.text;
-  if (!isEmailAddress(to) || !subject || subject.length > 200 || !text.trim() || text.length > 1_000_000) return null;
+  if (!isEmailAddress(to) || to.length > 254 || !subject || subject.length > 200 || /[\r\n]/.test(subject) || !text.trim() || utf8Size(text) > MAX_TEXT_BYTES) return null;
   const inReplyTo = typeof candidate.inReplyTo === 'string' ? candidate.inReplyTo.trim() : undefined;
   const references = typeof candidate.references === 'string' ? candidate.references.trim() : undefined;
   if ((inReplyTo && (inReplyTo.length > 998 || /[\r\n]/.test(inReplyTo))) ||
@@ -163,14 +157,14 @@ interface NotePayload {
 }
 
 async function parseNotePayload(request: Request): Promise<NotePayload | null> {
-  const body = await request.json().catch(() => null) as unknown;
+  const body = await boundedJson(request);
   if (!body || typeof body !== 'object') return null;
   const candidate = body as Record<string, unknown>;
   if (typeof candidate.title !== 'string' || typeof candidate.content !== 'string') return null;
 
   const title = candidate.title.trim();
   const content = candidate.content;
-  if (!title || title.length > 200 || content.length > 1_000_000) return null;
+  if (!title || title.length > 200 || utf8Size(content) > MAX_TEXT_BYTES) return null;
   return { title, content };
 }
 
@@ -204,12 +198,19 @@ export default {
           origin
         );
       }
+      if (!['GET', 'HEAD'].includes(request.method)) {
+        const source = request.headers.get('Origin');
+        const allowed = (env.ALLOWED_ORIGINS || 'https://rachg.com').split(',').map((value) => value.trim());
+        if (source && source !== url.origin && !allowed.includes(source)) {
+          return jsonResponse<ApiErrorResponse>({ success: false, error: 'Request origin is not allowed', code: 'INVALID_ORIGIN', status: 403 }, 403, origin);
+        }
+      }
       // -------------------------------------------------------------
       // Health check & Service status
       // -------------------------------------------------------------
       if (url.pathname === '/' || url.pathname === '/health') {
         await ensureSchema(env.DB);
-        const usage = await getActiveStorageUsage(env.DB).catch(() => 0);
+        const usage = await getActiveStorageUsage(env.DB);
         return jsonResponse(
           {
             service: 'rachg-file-service',
@@ -319,10 +320,13 @@ export default {
         if (!record) return jsonResponse<ApiErrorResponse>({ success: false, error: 'Email not found', code: 'NOT_FOUND', status: 404 }, 404, origin);
         const object = await getMailObject(env.FILES_BUCKET, record.r2_key);
         if (!object) return jsonResponse<ApiErrorResponse>({ success: false, error: 'Email content is missing', code: 'NOT_FOUND', status: 404 }, 404, origin);
+        if (object.size > MAX_MAIL_BYTES) throw new InputError('This message exceeds the 5 MiB preview limit', 413);
         const parsed = await PostalMime.parse(await object.arrayBuffer());
         const item = mapMailItem(record);
         const message: MailMessage = {
           ...item,
+          from: parsed.from?.address || item.from,
+          replyTo: parsed.replyTo?.find((address) => address.address && isEmailAddress(address.address))?.address || parsed.from?.address || item.from,
           text: parsed.text?.trim() || htmlToPlainText(parsed.html || ''),
           messageId: parsed.messageId,
           references: parsed.references,
@@ -344,9 +348,10 @@ export default {
       }
 
       if (request.method === 'PUT' && url.pathname === '/v1/scratchpad') {
-        const formData = await request.formData().catch(() => null);
-        const content = typeof formData?.get('content') === 'string' ? String(formData?.get('content')) : '';
-        if (content.length > 200_000) {
+        const formData = await boundedForm(request);
+        if (typeof formData.get('content') !== 'string') throw new InputError('Scratchpad content is required');
+        const content = String(formData.get('content'));
+        if (utf8Size(content) > 200_000) {
           return jsonResponse<ApiErrorResponse>({ success: false, error: 'Scratchpad text is too large', code: 'INVALID_SCRATCHPAD', status: 400 }, 400, origin);
         }
         const current = await getScratchpadRecord(env.DB);
@@ -354,23 +359,24 @@ export default {
         const image = formData?.get('image');
         const imageFile = image && typeof image !== 'string' ? image as File : null;
         if (imageFile && imageFile.size > 0) {
-          if (!imageFile.type.startsWith('image/')) {
-            return jsonResponse<ApiErrorResponse>({ success: false, error: 'Only images can be pasted into the scratchpad', code: 'INVALID_IMAGE', status: 400 }, 400, origin);
+          if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(imageFile.type)) {
+            return jsonResponse<ApiErrorResponse>({ success: false, error: 'Use PNG, JPEG, WebP or GIF images', code: 'INVALID_IMAGE', status: 400 }, 400, origin);
           }
           if (imageFile.size > 10 * 1024 * 1024) {
             return jsonResponse<ApiErrorResponse>({ success: false, error: 'Scratchpad images must be 10MB or smaller', code: 'IMAGE_TOO_LARGE', status: 413 }, 413, origin);
           }
-          imageKey = buildScratchpadKey(`default-${Date.now()}`, imageFile.name || 'pasted-image');
+          imageKey = buildScratchpadKey(crypto.randomUUID(), imageFile.name || 'pasted-image');
+          await queueScratchpadCleanup(env.DB, imageKey);
           await uploadToR2(env.FILES_BUCKET, imageKey, imageFile.stream(), imageFile.type, { source: 'scratchpad' });
-          if (current.image_key) await deleteScratchpadObject(env.FILES_BUCKET, current.image_key).catch(() => {});
         }
+        if (current.image_key && current.image_key !== imageKey) await queueScratchpadCleanup(env.DB, current.image_key);
         const record = await updateScratchpadRecord(env.DB, content, imageKey);
         return jsonResponse<ScratchpadResponse>({ success: true, scratchpad: mapRecordToScratchpadItem(record, baseUrl) }, 200, origin);
       }
 
       if (request.method === 'DELETE' && url.pathname === '/v1/scratchpad') {
         const current = await getScratchpadRecord(env.DB);
-        if (current.image_key) await deleteScratchpadObject(env.FILES_BUCKET, current.image_key).catch(() => {});
+        if (current.image_key) await queueScratchpadCleanup(env.DB, current.image_key);
         const record = await updateScratchpadRecord(env.DB, '', null);
         return jsonResponse<ScratchpadResponse>({ success: true, scratchpad: mapRecordToScratchpadItem(record, baseUrl) }, 200, origin);
       }
@@ -386,8 +392,12 @@ export default {
         }
         const headers = new Headers();
         image.writeHttpMetadata(headers);
+        if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(headers.get('Content-Type') || '')) throw new InputError('Replace this legacy attachment with a supported raster image', 415);
+        headers.set('Content-Security-Policy', "sandbox; default-src 'none'");
+        headers.set('Content-Disposition', 'attachment; filename="scratchpad-image"');
+        headers.set('X-Content-Type-Options', 'nosniff');
         headers.set('etag', image.httpEtag);
-        headers.set('Cache-Control', 'private, max-age=300');
+        headers.set('Cache-Control', 'private, no-store');
         headers.set('Access-Control-Allow-Origin', origin);
         headers.set('Access-Control-Allow-Credentials', 'true');
         headers.set('Vary', 'Origin');
@@ -506,7 +516,7 @@ export default {
         let expiryParam = '48 hours';
 
         if (contentType.includes('multipart/form-data')) {
-          const formData = await request.formData();
+          const formData = await boundedForm(request);
           const formFile = formData.get('file');
           if (!formFile || typeof formFile === 'string') {
             return jsonResponse<ApiErrorResponse>(
@@ -519,14 +529,13 @@ export default {
           filename = fileObj.name || 'uploaded-file';
           mimeType = fileObj.type || 'application/octet-stream';
           sizeBytes = fileObj.size;
+          if (sizeBytes > MAX_FILE_BYTES) throw new InputError('Files must be 10 MiB or smaller', 413);
           fileStream = fileObj.stream();
           expiryParam = (formData.get('expiry') as string) || expiryParam;
         } else {
           // Direct octet-stream upload
           filename = request.headers.get('x-filename') || 'uploaded-file';
           mimeType = contentType || 'application/octet-stream';
-          const contentLength = request.headers.get('content-length');
-          sizeBytes = contentLength ? parseInt(contentLength, 10) : 0;
           expiryParam = request.headers.get('x-expiry') || expiryParam;
 
           if (!request.body) {
@@ -536,7 +545,8 @@ export default {
               origin
             );
           }
-          fileStream = request.body;
+          fileStream = await readBounded(request.body, MAX_FILE_BYTES);
+          sizeBytes = fileStream.byteLength;
         }
 
         // 4GB Quota check
@@ -555,22 +565,15 @@ export default {
         }
 
         // Generate identifiers
-        const id = generateCode(6);
+        if (!filename || filename.length > 240 || /[\x00-\x1f\x7f]/.test(filename)) throw new InputError('Invalid filename');
+        const id = crypto.randomUUID();
         const deleteToken = generateCode(24);
         const r2Key = buildR2Key(id, filename);
 
         const now = Date.now();
         const expiresAt = getFileExpiry(expiryParam, now);
 
-        // 1. Upload to R2 under transfers/ prefix
-        await uploadToR2(env.FILES_BUCKET, r2Key, fileStream, mimeType, {
-          fileId: id,
-          filename,
-          deleteToken,
-          expiresAt: expiresAt.toString(),
-        });
-
-        // 2. Insert metadata into D1
+        // Reserve capacity with one atomic INSERT before writing any object.
         const record: FileRecord = {
           id,
           filename,
@@ -582,10 +585,24 @@ export default {
           download_count: 0,
           delete_token: deleteToken,
           owner_id: auth.userId || null,
-          status: 'active',
+          status: 'uploading',
         };
 
-        await insertFileRecord(env.DB, record);
+        if (!await insertFileRecord(env.DB, record, maxStorageLimit)) throw new InputError('Storage quota exceeded', 413);
+        try {
+          await uploadToR2(env.FILES_BUCKET, r2Key, fileStream, mimeType, { fileId: id, filename, deleteToken, expiresAt: expiresAt.toString() });
+          const committed = await env.DB.prepare(`UPDATE files SET status = 'active' WHERE id = ? AND status = 'uploading'`).bind(id).run();
+          if ((committed.meta?.changes ?? 0) === 0) {
+            await deleteFromR2(env.FILES_BUCKET, r2Key);
+            throw new Error('Upload reservation is no longer active');
+          }
+          record.status = 'active';
+        } catch (error) {
+          // A lost D1 response can follow a committed write. Leave the exact-key
+          // reservation intact for cleanup rather than guessing that commit failed.
+          console.error('Upload requires reconciliation', { id });
+          throw error;
+        }
 
         const fileItem = mapRecordToFileItem(record, baseUrl);
 
@@ -606,7 +623,7 @@ export default {
       if (request.method === 'GET' && url.pathname === '/v1/files') {
         const records = await listActiveFiles(env.DB);
         const files = records.map((r) => mapRecordToFileItem(r, baseUrl));
-        const totalSize = records.reduce((acc, r) => acc + r.size_bytes, 0);
+        const totalSize = await getActiveStorageUsage(env.DB);
 
         return jsonResponse<FileListResponse>(
           {
@@ -629,7 +646,7 @@ export default {
         const id = v1FileDetailMatch[1];
         const record = await getFileRecordById(env.DB, id);
 
-        if (!record || record.status === 'deleted') {
+        if (!record || record.status === 'deleted' || record.status === 'uploading') {
           return jsonResponse<ApiErrorResponse>(
             { success: false, error: 'File not found', code: 'NOT_FOUND', status: 404 },
             404,
@@ -637,7 +654,7 @@ export default {
           );
         }
 
-        if (record.status === 'expired' || isFileExpired(record.expires_at)) {
+        if (record.status === 'expired' || record.status === 'purged' || isFileExpired(record.expires_at)) {
           return jsonResponse<ApiErrorResponse>(
             { success: false, error: 'File has expired', code: 'EXPIRED', status: 410 },
             410,
@@ -672,7 +689,7 @@ export default {
         }
 
         // Delete from R2 (transfers/ prefix only)
-        await deleteFromR2(env.FILES_BUCKET, record.r2_key).catch(() => {});
+        await deleteFromR2(env.FILES_BUCKET, record.r2_key);
 
         // Mark deleted in D1
         await markFileDeleted(env.DB, id);
@@ -697,14 +714,14 @@ export default {
         const id = downloadMatch[1];
         const record = await getFileRecordById(env.DB, id);
 
-        if (!record || record.status === 'deleted') {
+        if (!record || record.status === 'deleted' || record.status === 'uploading') {
           return new Response('File not found or has been revoked.', {
             status: 404,
             headers: { 'Content-Type': 'text/plain; charset=utf-8' },
           });
         }
 
-        if (record.status === 'expired' || isFileExpired(record.expires_at)) {
+        if (record.status === 'expired' || record.status === 'purged' || isFileExpired(record.expires_at)) {
           return new Response('This shared file has expired and is no longer available.', {
             status: 410,
             headers: { 'Content-Type': 'text/plain; charset=utf-8' },
@@ -726,10 +743,13 @@ export default {
         // Prepare streaming download headers
         const headers = new Headers();
         r2Object.writeHttpMetadata(headers);
+        headers.set('Cache-Control', 'private, no-store');
+        headers.set('X-Content-Type-Options', 'nosniff');
+        headers.set('Referrer-Policy', 'no-referrer');
         headers.set('etag', r2Object.httpEtag);
         headers.set(
           'Content-Disposition',
-          `attachment; filename="${encodeURIComponent(record.filename)}"`
+          `attachment; filename="${record.filename.replace(/[^a-zA-Z0-9._-]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(record.filename).replace(/['()*]/g, (c) => '%' + c.charCodeAt(0).toString(16))}`
         );
         headers.set('Access-Control-Allow-Origin', origin);
         headers.set('Access-Control-Allow-Credentials', 'true');
@@ -748,6 +768,7 @@ export default {
         origin
       );
     } catch (err: any) {
+      if (err instanceof InputError) return jsonResponse<ApiErrorResponse>({ success: false, error: err.message, code: 'INVALID_INPUT', status: err.status }, err.status, origin);
       console.error('File service error:', err);
       if (err?.message?.includes('Access JWT') || err?.message?.includes('Cloudflare Access')) {
         return jsonResponse<ApiErrorResponse>(
@@ -759,7 +780,7 @@ export default {
       return jsonResponse<ApiErrorResponse>(
         {
           success: false,
-          error: err?.message || 'Internal Server Error',
+          error: 'The service could not complete this request. Please retry.',
           code: 'INTERNAL_ERROR',
           status: 500,
         },
@@ -767,5 +788,8 @@ export default {
         origin
       );
     }
+  },
+  async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(cleanupStorage(env.DB, env.FILES_BUCKET));
   },
 };

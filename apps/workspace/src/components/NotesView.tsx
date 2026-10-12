@@ -3,10 +3,12 @@ import { Check, Edit3, FileText, Plus, Search, Trash2, X } from 'lucide-react';
 import type { NoteItem } from '../types';
 import { MarkdownPreview } from './MarkdownPreview';
 import { ConfirmDialog } from './ConfirmDialog';
+import { rememberDraft, recoverDraft, discardSavedDraft, discardDeletedDraft } from './noteDrafts';
 
 interface NotesViewProps {
   notes: NoteItem[];
   isLoading?: boolean;
+  isActive?: boolean;
   onNewNote: () => void;
   onUpdateNote: (note: NoteItem) => Promise<void>;
   onDeleteNote: (id: string) => Promise<void>;
@@ -39,6 +41,7 @@ function saveStateLabel(state: SaveState): string {
 export const NotesView: React.FC<NotesViewProps> = ({
   notes,
   isLoading = false,
+  isActive = true,
   onNewNote,
   onUpdateNote,
   onDeleteNote,
@@ -56,6 +59,9 @@ export const NotesView: React.FC<NotesViewProps> = ({
   const [clock, setClock] = useState(() => Date.now());
   const searchInputRef = useRef<HTMLInputElement>(null);
   const autosaveTimerRef = useRef<number | null>(null);
+  const savingRef = useRef<Promise<boolean> | null>(null);
+  const editVersion = useRef(0);
+  const [recovered, setRecovered] = useState(false);
 
   useEffect(() => {
     const interval = window.setInterval(() => setClock(Date.now()), 60_000);
@@ -73,6 +79,27 @@ export const NotesView: React.FC<NotesViewProps> = ({
   const isDirty = Boolean(activeNote && isEditing && (
     editTitle.trim() !== activeNote.title || editContent !== activeNote.content
   ));
+
+  useEffect(() => {
+    if (!activeNote) return;
+    const draft = recoverDraft(activeNote.id);
+    if (!draft) return;
+    setEditTitle(draft.title);
+    setEditContent(draft.content);
+    setIsEditing(true);
+    setRecovered(true);
+    setSaveState('dirty');
+    setErrorMessage('Recovered a draft from this tab. Review it and choose Save.');
+  }, [activeNote?.id]);
+
+  const changeDraft = (title: string, content: string) => {
+    setEditTitle(title);
+    setEditContent(content);
+    editVersion.current++;
+    if (activeNote && !rememberDraft({ ...activeNote, title, content })) {
+      setErrorMessage('Draft backup is unavailable in this browser. Keep this page open until saving succeeds.');
+    }
+  };
 
   const filteredNotes = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -93,38 +120,59 @@ export const NotesView: React.FC<NotesViewProps> = ({
     if (!activeNote || !editTitle.trim()) {
       setSaveState('error');
       setErrorMessage('A note title is required.');
-      return;
+      return false;
     }
+    if (savingRef.current) { await savingRef.current; return false; }
 
     clearAutosaveTimer();
     setSaveState('saving');
     setErrorMessage(null);
-    try {
-      await onUpdateNote({
-        ...activeNote,
-        title: editTitle.trim(),
-        content: editContent,
-      });
-      setSaveState('saved');
-      if (exitAfterSave) setIsEditing(false);
-    } catch (error) {
-      setSaveState('error');
-      setErrorMessage(error instanceof Error ? error.message : 'Unable to save note.');
-    }
+    const version = editVersion.current;
+    const snapshot = {
+      ...activeNote,
+      title: editTitle.trim(),
+      content: editContent,
+    };
+    const pending = (async () => {
+      try {
+        await onUpdateNote(snapshot);
+        discardSavedDraft(snapshot);
+        const unchanged = editVersion.current === version;
+        setSaveState(unchanged ? 'saved' : 'dirty');
+        setRecovered(false);
+        if (exitAfterSave && unchanged) setIsEditing(false);
+        return unchanged;
+      } catch (error) {
+        setSaveState('error');
+        setErrorMessage(error instanceof Error ? error.message : 'Unable to save note.');
+        return false;
+      } finally { savingRef.current = null; }
+    })();
+    savingRef.current = pending;
+    return pending;
   }, [activeNote, editContent, editTitle, onUpdateNote]);
 
   useEffect(() => {
-    if (!isEditing || !activeNote || !isDirty) return;
+    if (!isEditing || !activeNote || !isDirty || recovered || saveState === 'saving' || saveState === 'error') return;
     setSaveState('dirty');
     autosaveTimerRef.current = window.setTimeout(() => {
       void saveDraft();
     }, 900);
     return clearAutosaveTimer;
-  }, [activeNote, isDirty, isEditing, saveDraft]);
+  }, [activeNote, isDirty, isEditing, saveDraft, saveState, recovered]);
 
   useEffect(() => () => clearAutosaveTimer(), []);
 
   useEffect(() => {
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      if (isDirty || savingRef.current) { event.preventDefault(); event.returnValue = ''; }
+    };
+    window.addEventListener('beforeunload', beforeUnload);
+    return () => window.removeEventListener('beforeunload', beforeUnload);
+  }, [isDirty]);
+
+  useEffect(() => {
+    if (!isActive) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       const isMod = event.metaKey || event.ctrlKey;
       if (isMod && event.key.toLowerCase() === 's' && isEditing) {
@@ -143,7 +191,7 @@ export const NotesView: React.FC<NotesViewProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isDirty, isEditing, saveDraft]);
+  }, [isDirty, isEditing, saveDraft, isActive]);
 
   const startEdit = () => {
     if (!activeNote) return;
@@ -152,15 +200,20 @@ export const NotesView: React.FC<NotesViewProps> = ({
     setEditorMode('write');
     setSaveState('idle');
     setErrorMessage(null);
+    setRecovered(false);
     setIsEditing(true);
   };
 
-  const selectNote = (note: NoteItem) => {
+  const selectNote = async (note: NoteItem) => {
+    if (savingRef.current || isDirty) {
+      if (!await saveDraft()) return;
+    }
     clearAutosaveTimer();
     setSelectedNoteId(note.id);
     setIsEditing(false);
     setSaveState('idle');
     setErrorMessage(null);
+    setRecovered(false);
   };
 
   const removeNote = async () => {
@@ -170,6 +223,7 @@ export const NotesView: React.FC<NotesViewProps> = ({
     setErrorMessage(null);
     try {
       await onDeleteNote(activeNote.id);
+      discardDeletedDraft(activeNote.id);
       setIsDeleteDialogOpen(false);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Unable to delete note.');
@@ -280,10 +334,10 @@ export const NotesView: React.FC<NotesViewProps> = ({
                   <div className="pt-5">
                     {isEditing ? (
                       <div className="space-y-3">
-                        <input value={editTitle} onChange={(event) => setEditTitle(event.target.value)} aria-label="Note title" className="workspace-input workspace-input-heading bg-transparent text-neutral-900 dark:text-white border-x-0 border-t-0 border-b border-neutral-200 dark:border-white/10 rounded-none px-0 pb-2 focus-visible:border-neutral-500" />
+                        <input value={editTitle} onChange={(event) => changeDraft(event.target.value, editContent)} aria-label="Note title" className="workspace-input workspace-input-heading bg-transparent text-neutral-900 dark:text-white border-x-0 border-t-0 border-b border-neutral-200 dark:border-white/10 rounded-none px-0 pb-2 focus-visible:border-neutral-500" />
                         {editorMode === 'write' ? (
                           <>
-                            <textarea autoFocus value={editContent} onChange={(event) => setEditContent(event.target.value)} rows={18} aria-label="Markdown content" className="workspace-input workspace-editor bg-neutral-50 dark:bg-black/20 text-neutral-800 dark:text-neutral-200" />
+                            <textarea autoFocus value={editContent} onChange={(event) => changeDraft(editTitle, event.target.value)} rows={18} aria-label="Markdown content" className="workspace-input workspace-editor bg-neutral-50 dark:bg-black/20 text-neutral-800 dark:text-neutral-200" />
                             <p className="type-caption">Markdown · {editContent.length.toLocaleString()} characters · Ctrl/⌘ + S to save · Esc to save and close</p>
                           </>
                         ) : (

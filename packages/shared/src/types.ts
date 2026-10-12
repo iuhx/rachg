@@ -120,6 +120,7 @@ export interface MailItem {
 }
 
 export interface MailMessage extends MailItem {
+  replyTo?: string;
   text: string;
   messageId?: string;
   references?: string;

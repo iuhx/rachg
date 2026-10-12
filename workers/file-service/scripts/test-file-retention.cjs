@@ -10,7 +10,7 @@ function loadModule(name) {
   if (modules.has(name)) return modules.get(name);
   const exports = {};
   modules.set(name, exports);
-  const file = path.join(__dirname, '..', 'src', `${name}.ts`);
+  const file = path.isAbsolute(name) ? name : path.join(__dirname, '..', 'src', `${name}.ts`);
   const code = ts.transpileModule(fs.readFileSync(file, 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
   }).outputText;
@@ -20,7 +20,7 @@ function loadModule(name) {
       resolveAuth: async (request) => ({ authType: request.headers.has('test-auth') ? 'cf_access' : 'anonymous' }),
       isAuthenticated: (auth) => auth.authType === 'cf_access',
     };
-    return specifier.startsWith('./') ? loadModule(specifier.slice(2)) : require(specifier);
+    return specifier.startsWith('.') ? loadModule(path.resolve(path.dirname(file), `${specifier}.ts`)) : require(specifier);
   };
   new Function('require', 'exports', code)(localRequire, exports);
   return exports;
@@ -55,6 +55,7 @@ const FILES_BUCKET = {
 const worker = loadModule('index').default;
 const { getFileExpiry, isFileExpired } = loadModule('expiry');
 const { getActiveStorageUsage } = loadModule('quota');
+const { cleanupStorage } = loadModule('cleanup');
 const env = { DB, FILES_BUCKET, MAX_STORAGE_BYTES: '1024' };
 const tasks = [];
 const ctx = { waitUntil(task) { tasks.push(task); } };
@@ -97,6 +98,9 @@ async function upload(expiry, name) {
   const list = await (await request('/v1/files')).json();
   assert.deepEqual(list.files.map((item) => item.id), [file.id]);
   assert.equal(sqlite.prepare('SELECT status FROM files WHERE id = ?').get(timed.id).status, 'expired');
+  assert.equal(await getActiveStorageUsage(DB), row.size_bytes * 2);
+  await cleanupStorage(DB, FILES_BUCKET);
+  assert.equal(sqlite.prepare('SELECT status FROM files WHERE id = ?').get(timed.id).status, 'purged');
   assert.equal(await getActiveStorageUsage(DB), row.size_bytes);
 
   assert.equal((await request(`/v1/files/${file.id}`)).status, 200);

@@ -1,0 +1,63 @@
+const test=require('node:test');
+const assert=require('node:assert/strict');
+const {components,find,label,elements}=require('./component-fixture.cjs');
+const note=id=>({id,title:id,content:'original '+id,excerpt:'text',updatedAt:'now',updatedTimestamp:1});
+function setup(onUpdate){
+  const f=components(),{NotesView}=f.load('apps/workspace/src/components/NotesView.tsx');
+  const props={notes:[note('A'),note('B')],onNewNote(){},onDeleteNote:async()=>{},onUpdateNote:onUpdate||(async()=>{})};
+  const h=f.mount(NotesView,props);
+  return {...f,h,props};
+}
+function edit(f,value='draft'){find(f.h,n=>n.type==='button'&&label(n)==='Edit').props.onClick();f.h.render();find(f.h,n=>n.type==='textarea').props.onChange({target:{value}});f.h.render();}
+
+test('note switching waits for the current draft to save',async()=>{
+  let resolve,saved;
+  const f=setup(n=>{saved=n;return new Promise(r=>resolve=r);});edit(f);
+  const switching=find(f.h,n=>n.type==='button'&&label(n).startsWith('B')).props.onClick();f.h.render();
+  assert.equal(saved.content,'draft');assert.equal(find(f.h,n=>n.type==='textarea').props.value,'draft');
+  resolve();await switching;f.h.render();assert.equal(elements(f.h.tree).some(n=>n.type==='textarea'),false);
+  f.h.unmount();
+});
+
+test('failed save keeps the note selection, draft and backup',async()=>{
+  const f=setup(async()=>{throw new Error('offline');});edit(f);
+  await find(f.h,n=>n.type==='button'&&label(n).startsWith('B')).props.onClick();f.h.render();
+  assert.equal(find(f.h,n=>n.type==='textarea').props.value,'draft');assert.ok(f.storage.has('rachg.note-draft.A'));
+  assert.match(label(f.h.tree),/offline/);f.h.unmount();
+});
+
+test('overlapping Save commands create only one pending write and retain later edits',async()=>{
+  let calls=0,resolve;const f=setup(()=>{calls++;return new Promise(r=>resolve=r);});edit(f);
+  const save=find(f.h,n=>n.type==='button'&&label(n)==='Save').props.onClick;
+  save();save();assert.equal(calls,1);
+  find(f.h,n=>n.type==='textarea').props.onChange({target:{value:'newer draft'}});f.h.render();
+  resolve();await new Promise(r=>setImmediate(r));f.h.render();
+  assert.equal(JSON.parse(f.storage.get('rachg.note-draft.A')).content,'newer draft');f.h.unmount();
+});
+
+test('leaving Notes disables shortcuts without discarding edits; closing the page warns',()=>{
+  const f=setup();edit(f);f.props.isActive=false;f.h.render();
+  assert.equal(f.events.get('keydown')?.size||0,0);
+  assert.equal(find(f.h,n=>n.type==='textarea').props.value,'draft');
+  let prevented=false;for(const handler of f.events.get('beforeunload'))handler({preventDefault(){prevented=true;}});
+  assert.ok(prevented);f.h.unmount();
+});
+
+test('a remounted note recovers backup without automatically overwriting the server',()=>{
+  let saves=0;const f=setup(async()=>{saves++;});edit(f);f.h.unmount();
+  const {NotesView}=f.load('apps/workspace/src/components/NotesView.tsx');
+  const fresh=f.mount(NotesView,f.props);
+  assert.equal(find(fresh,n=>n.type==='textarea').props.value,'draft');
+  assert.match(label(fresh.tree),/Recovered a draft/);assert.equal([...f.timers.values()].filter(t=>t.ms===900).length,0);assert.equal(saves,0);fresh.unmount();
+});
+
+test('older email detail responses cannot replace the latest selection',async()=>{
+  const f=components(),{WorkspaceApp}=f.load('apps/workspace/src/components/WorkspaceApp.tsx');
+  const h=f.mount(WorkspaceApp,{});
+  find(h,n=>n.type?.name==='Sidebar').props.onTabChange('mail');h.render();
+  const resolve={};f.services.mailService.fetchMailMessage=id=>new Promise(r=>resolve[id]=r);
+  const select=find(h,n=>n.type?.name==='MailView').props.onSelect;
+  const a=select({id:'A'}),b=select({id:'B'});
+  resolve.B({id:'B',text:'latest'});await b;resolve.A({id:'A',text:'stale'});await a;h.render();
+  assert.equal(find(h,n=>n.type?.name==='MailView').props.selectedMessage.id,'B');h.unmount();
+});

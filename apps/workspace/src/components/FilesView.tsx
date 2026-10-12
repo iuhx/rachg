@@ -83,7 +83,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h3 id="add-file-heading" className="type-section-heading text-neutral-900 dark:text-white">Add a file</h3>
-            <p className="type-secondary mt-0.5">Choose how long it should stay available.</p>
+            <p className="type-secondary mt-0.5">Up to 10 MiB per file. Choose how long it should stay available.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="type-label text-neutral-400">Keep for</span>

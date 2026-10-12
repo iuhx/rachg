@@ -125,8 +125,15 @@ Local Dev URL: `http://localhost:8787`
    - The worker enforces an immutable `transfers/` prefix on all R2 read, write, and delete operations.
    - Any attempt to access a key outside `transfers/` throws an immediate rejection.
 2. **4GB Cap Rule**:
-   - Before accepting any payload, D1 calculates the active unexpired storage footprint.
+   - D1 reserves capacity atomically before writing the object. Expired objects and pending uploads remain accounted for until physical cleanup succeeds.
    - Uploads that would push total usage above 4GB (`4,294,967,296` bytes) are rejected with HTTP 413.
+
+3. **Bounded requests and cleanup**:
+   - Uploads are limited to 10 MiB per file. Actual bytes are checked before multipart parsing; unknown Content-Length does not bypass accounting.
+   - The Cron Trigger runs every 15 minutes. A batch handles at most 10 expired/stale uploads and 5 scratchpad cleanup keys to stay within conservative platform request budgets.
+   - `expires_at = 0` remains permanent. Expiry cleanup never selects permanent active files or unrelated bucket prefixes.
+   - Replaced/cleared scratchpad images are queued for deletion after a one-hour grace period and deleted only when no current scratchpad record references them.
+   - Run `pnpm check` before release. Dashboard-only publication also requires configuring the Cron Trigger; generated JavaScript alone does not apply it.
 
 ---
 
