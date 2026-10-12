@@ -373,6 +373,8 @@ export const WorkspaceApp: React.FC = () => {
               sentMessages={sentMessages}
               isLoading={authStatus === 'loading' || (authStatus === 'authenticated' && (isNotesLoading || isFilesLoading || isMailLoading || isSentMailLoading))}
               onNavigate={setActiveTab}
+              canCreate={authStatus === 'authenticated'}
+              onNewItem={openNewItem}
             />
           )}
 

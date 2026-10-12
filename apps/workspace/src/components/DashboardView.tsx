@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowUpRight, CalendarDays, Clock3, FileText, Inbox, Paperclip, Send } from 'lucide-react';
+import { ArrowUpRight, CalendarDays, Clock3, FileText, FolderPlus, Inbox, Paperclip, Send, Upload, Wrench } from 'lucide-react';
 import type { FileItem, NoteItem, NavTab, MailItem, SentMailItem } from '../types';
 
 interface DashboardViewProps {
@@ -8,11 +8,13 @@ interface DashboardViewProps {
   messages: MailItem[];
   sentMessages: SentMailItem[];
   isLoading?: boolean;
+  canCreate: boolean;
+  onNewItem: (type: 'note' | 'project' | 'transfer') => void;
   onNavigate: (tab: NavTab) => void;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
-  transfers, notes, messages, sentMessages, isLoading = false, onNavigate,
+  transfers, notes, messages, sentMessages, isLoading = false, canCreate, onNewItem, onNavigate,
 }) => {
   // No date is generated during static rendering: the greeting stays correct after
   // midnight and on cached deployments without a server/client hydration mismatch.
@@ -22,11 +24,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     const timer = window.setInterval(() => setNow(new Date()), 60_000);
     return () => window.clearInterval(timer);
   }, []);
-  const week = now ? Array.from({ length: 7 }, (_, index) => {
-    const day = new Date(now);
-    day.setDate(now.getDate() - (now.getDay() + 6) % 7 + index);
-    return day;
-  }) : [];
+  const shortcuts = [
+    { label: 'New note', description: 'Capture an idea.', icon: FileText, action: () => onNewItem('note'), disabled: !canCreate },
+    { label: 'New project', description: 'Set a goal. Track progress.', icon: FolderPlus, action: () => onNewItem('project'), disabled: !canCreate },
+    { label: 'Upload a file', description: 'Keep or share a file.', icon: Upload, action: () => onNewItem('transfer'), disabled: !canCreate },
+    { label: 'Open tools', description: 'QR codes & plain text.', icon: Wrench, action: () => onNavigate('tools'), disabled: false },
+  ];
   const recentNotes = [...notes].sort((a, b) => b.updatedTimestamp - a.updatedTimestamp).slice(0, 4);
   const activity = [
     ...notes.map((note) => ({ id: `note-${note.id}`, title: note.title, detail: 'Note updated', timestamp: note.updatedTimestamp, tab: 'notes' as NavTab })),
@@ -42,45 +45,44 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div>
           <p className="type-label uppercase tracking-[0.18em] text-neutral-400 mb-3">Your workspace, at a glance</p>
           <h1 className="type-display text-neutral-900 dark:text-white">A little perspective.</h1>
-          <p className="type-secondary mt-3">Your recent work, the week ahead, and a few things to keep in view.</p>
+          <p className="type-secondary mt-3">Your recent work and a few useful places to start.</p>
         </div>
-        <button onClick={() => onNavigate('notes')} className="workspace-button workspace-button-secondary cursor-pointer">
-          <span>Open notes</span><ArrowUpRight className="w-3.5 h-3.5" />
+        <button onClick={() => onNavigate('projects')} className="workspace-button workspace-button-secondary cursor-pointer">
+          <span>Open projects</span><ArrowUpRight className="w-3.5 h-3.5" />
         </button>
       </header>
 
       <div className="grid gap-5 lg:grid-cols-[0.85fr_1.15fr]">
-        <section className="workspace-card overview-today p-5 sm:p-7" aria-labelledby="today-heading">
+        <section className="workspace-card overview-today p-5 sm:p-7 flex flex-col justify-between" aria-labelledby="today-heading">
           <div className="flex items-center justify-between text-white/60">
             <h2 id="today-heading" className="type-label uppercase tracking-[0.15em]">Today</h2>
             <CalendarDays className="w-4 h-4" />
           </div>
-          <p className="mt-7 font-serif text-5xl sm:text-6xl tracking-tight leading-none">
-            {now ? new Intl.DateTimeFormat(undefined, { weekday: 'long' }).format(now) : 'Welcome back'}
-          </p>
-          <div className="flex items-end justify-between gap-4 mt-5">
-            <p className="text-sm text-white/70">{now ? new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'long', day: 'numeric' }).format(now) : 'A quiet place for your work.'}</p>
-            <span className="font-mono text-xl tabular-nums">{now ? new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' }).format(now) : '—'}</span>
+          <div className="py-8 sm:py-10">
+            <p className="font-serif text-5xl sm:text-6xl tracking-tight leading-none break-words">
+              {now ? new Intl.DateTimeFormat(undefined, { weekday: 'long' }).format(now) : 'Welcome back'}
+            </p>
+            <p className="text-sm text-white/70 mt-4">{now ? new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'long', day: 'numeric' }).format(now) : 'A quiet place for your work.'}</p>
           </div>
-          <p className="mt-5 text-[11px] text-white/45">Local time · {now ? Intl.DateTimeFormat().resolvedOptions().timeZone.replaceAll('_', ' ') : 'Your time zone'}</p>
+          <div className="flex flex-wrap items-end justify-between gap-3 border-t border-white/10 pt-4">
+            <p className="text-[11px] text-white/55">Local time<br /><span className="block mt-1">{now ? Intl.DateTimeFormat().resolvedOptions().timeZone.replaceAll('_', ' ') : 'Your time zone'}</span></p>
+            <span className="font-mono text-2xl tabular-nums">{now ? new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' }).format(now) : '—'}</span>
+          </div>
         </section>
 
-        <section className="workspace-card p-5 sm:p-7" aria-labelledby="week-heading">
-          <div className="flex items-center justify-between gap-3">
-            <h2 id="week-heading" className="type-section-heading text-neutral-900 dark:text-white">This week</h2>
-            <span className="type-caption">{week.length ? `${dateLabel(week[0])} – ${dateLabel(week[6])}` : 'Monday – Sunday'}</span>
+        <section className="workspace-card p-5 sm:p-7" aria-labelledby="quick-start-heading">
+          <div className="mb-5">
+            <h2 id="quick-start-heading" className="type-modal-heading text-neutral-900 dark:text-white">Start something.</h2>
+            <p className="type-secondary mt-1">One small next step, right from here.</p>
           </div>
-          <div className="grid grid-cols-7 gap-1 sm:gap-2 mt-7">
-            {week.map((day) => {
-              const today = day.toDateString() === now?.toDateString();
-              return <div key={day.toISOString()} aria-current={today ? 'date' : undefined} className={`rounded-xl py-3 sm:py-4 text-center ${today ? 'bg-neutral-900 text-white dark:bg-white dark:text-neutral-900' : 'bg-neutral-50 text-neutral-500 dark:bg-white/[0.035] dark:text-neutral-400'}`}>
-                <span className="block text-[10px] sm:text-[11px]">{new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(day)}</span>
-                <span className="block font-medium text-lg sm:text-xl mt-2 tabular-nums">{day.getDate()}</span>
-                <span className={`block mx-auto mt-2 h-1 w-1 rounded-full ${today ? 'bg-current' : 'bg-transparent'}`} />
-              </div>;
-            })}
+          <div className="grid grid-cols-2 gap-3">
+            {shortcuts.map(({ label, description, icon: Icon, action, disabled }) => <button key={label} type="button" onClick={action} disabled={disabled} aria-label={label} className="group workspace-panel min-w-0 p-3 sm:p-4 text-left transition-colors hover:bg-neutral-100 dark:hover:bg-white/10 disabled:opacity-45 disabled:cursor-not-allowed">
+              <span className="flex items-center justify-between gap-2 mb-3 text-neutral-500 dark:text-neutral-400"><Icon className="w-4 h-4" /><ArrowUpRight className="w-3.5 h-3.5 opacity-40 group-hover:opacity-100" /></span>
+              <span className="type-body block font-medium text-neutral-900 dark:text-white">{label}</span>
+              <span className="type-secondary block mt-1">{description}</span>
+            </button>)}
           </div>
-          <p className="type-caption mt-5">One place to return to, whenever you need it.</p>
+          {!canCreate && <p className="type-caption mt-4">Sign in to create and upload. Local tools are ready to use.</p>}
         </section>
       </div>
 
