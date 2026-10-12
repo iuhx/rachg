@@ -4856,11 +4856,16 @@ async function cleanupStorage(db, bucket) {
   const now = Date.now();
   let deleted = 0, failed = 0;
   const files = await db.prepare(`SELECT id, r2_key FROM files
-    WHERE (status IN ('active', 'expired') AND expires_at != 0 AND expires_at <= ?)
+    WHERE status = 'purging'
+       OR (status IN ('active', 'expired') AND expires_at != 0 AND expires_at <= ?)
        OR (status = 'uploading' AND created_at < ?)
-    ORDER BY created_at LIMIT 8`).bind(now, now - 36e5).all();
+    ORDER BY created_at LIMIT 5`).bind(now, now - 36e5).all();
   for (const record of files.results) {
     try {
+      const claim = await db.prepare(`UPDATE files SET status = 'purging' WHERE id = ? AND r2_key = ? AND (
+        status = 'purging' OR (status IN ('active', 'expired') AND expires_at != 0 AND expires_at <= ?)
+        OR (status = 'uploading' AND created_at < ?))`).bind(record.id, record.r2_key, now, now - 36e5).run();
+      if (!claim.meta?.changes) continue;
       await deleteFromR2(bucket, record.r2_key);
       await db.prepare(`UPDATE files SET status = 'purged' WHERE id = ?`).bind(record.id).run();
       deleted++;
@@ -4883,15 +4888,17 @@ async function cleanupStorage(db, bucket) {
       failed++;
     }
   }
-  const mail = await db.prepare("SELECT id, r2_key FROM mail_ingestions WHERE state = 'pending' AND created_at < ? ORDER BY created_at LIMIT 2").bind(now - 36e5).all();
+  const mail = await db.prepare("SELECT id, r2_key FROM mail_ingestions WHERE state = 'purging' OR (state = 'pending' AND created_at < ?) ORDER BY created_at LIMIT 2").bind(now - 36e5).all();
   for (const receipt of mail.results) {
     try {
+      const claim = await db.prepare("UPDATE mail_ingestions SET state = 'purging' WHERE id = ? AND r2_key = ? AND (state = 'purging' OR (state = 'pending' AND created_at < ?))").bind(receipt.id, receipt.r2_key, now - 36e5).run();
+      if (!claim.meta?.changes) continue;
       const saved = await db.prepare("SELECT id FROM mail WHERE id = ?").bind(receipt.id).first();
       if (saved) {
         await db.prepare("UPDATE mail_ingestions SET state = 'stored' WHERE id = ?").bind(receipt.id).run();
       } else {
         await deleteMailObject(bucket, receipt.r2_key);
-        await db.prepare("DELETE FROM mail_ingestions WHERE id = ?").bind(receipt.id).run();
+        await db.prepare("DELETE FROM mail_ingestions WHERE id = ? AND r2_key = ? AND state = 'purging'").bind(receipt.id, receipt.r2_key).run();
         deleted++;
       }
     } catch {
@@ -5188,6 +5195,7 @@ var index_default = {
           if (references) mailHeaders.References = references;
           const resendResponse = await fetch("https://api.resend.com/emails", {
             method: "POST",
+            signal: AbortSignal.timeout(15e3),
             headers: {
               Authorization: `Bearer ${env.RESEND_API_KEY}`,
               "Content-Type": "application/json",
@@ -5202,18 +5210,27 @@ var index_default = {
             })
           });
           const resendBody = await resendResponse.json().catch(() => null);
-          if (!resendResponse.ok || !resendBody?.id) {
+          if (!resendResponse.ok || typeof resendBody?.id !== "string" || !resendBody.id) {
             console.error("Resend send failed:", resendResponse.status, resendBody?.message || "Unknown error");
-            await updateSentMailStatus(env.DB, id, "failed", null);
-            return jsonResponse({ success: false, error: "Unable to send email", code: "MAIL_SEND_FAILED", status: 502 }, 502, origin);
+            const definiteRejection = resendResponse.status >= 400 && resendResponse.status < 500 && resendResponse.status !== 408;
+            await updateSentMailStatus(env.DB, id, definiteRejection ? "failed" : "unknown", null);
+            return jsonResponse({ success: false, error: definiteRejection ? "The mail provider rejected the message." : "Delivery could not be confirmed. Check the provider before sending this message again.", code: definiteRejection ? "MAIL_SEND_FAILED" : "MAIL_STATUS_UNKNOWN", status: 502 }, 502, origin);
           }
-          await updateSentMailStatus(env.DB, id, "sent", resendBody.id);
+          try {
+            await updateSentMailStatus(env.DB, id, "sent", resendBody.id);
+          } catch {
+            const providerId = resendBody.id;
+            console.error("Accepted mail status needs reconciliation", { id, providerId });
+            ctx.waitUntil(updateSentMailStatus(env.DB, id, "sent", providerId).catch(() => {
+              console.error("Accepted mail status remains pending", { id, providerId });
+            }));
+          }
           return jsonResponse({ success: true, id, resendId: resendBody.id }, 200, origin);
         } catch (error) {
-          await updateSentMailStatus(env.DB, id, "failed", null).catch(() => {
+          await updateSentMailStatus(env.DB, id, "unknown", null).catch(() => {
           });
           console.error("Resend send request failed:", error);
-          return jsonResponse({ success: false, error: "Unable to send email", code: "MAIL_SEND_FAILED", status: 502 }, 502, origin);
+          return jsonResponse({ success: false, error: "Delivery could not be confirmed. Check the provider before sending this message again.", code: "MAIL_STATUS_UNKNOWN", status: 502 }, 502, origin);
         }
       }
       if (request.method === "GET" && url.pathname === "/v1/mail/sent") {
@@ -5531,7 +5548,7 @@ var index_default = {
             origin
           );
         }
-        if (record.status === "expired" || record.status === "purged" || isFileExpired(record.expires_at)) {
+        if (record.status === "expired" || record.status === "purged" || record.status === "purging" || isFileExpired(record.expires_at)) {
           return jsonResponse(
             { success: false, error: "File has expired", code: "EXPIRED", status: 410 },
             410,
@@ -5579,7 +5596,7 @@ var index_default = {
             headers: { "Content-Type": "text/plain; charset=utf-8" }
           });
         }
-        if (record.status === "expired" || record.status === "purged" || isFileExpired(record.expires_at)) {
+        if (record.status === "expired" || record.status === "purged" || record.status === "purging" || isFileExpired(record.expires_at)) {
           return new Response("This shared file has expired and is no longer available.", {
             status: 410,
             headers: { "Content-Type": "text/plain; charset=utf-8" }

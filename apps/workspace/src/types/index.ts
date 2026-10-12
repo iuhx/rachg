@@ -87,7 +87,7 @@ export interface SentMailItem {
   subject: string;
   sentAt: number;
   preview: string;
-  status: 'sending' | 'sent' | 'failed';
+  status: 'sending' | 'sent' | 'failed' | 'unknown';
 }
 
 export interface SentMailMessage extends SentMailItem {

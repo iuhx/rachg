@@ -4474,7 +4474,7 @@ var index_default = {
     const receivedAt = Date.now();
     const raw = await readBounded(message.raw, MAX_MAIL_BYTES);
     const id = await mailFingerprint(raw, message.to);
-    const r2Key = `mail/${id}.eml`;
+    const r2Key = `mail/${id}/${crypto.randomUUID()}.eml`;
     await env.DB.prepare(`CREATE TABLE IF NOT EXISTS mail (
       id TEXT PRIMARY KEY,
       from_address TEXT NOT NULL,
@@ -4518,13 +4518,21 @@ var index_default = {
       await env.FILES_BUCKET.put(r2Key, raw, {
         httpMetadata: { contentType: "message/rfc822" }
       });
-      await env.DB.prepare(`INSERT INTO mail (id, from_address, to_address, subject, received_at, preview, r2_key, message_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, from, to, subject, receivedAt, preview, r2Key, messageId).run();
+      const [inserted] = await env.DB.batch([
+        env.DB.prepare(`INSERT INTO mail (id, from_address, to_address, subject, received_at, preview, r2_key, message_id)
+          SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (
+            SELECT 1 FROM mail_ingestions WHERE id = ? AND r2_key = ? AND state = 'pending'
+          )`).bind(id, from, to, subject, receivedAt, preview, r2Key, messageId, id, r2Key),
+        env.DB.prepare("UPDATE mail_ingestions SET state = 'stored' WHERE id = ? AND r2_key = ? AND state = 'pending' AND EXISTS (SELECT 1 FROM mail WHERE id = ? AND r2_key = ?)").bind(id, r2Key, id, r2Key)
+      ]);
+      if (!inserted.meta?.changes) {
+        await env.FILES_BUCKET.delete(r2Key);
+        throw new Error("The delivery reservation was reclaimed before completion");
+      }
     } catch (error) {
       console.error("Mail delivery is pending reconciliation", { id });
       throw error;
     }
-    await env.DB.prepare("UPDATE mail_ingestions SET state = 'stored' WHERE id = ?").bind(id).run();
     ctx.waitUntil(notifyTelegram(env, from, to, subject));
     if (env.FORWARD_TO) {
       try {

@@ -141,7 +141,7 @@ export const MailView: React.FC<MailViewProps> = ({
                   <span className="type-caption block truncate">To: {message.to}</span>
                   <span className="type-body mt-1 block truncate font-medium text-neutral-900 dark:text-white">{message.subject || '(无标题)'}</span>
                   <span className="type-caption mt-1 block line-clamp-2">{message.preview || 'No text preview'}</span>
-                  <span className="type-caption mt-2 flex items-center justify-between gap-2"><span>{formatDate(message.sentAt)}</span><span className={message.status === 'failed' ? 'text-red-500' : message.status === 'sent' ? 'text-emerald-600 dark:text-emerald-400' : ''}>{message.status === 'sent' ? 'Sent' : message.status === 'failed' ? 'Failed' : 'Sending'}</span></span>
+                  <span className="type-caption mt-2 flex items-center justify-between gap-2"><span>{formatDate(message.sentAt)}</span><span className={message.status === 'failed' ? 'text-red-500' : message.status === 'sent' ? 'text-emerald-600 dark:text-emerald-400' : ''}>{message.status === 'sent' ? 'Sent' : message.status === 'failed' ? 'Failed' : message.status === 'unknown' ? 'Unconfirmed' : 'Sending'}</span></span>
                 </button>
               ))}
               {!loading && (folder === 'inbox' ? filteredInbox.length : filteredSent.length) === 0 && <p className="type-secondary p-4">No matching messages.</p>}
@@ -164,7 +164,7 @@ export const MailView: React.FC<MailViewProps> = ({
               !selectedSentMessage ? <div className="workspace-empty min-h-72 h-full"><Send className="w-5 h-5 text-neutral-300 dark:text-neutral-600 mb-3" /><p className="type-secondary">Choose a sent message to read.</p></div>
                 : isSentMessageLoading ? <p className="type-secondary">Loading sent message…</p> : (
                   <article>
-                    <div className="border-b border-neutral-100 pb-4 dark:border-white/[0.06]"><h2 className="type-modal-heading break-words text-neutral-900 dark:text-white">{selectedSentMessage.subject || '(无标题)'}</h2><p className="type-secondary mt-3 break-all">To: {selectedSentMessage.to}</p><p className="type-caption mt-1">{formatDate(selectedSentMessage.sentAt)} · {selectedSentMessage.status === 'sent' ? 'Accepted by Resend' : selectedSentMessage.status === 'failed' ? 'Send failed' : 'Sending'}</p></div>
+                    <div className="border-b border-neutral-100 pb-4 dark:border-white/[0.06]"><h2 className="type-modal-heading break-words text-neutral-900 dark:text-white">{selectedSentMessage.subject || '(无标题)'}</h2><p className="type-secondary mt-3 break-all">To: {selectedSentMessage.to}</p><p className="type-caption mt-1">{formatDate(selectedSentMessage.sentAt)} · {selectedSentMessage.status === 'sent' ? 'Accepted by Resend' : selectedSentMessage.status === 'failed' ? 'Send failed' : selectedSentMessage.status === 'unknown' ? 'Delivery unconfirmed' : 'Sending'}</p></div>
                     <pre className="type-body whitespace-pre-wrap break-words font-sans pt-5 text-neutral-700 dark:text-neutral-300">{selectedSentMessage.text || 'This email has no text content.'}</pre>
                   </article>
                 )

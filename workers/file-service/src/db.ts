@@ -14,7 +14,7 @@ export interface FileRecord {
   download_count: number;
   delete_token: string;
   owner_id?: string | null;
-  status: 'active' | 'expired' | 'deleted' | 'uploading' | 'purged';
+  status: 'active' | 'expired' | 'deleted' | 'uploading' | 'purged' | 'purging';
 }
 
 export interface NoteRecord {
@@ -52,7 +52,7 @@ export interface SentMailRecord {
   text: string;
   sent_at: number;
   preview: string;
-  status: 'sending' | 'sent' | 'failed';
+  status: 'sending' | 'sent' | 'failed' | 'unknown';
   in_reply_to: string | null;
   references_header: string | null;
 }

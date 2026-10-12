@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Plus, FolderDot, Sparkles } from 'lucide-react';
+import React from 'react';
+import { Plus, FolderDot } from 'lucide-react';
 import type { Project } from '../types';
 
 interface ProjectsViewProps {
@@ -20,10 +20,11 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             Projects
           </h2>
           <p className="type-secondary mt-1">
-            Private projects, systems, and working notes.
+            Project saving is not available yet. Use Notes to keep your work.
           </p>
         </div>
         <button
+          disabled
           onClick={onNewProject}
           className="workspace-button workspace-button-primary cursor-pointer shadow-xs"
         >
@@ -38,12 +39,13 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             <FolderDot className="w-6 h-6 stroke-[1.5]" />
           </div>
           <h3 className="type-section-heading text-neutral-900 dark:text-white">
-            No projects yet
+            Projects are coming soon
           </h3>
           <p className="type-secondary mt-1 max-w-sm mx-auto leading-relaxed">
-            Keep private projects and working notes in one place.
+            New projects are paused until they can be saved reliably.
           </p>
           <button
+            disabled
             onClick={onNewProject}
             className="workspace-button workspace-button-secondary mt-6 cursor-pointer"
           >

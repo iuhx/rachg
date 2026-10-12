@@ -9,11 +9,12 @@ const ts = workerRequire('typescript');
 function fixture() {
   const sqlite = new DatabaseSync(':memory:');
   const objects = new Map(), queries = [], pending = [], cache = new Map();
-  const hooks = { failSql: null, failDelete: false, failPut: false };
+  const hooks = { failSql: null, beforeSql: null, afterPut: null, failDelete: false, failPut: false };
   const DB = { prepare(sql) {
     let args = [];
     const execute = async (kind) => {
       queries.push(sql);
+      await hooks.beforeSql?.(sql, args);
       if (hooks.failSql?.(sql, args)) throw new Error('fixture database failure');
       const stmt = sqlite.prepare(sql);
       if (kind === 'run') return { meta: { changes: stmt.run(...args).changes } };
@@ -30,7 +31,9 @@ function fixture() {
   const bucket = {
     async put(key, body, options) {
       if (hooks.failPut) throw new Error('fixture storage failure');
-      const bytes = await new Response(body).arrayBuffer(); objects.set(key, { bytes, options }); return { size: bytes.byteLength };
+      const bytes = await new Response(body).arrayBuffer(); objects.set(key, { bytes, options });
+      await hooks.afterPut?.(key);
+      return { size: bytes.byteLength };
     },
     async get(key, options) {
       const stored = objects.get(key);
@@ -61,7 +64,7 @@ function fixture() {
     const form = new FormData(); form.set('file', new File(['x'.repeat(size)], 'fixture.txt', { type: 'text/plain' })); form.set('expiry', expiry);
     return request('/v1/files/upload', { method: 'POST', body: form });
   };
-  return { sqlite, objects, queries, hooks, DB, bucket, env, ctx, worker, request, upload, load,
+  return { sqlite, objects, queries, hooks, DB, bucket, env, ctx, worker, request, upload, load, pending,
     async close() { await Promise.allSettled(pending); sqlite.close(); } };
 }
 module.exports = { fixture };

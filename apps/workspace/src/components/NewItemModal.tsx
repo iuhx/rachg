@@ -1,12 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
-import type { Project, NoteItem } from '../types';
+import type { NoteItem } from '../types';
 
 interface NewItemModalProps {
   isOpen: boolean;
   type: 'project' | 'note' | 'transfer' | null;
   onClose: () => void;
-  onCreateProject: (p: Partial<Project>) => void;
   onCreateNote: (n: Partial<NoteItem>) => Promise<void>;
   onCreateTransfer: (file: File) => Promise<void>;
 }
@@ -15,15 +14,9 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
   isOpen,
   type,
   onClose,
-  onCreateProject,
   onCreateNote,
   onCreateTransfer,
 }) => {
-  // Project form state
-  const [projName, setProjName] = useState('');
-  const [projTagline, setProjTagline] = useState('');
-  const [projDesc, setProjDesc] = useState('');
-
   // Note form state
   const [noteTitle, setNoteTitle] = useState('');
   const [noteContent, setNoteContent] = useState('');
@@ -35,9 +28,6 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
 
   useEffect(() => {
     if (!isOpen) return;
-    setProjName('');
-    setProjTagline('');
-    setProjDesc('');
     setNoteTitle('');
     setNoteContent('');
     setSelectedFile(null);
@@ -48,18 +38,11 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isSubmitting) return;
+    if (isSubmitting || type === 'project') return;
     setIsSubmitting(true);
     setSubmitError(null);
     try {
-    if (type === 'project' && projName) {
-      onCreateProject({
-        name: projName,
-        tagline: projTagline || '',
-        description: projDesc || '',
-        status: 'Planning',
-      });
-    } else if (type === 'note' && noteTitle) {
+    if (type === 'note' && noteTitle) {
       await onCreateNote({ title: noteTitle, content: noteContent || '' });
     } else if (type === 'transfer' && selectedFile) {
       await onCreateTransfer(selectedFile);
@@ -96,7 +79,9 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
           {type === 'transfer' ? 'Upload to R2' : `New ${type}`}
         </h3>
         <p className="type-secondary mb-5">
-          {type === 'transfer'
+          {type === 'project'
+            ? 'Project saving is not available yet. Use Notes to keep your work.'
+            : type === 'transfer'
             ? 'Select a file to stream directly into Cloudflare R2.'
             : 'Add a new record to your workspace.'}
         </p>
@@ -104,48 +89,6 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
         <form onSubmit={handleSubmit} className="space-y-4">
           {submitError && <p role="alert" className="type-secondary text-red-600 dark:text-red-300">{submitError}</p>}
           <fieldset disabled={isSubmitting} className="space-y-4">
-          {type === 'project' && (
-            <>
-              <div>
-                <label className="type-label block text-neutral-700 dark:text-neutral-300 mb-1">
-                  Project Name
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={projName}
-                  onChange={(e) => setProjName(e.target.value)}
-                  placeholder="Project name"
-                  className="workspace-input"
-                />
-              </div>
-              <div>
-                <label className="type-label block text-neutral-700 dark:text-neutral-300 mb-1">
-                  Tagline
-                </label>
-                <input
-                  type="text"
-                  value={projTagline}
-                  onChange={(e) => setProjTagline(e.target.value)}
-                  placeholder="Short one-line description"
-                  className="workspace-input"
-                />
-              </div>
-              <div>
-                <label className="type-label block text-neutral-700 dark:text-neutral-300 mb-1">
-                  Description
-                </label>
-                <textarea
-                  rows={3}
-                  value={projDesc}
-                  onChange={(e) => setProjDesc(e.target.value)}
-                  placeholder="Architecture or implementation notes..."
-                  className="workspace-input min-h-[6rem]"
-                />
-              </div>
-            </>
-          )}
-
           {type === 'note' && (
             <>
               <div>
@@ -201,7 +144,7 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || type === 'project'}
               className="workspace-button workspace-button-primary cursor-pointer"
             >
               Confirm

@@ -265,6 +265,7 @@ export default {
           if (references) mailHeaders.References = references;
           const resendResponse = await fetch('https://api.resend.com/emails', {
             method: 'POST',
+            signal: AbortSignal.timeout(15_000),
             headers: {
               Authorization: `Bearer ${env.RESEND_API_KEY}`,
               'Content-Type': 'application/json',
@@ -279,17 +280,28 @@ export default {
             }),
           });
           const resendBody = await resendResponse.json().catch(() => null) as { id?: string; message?: string } | null;
-          if (!resendResponse.ok || !resendBody?.id) {
+          if (!resendResponse.ok || typeof resendBody?.id !== 'string' || !resendBody.id) {
             console.error('Resend send failed:', resendResponse.status, resendBody?.message || 'Unknown error');
-            await updateSentMailStatus(env.DB, id, 'failed', null);
-            return jsonResponse<ApiErrorResponse>({ success: false, error: 'Unable to send email', code: 'MAIL_SEND_FAILED', status: 502 }, 502, origin);
+            const definiteRejection = resendResponse.status >= 400 && resendResponse.status < 500 && resendResponse.status !== 408;
+            await updateSentMailStatus(env.DB, id, definiteRejection ? 'failed' : 'unknown', null);
+            return jsonResponse<ApiErrorResponse>({ success: false, error: definiteRejection ? 'The mail provider rejected the message.' : 'Delivery could not be confirmed. Check the provider before sending this message again.', code: definiteRejection ? 'MAIL_SEND_FAILED' : 'MAIL_STATUS_UNKNOWN', status: 502 }, 502, origin);
           }
-          await updateSentMailStatus(env.DB, id, 'sent', resendBody.id);
+          try {
+            await updateSentMailStatus(env.DB, id, 'sent', resendBody.id);
+          } catch {
+            // An accepted message must not be relabelled as failed merely because
+            // the database is unavailable. Only retry the status write, never send.
+            const providerId = resendBody.id;
+            console.error('Accepted mail status needs reconciliation', { id, providerId });
+            ctx.waitUntil(updateSentMailStatus(env.DB, id, 'sent', providerId).catch(() => {
+              console.error('Accepted mail status remains pending', { id, providerId });
+            }));
+          }
           return jsonResponse<MailSendResponse>({ success: true, id, resendId: resendBody.id }, 200, origin);
         } catch (error) {
-          await updateSentMailStatus(env.DB, id, 'failed', null).catch(() => {});
+          await updateSentMailStatus(env.DB, id, 'unknown', null).catch(() => {});
           console.error('Resend send request failed:', error);
-          return jsonResponse<ApiErrorResponse>({ success: false, error: 'Unable to send email', code: 'MAIL_SEND_FAILED', status: 502 }, 502, origin);
+          return jsonResponse<ApiErrorResponse>({ success: false, error: 'Delivery could not be confirmed. Check the provider before sending this message again.', code: 'MAIL_STATUS_UNKNOWN', status: 502 }, 502, origin);
         }
       }
 
@@ -655,7 +667,7 @@ export default {
           );
         }
 
-        if (record.status === 'expired' || record.status === 'purged' || isFileExpired(record.expires_at)) {
+        if (record.status === 'expired' || record.status === 'purged' || record.status === 'purging' || isFileExpired(record.expires_at)) {
           return jsonResponse<ApiErrorResponse>(
             { success: false, error: 'File has expired', code: 'EXPIRED', status: 410 },
             410,
@@ -722,7 +734,7 @@ export default {
           });
         }
 
-        if (record.status === 'expired' || record.status === 'purged' || isFileExpired(record.expires_at)) {
+        if (record.status === 'expired' || record.status === 'purged' || record.status === 'purging' || isFileExpired(record.expires_at)) {
           return new Response('This shared file has expired and is no longer available.', {
             status: 410,
             headers: { 'Content-Type': 'text/plain; charset=utf-8' },

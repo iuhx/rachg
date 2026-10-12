@@ -181,20 +181,6 @@ export const WorkspaceApp: React.FC = () => {
       .finally(() => setIsNotesLoading(false));
   }, [authStatus]);
 
-  const handleCreateProject = (p: Partial<Project>) => {
-    const newProject: Project = {
-      id: `proj-${Date.now()}`,
-      name: p.name || 'Untitled Project',
-      tagline: p.tagline || '',
-      description: p.description || '',
-      status: p.status || 'Planning',
-      updatedAt: 'Just now',
-      updatedTimestamp: Date.now(),
-    };
-    setProjects([newProject, ...projects]);
-    showToast(`Project "${newProject.name}" added.`);
-  };
-
   const handleCreateNote = async (n: Partial<NoteItem>) => {
     try {
       const newNote = await createNote(n.title?.trim() || 'Untitled Note', n.content || '');
@@ -372,7 +358,6 @@ export const WorkspaceApp: React.FC = () => {
         isOpen={newModalType !== null}
         type={newModalType}
         onClose={() => setNewModalType(null)}
-        onCreateProject={handleCreateProject}
         onCreateNote={handleCreateNote}
         onCreateTransfer={handleUploadFile}
       />
