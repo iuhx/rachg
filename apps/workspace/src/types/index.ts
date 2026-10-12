@@ -66,12 +66,20 @@ export interface MailResponse {
   message: MailMessage;
 }
 
+export interface MailQuote {
+  from: string;
+  subject: string;
+  receivedAt: number;
+  text: string;
+}
+
 export interface MailSendRequest {
   to: string;
   subject: string;
   text: string;
   inReplyTo?: string;
   references?: string;
+  quote?: MailQuote;
 }
 
 export interface MailSendResponse {

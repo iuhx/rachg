@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Inbox, Mail as MailIcon, RefreshCw, Reply, Send, Trash2 } from 'lucide-react';
-import type { MailItem, MailMessage, MailSendRequest, SentMailItem, SentMailMessage } from '../types';
+import type { MailItem, MailMessage, MailQuote, MailSendRequest, SentMailItem, SentMailMessage } from '../types';
 import { ConfirmDialog } from './ConfirmDialog';
+import { replyHeaders as buildReplyHeaders, replySubject } from '../utils/mailReply';
 
 type MailFolder = 'inbox' | 'sent';
 
@@ -43,12 +44,15 @@ export const MailView: React.FC<MailViewProps> = ({
   const [body, setBody] = useState('');
   const [replyHeaders, setReplyHeaders] = useState<Pick<MailSendRequest, 'inReplyTo' | 'references'>>({});
   const [isReply, setIsReply] = useState(false);
+  const [replyContext, setReplyContext] = useState<MailQuote | null>(null);
+  const [includeOriginal, setIncludeOriginal] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const sendingRef = useRef(false);
   const deletingRef = useRef(false);
   const [discardOpen, setDiscardOpen] = useState(false);
   const hasDraft = Boolean(recipient || subject || body);
+  const quoteTooLarge = useMemo(() => Boolean(replyContext && (replyContext.text.length > 200_000 || new TextEncoder().encode(replyContext.text).byteLength > 200_000)), [replyContext]);
 
   useEffect(() => {
     const beforeUnload = (event: BeforeUnloadEvent) => {
@@ -69,6 +73,8 @@ export const MailView: React.FC<MailViewProps> = ({
     setBody('');
     setReplyHeaders({});
     setIsReply(false);
+    setReplyContext(null);
+    setIncludeOriginal(false);
     setSendError(null);
   };
 
@@ -84,16 +90,12 @@ export const MailView: React.FC<MailViewProps> = ({
       setIsComposeOpen(true);
       return;
     }
-    const replySubject = /^re\s*:/i.test(selectedMessage.subject) ? selectedMessage.subject : `Re: ${selectedMessage.subject}`;
-    const quoted = selectedMessage.text.split('\n').map((line) => `> ${line}`).join('\n');
-    const references = [selectedMessage.references, selectedMessage.messageId].filter(Boolean).join(' ');
     setRecipient(selectedMessage.replyTo || selectedMessage.from);
-    setSubject(replySubject);
-    setBody(`\n\nOn ${formatDate(selectedMessage.receivedAt)}, ${selectedMessage.from} wrote:\n${quoted}`);
-    setReplyHeaders({
-      inReplyTo: selectedMessage.messageId || undefined,
-      references: references || undefined,
-    });
+    setSubject(replySubject(selectedMessage.subject));
+    setBody('');
+    setReplyHeaders(buildReplyHeaders(selectedMessage));
+    setReplyContext({ from: selectedMessage.from, subject: selectedMessage.subject, receivedAt: selectedMessage.receivedAt, text: selectedMessage.text });
+    setIncludeOriginal(false);
     setIsReply(true);
     setSendError(null);
     setIsComposeOpen(true);
@@ -119,7 +121,8 @@ export const MailView: React.FC<MailViewProps> = ({
     setSendError(null);
     setIsSending(true);
     try {
-      await onSend({ to: recipient, subject, text: body, ...replyHeaders });
+      await onSend({ to: recipient, subject, text: body, ...replyHeaders,
+        ...(includeOriginal && replyContext ? { quote: replyContext } : {}) });
       clearDraft();
       setIsComposeOpen(false);
       setFolder('sent');
@@ -215,7 +218,19 @@ export const MailView: React.FC<MailViewProps> = ({
             <fieldset disabled={isSending} className="space-y-3 mt-5">
               <input required type="email" value={recipient} onChange={(event) => setRecipient(event.target.value)} placeholder="To" aria-label="Recipient" className="workspace-input" />
               <input required value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Subject" aria-label="Subject" className="workspace-input" />
-              <textarea required value={body} onChange={(event) => setBody(event.target.value)} placeholder="Write a message…" aria-label="Message" rows={10} className="workspace-input resize-y" />
+              <label htmlFor="mail-message-body" className="type-label block">{isReply ? 'Your reply' : 'Your message'}</label>
+              <textarea id="mail-message-body" required value={body} onChange={(event) => setBody(event.target.value)} placeholder={isReply ? 'Write only your new reply here…' : 'Write a message…'} aria-label="Message" rows={10} className="workspace-input resize-y" />
+              {replyContext && <div className="workspace-panel p-3 space-y-3">
+                <p className="type-secondary">Your reply is sent on its own by default. The original stays here for reference.</p>
+                <label className="type-secondary flex items-center gap-2"><input type="checkbox" checked={includeOriginal} disabled={quoteTooLarge} onChange={event => setIncludeOriginal(event.target.checked)} />Include original message in this reply</label>
+                {includeOriginal && <p className="type-caption">It will appear below your reply in a separate gray quote block.</p>}
+                {quoteTooLarge && <p className="type-caption">This original is too large to attach as a quote. Your new reply can still be sent.</p>}
+                <details><summary className="type-caption cursor-pointer">View original · {replyContext.from} · {formatDate(replyContext.receivedAt)}</summary>
+                  <p className="type-caption mt-2 break-words">{replyContext.subject}</p>
+                  <blockquote className="mt-2 border-l-2 border-neutral-300 dark:border-white/20 pl-3"><pre className="text-xs whitespace-pre-wrap break-words font-sans max-h-40 overflow-auto text-neutral-500 dark:text-neutral-400">{replyContext.text}</pre></blockquote>
+                </details>
+              </div>}
+              <p className="type-caption">Sent with clean email formatting and a plain-text fallback.</p>
             </fieldset>
             {sendError && <p className="type-secondary mt-3 text-red-600 dark:text-red-300" role="alert">{sendError}</p>}
             <div className="flex justify-between gap-3 mt-5"><button type="button" disabled={isSending || !hasDraft} className="workspace-button workspace-button-secondary" onClick={() => setDiscardOpen(true)}>Discard draft</button><button type="submit" disabled={isSending} className="workspace-button workspace-button-primary cursor-pointer disabled:opacity-50">{isSending ? 'Sending…' : isReply ? 'Send reply' : 'Send email'}</button></div>

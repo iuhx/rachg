@@ -14,6 +14,7 @@ import type {
   MailResponse,
   MailDeleteResponse,
   MailSendRequest,
+  MailQuote,
   MailSendResponse,
   SentMailItem,
   SentMailMessage,
@@ -57,6 +58,7 @@ import { getFileExpiry, isFileExpired } from './expiry';
 import { cleanupStorage } from './cleanup';
 import { parseByteRange } from './download';
 import { textShareResponse } from './text-share';
+import { formatOutgoingMail } from './mail-format';
 import { boundedForm, boundedJson, InputError, mailPlainText, MAX_FILE_BYTES, MAX_MAIL_BYTES, MAX_TEXT_BYTES, readBounded, utf8Size } from '../../common/content';
 
 export interface Env {
@@ -150,7 +152,17 @@ async function parseMailSendPayload(request: Request): Promise<MailSendRequest |
   const references = typeof candidate.references === 'string' ? candidate.references.trim() : undefined;
   if ((inReplyTo && (inReplyTo.length > 998 || /[\r\n]/.test(inReplyTo))) ||
       (references && (references.length > 4000 || /[\r\n]/.test(references)))) return null;
-  return { to, subject, text, inReplyTo, references };
+  let quote: MailQuote | undefined;
+  if (candidate.quote !== undefined) {
+    if (!candidate.quote || typeof candidate.quote !== 'object' || Array.isArray(candidate.quote)) return null;
+    const value = candidate.quote as Record<string, unknown>;
+    if (typeof value.from !== 'string' || !value.from.trim() || value.from.length > 320 || /[\r\n]/.test(value.from) ||
+        typeof value.subject !== 'string' || value.subject.length > 200 || /[\r\n]/.test(value.subject) ||
+        typeof value.text !== 'string' || utf8Size(value.text) > 200_000 ||
+        typeof value.receivedAt !== 'number' || !Number.isSafeInteger(value.receivedAt) || value.receivedAt < 0 || value.receivedAt > 8_640_000_000_000_000) return null;
+    quote = { from: value.from.trim(), subject: value.subject, receivedAt: value.receivedAt, text: value.text };
+  }
+  return { to, subject, text, inReplyTo, references, quote };
 }
 
 interface NotePayload {
@@ -259,6 +271,10 @@ export default {
         if (!env.RESEND_API_KEY) {
           return jsonResponse<ApiErrorResponse>({ success: false, error: 'Mail sending is not configured', code: 'MAIL_NOT_CONFIGURED', status: 503 }, 503, origin);
         }
+        const formatted = formatOutgoingMail(payload.text, payload.quote);
+        if (utf8Size(formatted.text) > MAX_TEXT_BYTES) {
+          return jsonResponse<ApiErrorResponse>({ success: false, error: 'The reply and quoted message are too large. Remove the quote or shorten your message.', code: 'INVALID_MAIL', status: 400 }, 400, origin);
+        }
         const id = generateCode(24);
         const sentAt = Date.now();
         await insertSentMailRecord(env.DB, {
@@ -266,7 +282,7 @@ export default {
           resend_id: null,
           to_address: payload.to,
           subject: payload.subject,
-          text: payload.text,
+          text: formatted.text,
           sent_at: sentAt,
           preview: payload.text.replace(/\s+/g, ' ').trim().slice(0, 240),
           status: 'sending',
@@ -290,7 +306,8 @@ export default {
               from: env.RESEND_FROM_EMAIL || 'me@rachg.com',
               to: [payload.to],
               subject: payload.subject,
-              text: payload.text,
+              text: formatted.text,
+              html: formatted.html,
               ...(Object.keys(mailHeaders).length ? { headers: mailHeaders } : {}),
             }),
           });

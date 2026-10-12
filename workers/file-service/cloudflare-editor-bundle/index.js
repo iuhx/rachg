@@ -782,9 +782,9 @@ var MimeNode = class {
     const parts = [];
     let lineStart = 0;
     let lineLength = 0;
-    const lines = str.split(/\r?\n/);
-    for (let i = 0; i < lines.length; i++) {
-      let line = lines[i];
+    const lines2 = str.split(/\r?\n/);
+    for (let i = 0; i < lines2.length; i++) {
+      let line = lines2[i];
       if (line.charAt(0) === " ") {
         line = line.slice(1);
       }
@@ -4932,6 +4932,30 @@ function textShareResponse(title, text, id) {
   });
 }
 
+// workers/file-service/src/mail-format.ts
+var entities = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+var escapeHtml3 = (value) => value.replace(/[&<>"']/g, (character) => entities[character]);
+var lines = (value) => escapeHtml3(value.replace(/\r\n?/g, "\n")).replace(/\n/g, "<br>");
+function formatOutgoingMail(text, quote) {
+  let plain = text;
+  let history = "";
+  if (quote) {
+    const received = new Date(quote.receivedAt).toUTCString();
+    const quotedText = quote.text.replace(/\r\n?/g, "\n").split("\n").map((line) => `> ${line}`).join("\n");
+    plain += `
+
+----- Original message -----
+From: ${quote.from}
+Received: ${received}
+Subject: ${quote.subject}
+
+${quotedText}`;
+    history = `<div style="margin-top:28px;padding-top:18px;border-top:1px solid #e2e5e9"><div style="font-size:12px;color:#70757a;margin-bottom:10px">Original message</div><blockquote type="cite" style="margin:0;padding:14px 18px;border-left:3px solid #c5cbd3;background:#f6f7f9;color:#5f6368"><div style="font-size:12px;line-height:1.6;margin-bottom:12px"><strong>From:</strong> ${escapeHtml3(quote.from)}<br><strong>Received:</strong> ${escapeHtml3(received)}<br><strong>Subject:</strong> ${escapeHtml3(quote.subject)}</div><div style="font-size:13px;line-height:1.7;white-space:pre-wrap;overflow-wrap:anywhere">${lines(quote.text)}</div></blockquote></div>`;
+  }
+  const html = `<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0;padding:24px 16px;background:#ffffff"><table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width:680px;margin:0 auto;font-family:Arial,Helvetica,sans-serif;color:#202124"><tr><td><div style="font-size:15px;line-height:1.75;white-space:pre-wrap;overflow-wrap:anywhere">${lines(text)}</div>${history}</td></tr></table></body></html>`;
+  return { text: plain, html };
+}
+
 // workers/common/content.ts
 var MAX_FILE_BYTES = 10 * 1024 * 1024;
 var MAX_MAIL_BYTES = 5 * 1024 * 1024;
@@ -5032,8 +5056,8 @@ function mailPlainText(html, maxOutput = 256 * 1024) {
       position = endTag + 1;
     } else append(["br", "p", "div", "li", "tr", "h1", "h2", "h3"].includes(name || "") ? "\n" : " ");
   }
-  const entities = { nbsp: " ", amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", "#39": "'" };
-  return chunks.join("").replace(/&(nbsp|amp|lt|gt|quot|apos|#39);/gi, (_, key) => entities[key.toLowerCase()]).trim();
+  const entities2 = { nbsp: " ", amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", "#39": "'" };
+  return chunks.join("").replace(/&(nbsp|amp|lt|gt|quot|apos|#39);/gi, (_, key) => entities2[key.toLowerCase()]).trim();
 }
 
 // workers/file-service/src/index.ts
@@ -5107,7 +5131,14 @@ async function parseMailSendPayload(request) {
   const inReplyTo = typeof candidate.inReplyTo === "string" ? candidate.inReplyTo.trim() : void 0;
   const references = typeof candidate.references === "string" ? candidate.references.trim() : void 0;
   if (inReplyTo && (inReplyTo.length > 998 || /[\r\n]/.test(inReplyTo)) || references && (references.length > 4e3 || /[\r\n]/.test(references))) return null;
-  return { to, subject, text, inReplyTo, references };
+  let quote;
+  if (candidate.quote !== void 0) {
+    if (!candidate.quote || typeof candidate.quote !== "object" || Array.isArray(candidate.quote)) return null;
+    const value = candidate.quote;
+    if (typeof value.from !== "string" || !value.from.trim() || value.from.length > 320 || /[\r\n]/.test(value.from) || typeof value.subject !== "string" || value.subject.length > 200 || /[\r\n]/.test(value.subject) || typeof value.text !== "string" || utf8Size(value.text) > 2e5 || typeof value.receivedAt !== "number" || !Number.isSafeInteger(value.receivedAt) || value.receivedAt < 0 || value.receivedAt > 864e13) return null;
+    quote = { from: value.from.trim(), subject: value.subject, receivedAt: value.receivedAt, text: value.text };
+  }
+  return { to, subject, text, inReplyTo, references, quote };
 }
 async function parseNotePayload(request) {
   const body = await boundedJson(request);
@@ -5195,6 +5226,10 @@ var index_default = {
         if (!env.RESEND_API_KEY) {
           return jsonResponse({ success: false, error: "Mail sending is not configured", code: "MAIL_NOT_CONFIGURED", status: 503 }, 503, origin);
         }
+        const formatted = formatOutgoingMail(payload.text, payload.quote);
+        if (utf8Size(formatted.text) > MAX_TEXT_BYTES) {
+          return jsonResponse({ success: false, error: "The reply and quoted message are too large. Remove the quote or shorten your message.", code: "INVALID_MAIL", status: 400 }, 400, origin);
+        }
         const id = generateCode(24);
         const sentAt = Date.now();
         await insertSentMailRecord(env.DB, {
@@ -5202,7 +5237,7 @@ var index_default = {
           resend_id: null,
           to_address: payload.to,
           subject: payload.subject,
-          text: payload.text,
+          text: formatted.text,
           sent_at: sentAt,
           preview: payload.text.replace(/\s+/g, " ").trim().slice(0, 240),
           status: "sending",
@@ -5226,7 +5261,8 @@ var index_default = {
               from: env.RESEND_FROM_EMAIL || "me@rachg.com",
               to: [payload.to],
               subject: payload.subject,
-              text: payload.text,
+              text: formatted.text,
+              html: formatted.html,
               ...Object.keys(mailHeaders).length ? { headers: mailHeaders } : {}
             })
           });

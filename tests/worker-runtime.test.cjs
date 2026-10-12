@@ -28,17 +28,23 @@ test('release Worker runs reliably in workerd with actual D1 and R2 bindings', {
   const jwks = {
     keys: [{ ...publicKey.export({ format: 'jwk' }), kid: 'test-key', alg: 'RS256', use: 'sig' }],
   };
+  let outgoingMail;
   const mf = new Miniflare(convertV4MiniflareOptions({
     rootPath: root, host: '127.0.0.1', port: 0, cf: false,
     modules: true, scriptPath: path.join(root, 'workers/file-service/cloudflare-editor-bundle/index.js'),
     compatibilityDate: '2026-09-01', compatibilityFlags: ['nodejs_compat'],
     d1Databases: ['DB'], r2Buckets: ['FILES_BUCKET'], d1Persist: false, r2Persist: false,
     outboundService: async request => {
+      if (request.url === 'https://api.resend.com/emails') {
+        assert.equal(request.method, 'POST');
+        outgoingMail = await request.json();
+        return MockResponse.json({ id: 'local-formatted-mail' });
+      }
       assert.equal(request.url, `${issuer}/cdn-cgi/access/certs`, 'Unexpected outbound network request');
       return MockResponse.json(jwks);
     },
     bindings: { ACCESS_TEAM_DOMAIN: issuer, ACCESS_AUDIENCE: 'local-workspace',
-      ACCESS_ADMIN_EMAIL: 'admin@example.invalid', MAX_STORAGE_BYTES: '1000' },
+      ACCESS_ADMIN_EMAIL: 'admin@example.invalid', MAX_STORAGE_BYTES: '1000', RESEND_API_KEY: 'local-fixture-only' },
   }));
   t.after(() => mf.dispose());
   await mf.ready;
@@ -160,5 +166,19 @@ test('release Worker runs reliably in workerd with actual D1 and R2 bindings', {
     const deleted = await request(`/v1/files/${file.id}`, { method: 'DELETE' });
     assert.equal(deleted.status, 200); await deleted.text();
     const revoked = await request(`/t/${file.id}`); assert.equal(revoked.status, 404); await revoked.text();
+  });
+
+  await t.test('formatted replies keep new text first, escape quotations and preserve thread headers', async () => {
+    const response = await request('/v1/mail/send', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to: 'recipient@example.invalid', subject: 'Re: Local check', text: 'New reply\n\nConfirmed.',
+        inReplyTo: '<parent@example.invalid>', references: '<root@example.invalid> <parent@example.invalid>',
+        quote: { from: 'sender@example.invalid', subject: 'Local check', receivedAt: 1791849600000, text: '<script>original</script>' } }) });
+    assert.equal(response.status, 200);
+    const body = await response.json(); assert.equal(body.resendId, 'local-formatted-mail');
+    assert.ok(outgoingMail.text.startsWith('New reply\n\nConfirmed.\n\n----- Original message -----'));
+    assert.match(outgoingMail.html, /<blockquote type="cite"/);
+    assert.ok(outgoingMail.html.includes('&lt;script&gt;original&lt;/script&gt;'));
+    assert.equal(outgoingMail.headers['In-Reply-To'], '<parent@example.invalid>');
+    assert.equal((await db.prepare('SELECT text FROM sent_mail WHERE id=?').bind(body.id).first()).text, outgoingMail.text);
   });
 });
