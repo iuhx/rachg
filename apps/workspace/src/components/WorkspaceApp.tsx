@@ -46,6 +46,7 @@ export const WorkspaceApp: React.FC = () => {
   const [transfers, setTransfers] = useState<FileItem[]>(INITIAL_TRANSFERS);
   const [isFilesLoading, setIsFilesLoading] = useState(true);
   const [notes, setNotes] = useState<NoteItem[]>([]);
+  const deletedNotes = useRef(new Set<string>());
   const [isNotesLoading, setIsNotesLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const pendingUploads = useRef(0);
@@ -188,7 +189,13 @@ export const WorkspaceApp: React.FC = () => {
     setSelectedMail({ ...item, text: '' });
     setIsMailMessageLoading(true);
     try { const message = await fetchMailMessage(item.id); if (selection === mailSelection.current) setSelectedMail(message); }
-    catch (error: any) { if (selection === mailSelection.current) showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to continue.' : (error.message || 'Unable to open email.')); }
+    catch (error: any) {
+      if (selection === mailSelection.current) {
+        selectedInboxId.current = null;
+        setSelectedMail(null);
+        showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to continue.' : (error.message || 'Unable to open email.'));
+      }
+    }
     finally { if (selection === mailSelection.current) setIsMailMessageLoading(false); }
   };
 
@@ -198,7 +205,13 @@ export const WorkspaceApp: React.FC = () => {
     setSelectedSentMail({ ...item, text: '' });
     setIsSentMailMessageLoading(true);
     try { const message = await fetchSentMailMessage(item.id); if (selection === sentSelection.current) setSelectedSentMail(message); }
-    catch (error: any) { if (selection === sentSelection.current) showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to continue.' : (error.message || 'Unable to open sent email.')); }
+    catch (error: any) {
+      if (selection === sentSelection.current) {
+        selectedSentId.current = null;
+        setSelectedSentMail(null);
+        showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to continue.' : (error.message || 'Unable to open sent email.'));
+      }
+    }
     finally { if (selection === sentSelection.current) setIsSentMailMessageLoading(false); }
   };
 
@@ -219,7 +232,9 @@ export const WorkspaceApp: React.FC = () => {
   const handleSendMail = async (payload: MailSendRequest) => {
     try {
       await sendMail(payload);
-      await loadSentMail();
+      // Provider acceptance completes the send. A separate list read must not
+      // hold the composer open or make an accepted message appear unsent.
+      void loadSentMail();
       showToast('Email sent.');
     } catch (error: any) {
       showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to send email.' : (error.message || 'Unable to send email.'));
@@ -249,7 +264,11 @@ export const WorkspaceApp: React.FC = () => {
     if (authStatus !== 'authenticated') return;
     setIsNotesLoading(true);
     fetchNotes()
-      .then(setNotes)
+      .then(loaded => setNotes(current => {
+        // Preserve successful changes made while the initial read was in flight.
+        const localIds = new Set(current.map(note => note.id));
+        return [...current, ...loaded.filter(note => !localIds.has(note.id) && !deletedNotes.current.has(note.id))];
+      }))
       .catch((error: unknown) => {
         showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to continue.' : 'Unable to load private notes.');
       })
@@ -259,7 +278,7 @@ export const WorkspaceApp: React.FC = () => {
   const handleCreateNote = async (n: Partial<NoteItem>) => {
     try {
       const newNote = await createNote(n.title?.trim() || 'Untitled Note', n.content || '');
-      setNotes((current) => [newNote, ...current]);
+      setNotes((current) => [newNote, ...current.filter(note => note.id !== newNote.id)]);
       showToast(`Note "${newNote.title}" saved.`);
     } catch (error: any) {
       showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to create notes.' : (error.message || 'Unable to create note.'));
@@ -312,6 +331,7 @@ export const WorkspaceApp: React.FC = () => {
   const handleDeleteNote = async (id: string) => {
     try {
       await deleteNote(id);
+      deletedNotes.current.add(id);
       setNotes((current) => current.filter((note) => note.id !== id));
       showToast('Note deleted.');
     } catch (error: any) {

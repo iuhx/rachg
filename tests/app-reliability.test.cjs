@@ -70,7 +70,7 @@ test('reply does not overwrite an existing draft; discard requires confirmation'
   button(f.h, 'Compose').props.onClick(); f.h.render(); assert.equal(field(f.h, 'Message').props.value, ''); f.h.unmount();
 });
 
-async function workspace() {
+async function workspace(configure = () => {}) {
   const f = components();
   f.services.accessService.getAccessIdentity = async () => ({ email: 'admin@example.invalid' });
   f.services.fileService.fetchActiveFiles = f.services.noteService.fetchNotes = async () => [];
@@ -78,11 +78,94 @@ async function workspace() {
   f.services.mailService.fetchSentMail = async () => [];
   f.services.mailService.fetchMailMessage = async id => mail(id);
   f.services.mailService.deleteMailMessage = async () => {};
+  configure(f.services);
   const { WorkspaceApp } = f.load('apps/workspace/src/components/WorkspaceApp.tsx');
   const h = f.mount(WorkspaceApp, {}); await flush(); h.render(); await flush(); h.render();
   const navigate = tab => { find(h, n => n.type?.name === 'Sidebar').props.onTabChange(tab); h.render(); };
   navigate('mail');
   return { ...f, h, navigate, mailProps: () => find(h, n => n.type?.name === 'MailView').props };
+}
+
+test('a late initial notes response cannot hide a newly created note', async () => {
+  let release;
+  const f = await workspace(services => {
+    services.noteService.fetchNotes = () => new Promise(resolve => release = resolve);
+    services.noteService.createNote = async () => note('new');
+  });
+  try {
+    await find(f.h, n => n.type?.name === 'NewItemModal').props.onCreateNote({ title: 'new' }); f.h.render();
+    release([note('old')]); await flush(); f.h.render();
+    const notes = find(f.h, n => n.type?.name === 'NotesView').props.notes;
+    assert.deepEqual(notes.map(n => n.id), ['new', 'old']);
+    assert.equal(find(f.h, n => n.type?.name === 'CommandPalette').props.notes[0].id, 'new');
+  } finally { f.h.unmount(); }
+});
+
+test('initial notes merging keeps newer local content and excludes deleted records', async () => {
+  let release;
+  const f = await workspace(services => {
+    services.noteService.fetchNotes = () => new Promise(resolve => release = resolve);
+    services.noteService.createNote = async title => note(title);
+    services.noteService.updateNote = async value => ({ ...value, updatedTimestamp: 2 });
+    services.noteService.deleteNote = async () => {};
+  });
+  try {
+    const create = () => find(f.h, n => n.type?.name === 'NewItemModal').props.onCreateNote;
+    const notes = () => find(f.h, n => n.type?.name === 'NotesView').props;
+    await create()({ title: 'kept' }); f.h.render();
+    await create()({ title: 'deleted' }); f.h.render();
+    await notes().onUpdateNote({ ...note('kept'), content: 'latest saved content' }); f.h.render();
+    await notes().onDeleteNote('deleted'); f.h.render();
+    release([note('kept'), note('deleted'), note('old')]); await flush(); f.h.render();
+    assert.deepEqual(notes().notes.map(n => n.id), ['kept', 'old']);
+    assert.equal(notes().notes[0].content, 'latest saved content');
+  } finally { f.h.unmount(); }
+});
+
+test('accepted mail completes even while sent-list refresh is still pending', async () => {
+  const f = await workspace(); let release, accepted = false, sends = 0;
+  f.services.mailService.sendMail = async () => { sends++; return { success: true, id: 'sent', resendId: 'provider' }; };
+  f.services.mailService.fetchSentMail = () => new Promise(resolve => release = resolve);
+  const sending = f.mailProps().onSend({ to: 'friend@example.invalid', subject: 'Subject', text: 'Message' }).then(() => { accepted = true; });
+  try {
+    await flush(); f.h.render();
+    assert.equal(sends, 1);
+    assert.equal(accepted, true, 'provider acceptance must not depend on a second read request');
+    assert.equal(f.mailProps().isSentLoading, true);
+  } finally { release?.([]); await sending; await flush(); f.h.unmount(); }
+});
+
+for (const folder of ['inbox', 'sent']) {
+  const service = folder === 'inbox' ? 'fetchMailMessage' : 'fetchSentMailMessage';
+  const action = folder === 'inbox' ? 'onSelect' : 'onSelectSent';
+  const selection = folder === 'inbox' ? 'selectedMessage' : 'selectedSentMessage';
+  const loading = folder === 'inbox' ? 'isMessageLoading' : 'isSentMessageLoading';
+  test(`failed ${folder} detail never becomes a readable or replyable placeholder`, async () => {
+    const f = await workspace();
+    f.services.mailService[service] = async () => { throw new Error('Detail temporarily unavailable'); };
+    try {
+      await f.mailProps()[action](mail('A')); f.h.render();
+      assert.equal(f.mailProps()[selection], null);
+      assert.equal(f.mailProps()[loading], false);
+      assert.match(label(f.h.tree), /Detail temporarily unavailable/);
+      f.services.mailService[service] = async id => ({ ...mail(id), text: 'full body', replyTo: 'reply@example.invalid' });
+      await f.mailProps()[action](mail('A')); f.h.render();
+      assert.equal(f.mailProps()[selection].text, 'full body');
+      assert.equal(f.mailProps()[selection].replyTo, 'reply@example.invalid');
+    } finally { f.h.unmount(); }
+  });
+  test(`a stale ${folder} detail failure cannot clear a newer successful selection`, async () => {
+    const f = await workspace(); let reject;
+    f.services.mailService[service] = id => id === 'A' ? new Promise((_, fail) => reject = fail) : Promise.resolve(mail(id));
+    try {
+      const reading = f.mailProps()[action](mail('A'));
+      await f.mailProps()[action](mail('B')); f.h.render();
+      reject(new Error('old request failed')); await reading; f.h.render();
+      assert.equal(f.mailProps()[selection].id, 'B');
+      assert.equal(f.mailProps()[loading], false);
+      assert.doesNotMatch(label(f.h.tree), /old request failed/);
+    } finally { f.h.unmount(); }
+  });
 }
 
 test('older inbox refresh responses cannot replace a newer list', async () => {

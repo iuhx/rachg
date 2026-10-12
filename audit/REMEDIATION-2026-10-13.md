@@ -2,6 +2,7 @@
 
 Latest functional follow-up: [71-test review and fixes](FOLLOWUP-2026-10-13.md).
 Projects persistence follow-up: [usage, release and 90-test verification](../docs/PROJECTS.md).
+Latest whole-workspace review: [important fixes and 97-test verification](REVIEW-2026-10-13.md).
 
 The verified changes are ready for Git submission on `fix/audit-hardening`.
 This report describes the current implementation, replacing the earlier intermediate
