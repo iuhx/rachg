@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, Check, Copy, Download, FileText, QrCode, Upload } from 'lucide-react';
+import { ArrowRight, Check, Copy, Download, FileText, Image as ImageIcon, QrCode, Upload } from 'lucide-react';
 import type { FileItem } from '../types';
 import { byteLength, createQr, downloadBlob, FILE_BYTES, LOCAL_QR_BYTES, qrPng, textShareUrl, TOOL_TEXT_BYTES, usableFile, type QrMatrix } from '../utils/qr';
 import { markdownToText } from '../utils/markdownText';
@@ -14,6 +14,7 @@ interface ToolsViewProps {
   isFilesLoading?: boolean;
 }
 const expiries = ['1 hour', '24 hours', '48 hours', '7 days', 'permanent'];
+const ImageConverter = React.lazy(() => import('./ImageConverter').then(module => ({ default: module.ImageConverter })));
 
 function QrPreview({ matrix }: { matrix: QrMatrix }) {
   const path = useMemo(() => {
@@ -29,7 +30,8 @@ function QrPreview({ matrix }: { matrix: QrMatrix }) {
 }
 
 export const ToolsView: React.FC<ToolsViewProps> = ({ files, fileRequest, onUploadFile, canUpload, isActive = true, isFilesLoading = false }) => {
-  const [tool, setTool] = useState<'qr' | 'markdown'>('qr');
+  const [tool, setTool] = useState<'qr' | 'markdown' | 'images'>('qr');
+  const [imagesVisited, setImagesVisited] = useState(false);
   const [source, setSource] = useState<'text' | 'upload' | 'existing'>('text');
   const [text, setText] = useState('');
   const [markdown, setMarkdown] = useState('');
@@ -132,11 +134,13 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ files, fileRequest, onUplo
 
   return <div className="workspace-view space-y-6 pb-16">
     <header><h2 className="type-page-heading text-neutral-900 dark:text-white">Tools</h2><p className="type-secondary mt-1">Everyday conversions, connected to your files.</p></header>
-    <div className="workspace-segment w-fit" role="group" aria-label="Choose a tool">
+    <div className="workspace-segment w-fit flex-wrap" role="group" aria-label="Choose a tool">
       <button className={`workspace-segment-item ${tool === 'qr' ? 'workspace-segment-item-active' : ''}`} aria-pressed={tool === 'qr'} onClick={() => { setTool('qr'); setNotice(null); }}><QrCode className="w-4 h-4" />Universal QR</button>
       <button className={`workspace-segment-item ${tool === 'markdown' ? 'workspace-segment-item-active' : ''}`} aria-pressed={tool === 'markdown'} onClick={() => { setTool('markdown'); setNotice(null); }}><FileText className="w-4 h-4" />Markdown to text</button>
+      <button className={`workspace-segment-item ${tool === 'images' ? 'workspace-segment-item-active' : ''}`} aria-pressed={tool === 'images'} onClick={() => { setTool('images'); setImagesVisited(true); setNotice(null); }}><ImageIcon className="w-4 h-4" />Image converter</button>
     </div>
     {notice && <p role={notice.error ? 'alert' : 'status'} className={`workspace-panel p-3 type-secondary ${notice.error ? 'text-red-600 dark:text-red-300' : 'text-emerald-700 dark:text-emerald-400'}`}>{notice.text}</p>}
+    {imagesVisited && <div hidden={tool !== 'images'}><React.Suspense fallback={<p className="type-secondary">Loading image converter…</p>}><ImageConverter /></React.Suspense></div>}
 
     <section hidden={tool !== 'qr'} aria-label="Universal QR">
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-5 items-start">

@@ -66,7 +66,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     { label: 'Files', tab: 'files' as NavTab, icon: Paperclip },
     { label: 'Notes', tab: 'notes' as NavTab, icon: FileText },
     { label: 'Mail', tab: 'mail' as NavTab, icon: Mail },
-    { label: 'Tools · QR & Markdown', tab: 'tools' as NavTab, icon: Wrench },
+    { label: 'Tools · QR, Markdown & images', tab: 'tools' as NavTab, icon: Wrench },
     { label: 'Projects', tab: 'projects' as NavTab, icon: FolderDot },
     { label: 'Settings', tab: 'settings' as NavTab, icon: Settings },
   ];

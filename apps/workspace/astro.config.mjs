@@ -9,6 +9,7 @@ export default defineConfig({
   integrations: [react()],
 
   vite: {
+    worker: { format: 'es' },
     plugins: [tailwindcss()]
   }
 });

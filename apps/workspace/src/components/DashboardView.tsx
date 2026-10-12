@@ -28,7 +28,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     { label: 'New note', description: 'Capture an idea.', icon: FileText, action: () => onNewItem('note'), disabled: !canCreate },
     { label: 'New project', description: 'Set a goal. Track progress.', icon: FolderPlus, action: () => onNewItem('project'), disabled: !canCreate },
     { label: 'Upload a file', description: 'Keep or share a file.', icon: Upload, action: () => onNewItem('transfer'), disabled: !canCreate },
-    { label: 'Open tools', description: 'QR codes & plain text.', icon: Wrench, action: () => onNavigate('tools'), disabled: false },
+    { label: 'Open tools', description: 'QR, text & image formats.', icon: Wrench, action: () => onNavigate('tools'), disabled: false },
   ];
   const recentNotes = [...notes].sort((a, b) => b.updatedTimestamp - a.updatedTimestamp).slice(0, 4);
   const activity = [

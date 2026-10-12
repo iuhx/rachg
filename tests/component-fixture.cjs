@@ -25,7 +25,7 @@ function components(){
     useCallback(fn,deps){return hooks.useMemo(()=>fn,deps);},
     useEffect(fn,deps){const h=current,i=h.cursor++,old=h.effects[i];if(!old||!deps||deps.some((v,j)=>!Object.is(v,old.deps[j])))h.pending.push(()=>{old?.cleanup?.();h.effects[i]={deps,cleanup:fn()};});},
   };
-  const services={accessService:{getAccessIdentity:async()=>null,startAccessLogout(){}},fileService:{AuthenticationRequiredError:class extends Error{}},noteService:{},scratchpadService:{},mailService:{},projectService:{fetchProjects:async()=>[]}};
+  const services={accessService:{getAccessIdentity:async()=>null,startAccessLogout(){}},fileService:{AuthenticationRequiredError:class extends Error{}},noteService:{},scratchpadService:{},mailService:{},projectService:{fetchProjects:async()=>[]},imageConversionService:{}};
   function load(file){
     file=path.isAbsolute(file)?file:path.join(root,file);
     if(modules.has(file))return modules.get(file);

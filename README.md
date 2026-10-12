@@ -26,7 +26,9 @@ GitHub (https://github.com/iuhx/rachg)
 
 ## Tools
 
-The **Tools** tab contains a local QR generator and Markdown-to-text converter.
+The **Tools** tab contains a local QR generator, Markdown-to-text converter and
+[batch image converter](docs/IMAGE-TOOLS.md) for PNG, JPEG, WebP, BMP and AVIF, with
+HEIC/HEIF input support. Image conversion and ZIP downloads stay on your device.
 Files has a one-click QR action; uploads from Tools use the same file list, quota,
 expiry and deletion workflow. Existing files are reused without uploading again.
 

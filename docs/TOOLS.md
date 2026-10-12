@@ -1,5 +1,9 @@
 # Workspace tools
 
+The Image converter tab supports local batch conversion to PNG, JPEG, WebP, BMP
+and AVIF, including HEIC/HEIF inputs. See [Image tools](IMAGE-TOOLS.md) for limits,
+downloads and codec details.
+
 ## Universal QR
 
 - Open **Tools → Universal QR** and enter text or a URL. Generation is local, with
