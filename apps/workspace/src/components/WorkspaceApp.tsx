@@ -333,11 +333,6 @@ export const WorkspaceApp: React.FC = () => {
           {activeTab === 'notes' && (
             <NotesView
               notes={notes}
-              scratchpad={scratchpad}
-              isScratchpadLoading={isScratchpadLoading}
-              isScratchpadSaving={isScratchpadSaving}
-              onSaveScratchpad={handleSaveScratchpad}
-              onClearScratchpad={handleClearScratchpad}
               isLoading={isNotesLoading}
               onNewNote={() => setNewModalType('note')}
               onUpdateNote={handleUpdateNote}

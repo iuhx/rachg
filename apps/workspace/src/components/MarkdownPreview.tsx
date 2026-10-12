@@ -31,50 +31,50 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({ content }) => 
   const blocks: React.ReactNode[] = [];
   let codeLines: string[] | null = null;
 
-  lines.forEach((line, index) => {
+  for (const [index, line] of lines.entries()) {
     if (line.trim().startsWith('```')) {
       if (codeLines === null) codeLines = [];
       else {
         blocks.push(<pre key={`code-${index}`} className="type-mono overflow-x-auto rounded-lg bg-neutral-950 px-4 py-3 text-neutral-200"><code>{codeLines.join('\n')}</code></pre>);
         codeLines = null;
       }
-      return;
+      continue;
     }
     if (codeLines !== null) {
       codeLines.push(line);
-      return;
+      continue;
     }
     if (!line.trim()) {
       blocks.push(<div key={`space-${index}`} className="h-2" />);
-      return;
+      continue;
     }
     const heading = line.match(/^(#{1,3})\s+(.+)$/);
     if (heading) {
       const level = heading[1].length;
       const Tag = level === 1 ? 'h1' : level === 2 ? 'h2' : 'h3';
       blocks.push(<Tag key={index} className={level === 1 ? 'type-modal-heading' : level === 2 ? 'type-section-heading' : 'type-body font-semibold'}>{renderInline(heading[2])}</Tag>);
-      return;
+      continue;
     }
     const listItem = line.match(/^\s*[-*]\s+(.+)$/);
     if (listItem) {
       blocks.push(<div key={index} className="flex gap-2"><span className="text-neutral-400">•</span><span>{renderInline(listItem[1])}</span></div>);
-      return;
+      continue;
     }
     const orderedItem = line.match(/^\s*\d+[.)]\s+(.+)$/);
     if (orderedItem) {
       blocks.push(<div key={index} className="flex gap-2"><span className="text-neutral-400">{line.match(/^\s*(\d+)/)?.[1]}.</span><span>{renderInline(orderedItem[1])}</span></div>);
-      return;
+      continue;
     }
     if (/^\s*(\*\s*){3,}$/.test(line) || /^\s*(-\s*){3,}$/.test(line)) {
       blocks.push(<hr key={index} className="border-neutral-200 dark:border-white/10" />);
-      return;
+      continue;
     }
     if (line.startsWith('> ')) {
       blocks.push(<blockquote key={index} className="border-l-2 border-neutral-300 dark:border-white/20 pl-3 text-neutral-500 dark:text-neutral-400">{renderInline(line.slice(2))}</blockquote>);
-      return;
+      continue;
     }
     blocks.push(<p key={index}>{renderInline(line)}</p>);
-  });
+  }
 
   if (codeLines !== null) {
     blocks.push(<pre key="code-open" className="type-mono overflow-x-auto rounded-lg bg-neutral-950 px-4 py-3 text-neutral-200"><code>{codeLines.join('\n')}</code></pre>);

@@ -8,7 +8,8 @@
     "build:workspace": "npm --prefix apps/workspace run build",
     "preview:workspace": "npm --prefix apps/workspace run preview",
     "dev:file-service": "npm --prefix workers/file-service run dev",
-    "build:all": "npm --prefix apps/workspace run build"
+    "build:all": "npm --prefix apps/workspace run build",
+    "check": "pnpm --filter @rachg/shared build && pnpm --filter @rachg/file-service typecheck && pnpm --filter @rachg/mail-ingest typecheck && pnpm --filter @rachg/workspace exec tsc --noEmit && pnpm --filter @rachg/file-service test:retention && pnpm run build:all"
   },
   "devDependencies": {
     "typescript": "^5.7.3"
