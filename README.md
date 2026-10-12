@@ -24,6 +24,18 @@ GitHub (https://github.com/iuhx/rachg)
   - **Cloudflare D1**: Lightweight structured metadata (files, expiration, counters).
   - **Cloudflare R2**: Isolated object storage (`transfers/` prefix isolation, 4GB cap).
 
+## Tools
+
+The **Tools** tab contains a local QR generator and Markdown-to-text converter.
+Files has a one-click QR action; uploads from Tools use the same file list, quota,
+expiry and deletion workflow. Existing files are reused without uploading again.
+
+Text and Markdown conversion stay in the browser. Long text is uploaded only after
+an explicit review and confirmation, then served as an escaped text page by the file
+Worker. Share links retain Cloudflare Access protection; they are not public links.
+
+See [Tools usage and release notes](docs/TOOLS.md) for workflows and limits.
+
 ---
 
 ## 📁 Repository Structure

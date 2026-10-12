@@ -1,4 +1,4 @@
-export type NavTab = 'home' | 'projects' | 'notes' | 'files' | 'mail' | 'settings';
+export type NavTab = 'home' | 'projects' | 'notes' | 'files' | 'mail' | 'tools' | 'settings';
 
 export type ProjectStatus = 'In Progress' | 'Planning' | 'Exploring' | 'Live' | 'Prototype' | 'Idea';
 

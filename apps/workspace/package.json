@@ -19,10 +19,17 @@
     "@types/react-dom": "^19.3.0",
     "astro": "^7.3.8",
     "clsx": "^2.1.1",
+    "entities": "^8.1.0",
     "lucide-react": "^1.55.0",
+    "marked": "^18.1.1",
+    "qrcode": "^1.5.4",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "tailwind-merge": "^3.7.0",
     "tailwindcss": "^4.3.3"
+  },
+  "devDependencies": {
+    "@types/qrcode": "^1.5.6",
+    "jsqr": "^1.4.0"
   }
 }

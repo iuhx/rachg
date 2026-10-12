@@ -9,6 +9,9 @@ import { SettingsView } from './SettingsView';
 import { MailView } from './MailView';
 import { CommandPalette } from './CommandPalette';
 import { NewItemModal } from './NewItemModal';
+import type { FileQrRequest } from './ToolsView';
+
+const ToolsView = React.lazy(() => import('./ToolsView').then(module => ({ default: module.ToolsView })));
 import {
   INITIAL_PROJECTS,
   INITIAL_TRANSFERS,
@@ -37,6 +40,7 @@ export const WorkspaceApp: React.FC = () => {
   const [notes, setNotes] = useState<NoteItem[]>([]);
   const [isNotesLoading, setIsNotesLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
+  const deletedTransfers = useRef(new Set<string>());
   const [mailMessages, setMailMessages] = useState<MailItem[]>([]);
   const [selectedMail, setSelectedMail] = useState<MailMessage | null>(null);
   const [isMailLoading, setIsMailLoading] = useState(false);
@@ -47,6 +51,9 @@ export const WorkspaceApp: React.FC = () => {
   const [isSentMailMessageLoading, setIsSentMailMessageLoading] = useState(false);
   const mailSelection = useRef(0);
   const sentSelection = useRef(0);
+  const [fileQrRequest, setFileQrRequest] = useState<FileQrRequest | null>(null);
+  const [toolsVisited, setToolsVisited] = useState(false);
+  useEffect(() => { if (activeTab === 'tools') setToolsVisited(true); }, [activeTab]);
 
   // Command palette & modal
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
@@ -163,7 +170,12 @@ export const WorkspaceApp: React.FC = () => {
     if (authStatus !== 'authenticated') return;
     setIsFilesLoading(true);
     fetchActiveFiles()
-      .then(setTransfers)
+      .then(loaded => setTransfers(current => {
+        // A slow initial read must not hide a file just uploaded from Tools or
+        // restore a file already deleted while the read was in flight.
+        const localIds = new Set(current.map(file => file.id));
+        return [...current, ...loaded.filter(file => !localIds.has(file.id) && !deletedTransfers.current.has(file.id))];
+      }))
       .catch((error: unknown) => {
         showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to continue.' : 'Unable to load private files.');
       })
@@ -200,6 +212,7 @@ export const WorkspaceApp: React.FC = () => {
       if (isLive) {
         showToast(`Uploaded "${file.name}" to Cloudflare R2.`);
       }
+      return uploadedFile;
     } catch (err: any) {
       showToast(err instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to upload files.' : (err.message || 'Upload failed'));
       throw err;
@@ -211,6 +224,7 @@ export const WorkspaceApp: React.FC = () => {
   const handleDeleteTransfer = async (id: string) => {
     try {
       await deleteFileService(id);
+      deletedTransfers.current.add(id);
       setTransfers((current) => current.filter((t) => t.id !== id));
       showToast('File transfer revoked.');
     } catch (err: any) {
@@ -288,6 +302,10 @@ export const WorkspaceApp: React.FC = () => {
               transfers={transfers}
               onUploadFile={handleUploadFile}
               onDeleteTransfer={handleDeleteTransfer}
+              onGenerateQr={(file) => {
+                setFileQrRequest(current => ({ fileId: file.id, sequence: (current?.sequence || 0) + 1 }));
+                setActiveTab('tools');
+              }}
               isUploading={isUploading}
               isLoading={isFilesLoading}
             />
@@ -303,6 +321,13 @@ export const WorkspaceApp: React.FC = () => {
               onDeleteNote={handleDeleteNote}
             />
           </div>
+
+          {(activeTab === 'tools' || toolsVisited) && <div hidden={activeTab !== 'tools'}>
+            <React.Suspense fallback={<p className="type-secondary">Loading tools…</p>}>
+              <ToolsView files={transfers} fileRequest={fileQrRequest} onUploadFile={handleUploadFile}
+                canUpload={authStatus === 'authenticated'} isFilesLoading={authStatus === 'authenticated' && isFilesLoading} isActive={activeTab === 'tools'} />
+            </React.Suspense>
+          </div>}
 
           {activeTab === 'projects' && (
             <ProjectsView

@@ -56,6 +56,7 @@ import { isAuthenticated, resolveAuth } from './auth';
 import { getFileExpiry, isFileExpired } from './expiry';
 import { cleanupStorage } from './cleanup';
 import { parseByteRange } from './download';
+import { textShareResponse } from './text-share';
 import { boundedForm, boundedJson, InputError, mailPlainText, MAX_FILE_BYTES, MAX_MAIL_BYTES, MAX_TEXT_BYTES, readBounded, utf8Size } from '../../common/content';
 
 export interface Env {
@@ -235,6 +236,20 @@ export default {
       // -------------------------------------------------------------
       const noteDetailMatch = url.pathname.match(/^\/v1\/notes\/([a-zA-Z0-9_-]+)$/);
       const mailDetailMatch = url.pathname.match(/^\/v1\/mail\/([a-zA-Z0-9_-]+)$/);
+
+      // Text shares reuse a normal file and its permissions, expiry, quota and deletion.
+      const textShareMatch = url.pathname.match(/^\/t\/([a-zA-Z0-9_-]+)$/);
+      if (request.method === 'GET' && textShareMatch) {
+        const record = await getFileRecordById(env.DB, textShareMatch[1]);
+        if (!record || record.status === 'deleted' || record.status === 'uploading') throw new InputError('Text share not found', 404);
+        if (record.status !== 'active' || isFileExpired(record.expires_at)) throw new InputError('This text share has expired', 410);
+        if (record.mime_type.split(';')[0].trim().toLowerCase() !== 'text/plain') throw new InputError('This file is not a plain text share', 415);
+        if (record.size_bytes > 200_000) throw new InputError('Text share pages support up to 200 KB', 413);
+        const object = await getFromR2(env.FILES_BUCKET, record.r2_key);
+        if (!object) throw new InputError('Text share not found', 404);
+        const bytes = await readBounded(new Response(object.body).body, 200_000);
+        return textShareResponse(record.filename, new TextDecoder().decode(bytes), record.id);
+      }
 
       if (request.method === 'POST' && url.pathname === '/v1/mail/send') {
         const payload = await parseMailSendPayload(request);

@@ -6,6 +6,7 @@ import {
   Paperclip,
   Mail,
   Settings,
+  Wrench,
 } from 'lucide-react';
 import type { NavTab } from '../types';
 
@@ -24,6 +25,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'notes', label: 'Notes', icon: FileText },
     { id: 'projects', label: 'Projects', icon: FolderDot },
     { id: 'mail', label: 'Mail', icon: Mail },
+    { id: 'tools', label: 'Tools', icon: Wrench },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 

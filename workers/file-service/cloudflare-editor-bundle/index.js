@@ -4923,6 +4923,21 @@ function parseByteRange(value, size) {
   return { offset, length: end - offset + 1 };
 }
 
+// workers/file-service/src/text-share.ts
+var escapeHtml2 = (value) => value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
+function textShareResponse(title, text, id) {
+  return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml2(title)} \xB7 rachg</title><style>body{font:16px/1.6 system-ui,sans-serif;max-width:900px;margin:40px auto;padding:0 20px;background:#fafaf9;color:#202124}header{border-bottom:1px solid #ddd;padding-bottom:16px}h1{font-size:22px;overflow-wrap:anywhere}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}a{color:inherit}</style></head><body><header><p>rachg \xB7 Text share</p><h1>${escapeHtml2(title)}</h1><a href="/f/${encodeURIComponent(id)}">Download TXT</a></header><pre>${escapeHtml2(text)}</pre></body></html>`, {
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "private, no-store",
+      "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "no-referrer",
+      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
+      "X-Frame-Options": "DENY"
+    }
+  });
+}
+
 // workers/common/content.ts
 var MAX_FILE_BYTES = 10 * 1024 * 1024;
 var MAX_MAIL_BYTES = 5 * 1024 * 1024;
@@ -5166,6 +5181,18 @@ var index_default = {
       }
       const noteDetailMatch = url.pathname.match(/^\/v1\/notes\/([a-zA-Z0-9_-]+)$/);
       const mailDetailMatch = url.pathname.match(/^\/v1\/mail\/([a-zA-Z0-9_-]+)$/);
+      const textShareMatch = url.pathname.match(/^\/t\/([a-zA-Z0-9_-]+)$/);
+      if (request.method === "GET" && textShareMatch) {
+        const record = await getFileRecordById(env.DB, textShareMatch[1]);
+        if (!record || record.status === "deleted" || record.status === "uploading") throw new InputError("Text share not found", 404);
+        if (record.status !== "active" || isFileExpired(record.expires_at)) throw new InputError("This text share has expired", 410);
+        if (record.mime_type.split(";")[0].trim().toLowerCase() !== "text/plain") throw new InputError("This file is not a plain text share", 415);
+        if (record.size_bytes > 2e5) throw new InputError("Text share pages support up to 200 KB", 413);
+        const object = await getFromR2(env.FILES_BUCKET, record.r2_key);
+        if (!object) throw new InputError("Text share not found", 404);
+        const bytes = await readBounded(new Response(object.body).body, 2e5);
+        return textShareResponse(record.filename, new TextDecoder().decode(bytes), record.id);
+      }
       if (request.method === "POST" && url.pathname === "/v1/mail/send") {
         const payload = await parseMailSendPayload(request);
         if (!payload) {

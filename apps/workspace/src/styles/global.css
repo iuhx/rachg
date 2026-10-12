@@ -262,6 +262,9 @@ a {
   font-family: var(--font-mono);
 }
 
+.tool-qr-input { min-height: 13rem; }
+.tool-markdown-input { min-height: 22rem; }
+
 .workspace-input-heading {
   font-family: var(--font-display);
   font-size: 1.375rem;
@@ -331,6 +334,9 @@ a {
 }
 
 .workspace-button-primary:hover { opacity: 0.86; }
+
+.workspace-button:disabled { opacity: 0.45; cursor: not-allowed; }
+.workspace-segment-item { display: inline-flex; align-items: center; gap: 0.4rem; }
 
 .workspace-button-secondary {
   border: 1px solid var(--color-line);

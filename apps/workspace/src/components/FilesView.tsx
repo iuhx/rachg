@@ -9,14 +9,16 @@ import {
   Trash2,
   Upload,
   Video,
+  QrCode,
 } from 'lucide-react';
 import type { FileItem } from '../types';
 import { ConfirmDialog } from './ConfirmDialog';
 
 interface FilesViewProps {
   transfers: FileItem[];
-  onUploadFile: (file: File, expiry: string) => Promise<void> | void;
+  onUploadFile: (file: File, expiry: string) => Promise<unknown> | void;
   onDeleteTransfer: (id: string) => Promise<void>;
+  onGenerateQr: (file: FileItem) => void;
   isUploading?: boolean;
   isLoading?: boolean;
 }
@@ -25,6 +27,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
   transfers,
   onUploadFile,
   onDeleteTransfer,
+  onGenerateQr,
   isUploading = false,
   isLoading = false,
 }) => {
@@ -33,6 +36,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [fileToDelete, setFileToDelete] = useState<FileItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [copyError, setCopyError] = useState('');
 
   const confirmDelete = async () => {
     if (!fileToDelete) return;
@@ -47,10 +51,12 @@ export const FilesView: React.FC<FilesViewProps> = ({
     }
   };
 
-  const handleCopy = (text: string, id: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
+  const handleCopy = async (text: string, id: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyError(''); setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch { setCopyError('Clipboard access was denied. Select the file link to copy it.'); }
   };
 
   const handleDrop = (event: React.DragEvent) => {
@@ -123,6 +129,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
       </section>
 
       <section className="workspace-card p-5 sm:p-6 space-y-4" aria-labelledby="recent-files-heading">
+        {copyError && <p role="alert" className="type-secondary text-red-600">{copyError}</p>}
         <div className="flex items-center justify-between gap-3">
           <h3 id="recent-files-heading" className="type-section-heading text-neutral-900 dark:text-white">Recent files</h3>
           {!isLoading && <span className="type-caption">{transfers.length} {transfers.length === 1 ? 'file' : 'files'}</span>}
@@ -155,6 +162,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
                   <button onClick={() => handleCopy(file.shareUrl || '', file.id)} className="workspace-button workspace-button-secondary min-h-8 px-2 cursor-pointer" title="Copy link" aria-label={`Copy link for ${file.name}`}>
                     {copiedId === file.id ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
                   </button>
+                  <button disabled={!file.shareUrl || file.status !== 'active' || Boolean(file.expiresTimestamp && file.expiresTimestamp <= Date.now())} onClick={() => onGenerateQr(file)} className="workspace-button workspace-button-secondary min-h-8 px-2" title="Generate QR code" aria-label={`Generate QR for ${file.name}`}><QrCode className="w-4 h-4" /></button>
                   <button onClick={() => setFileToDelete(file)} className="workspace-button workspace-button-secondary min-h-8 px-2 text-neutral-400 hover:text-red-500 cursor-pointer" title="Delete file" aria-label={`Delete ${file.name}`}>
                     <Trash2 className="w-4 h-4" />
                   </button>

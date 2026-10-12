@@ -7,7 +7,7 @@ interface NewItemModalProps {
   type: 'project' | 'note' | 'transfer' | null;
   onClose: () => void;
   onCreateNote: (n: Partial<NoteItem>) => Promise<void>;
-  onCreateTransfer: (file: File) => Promise<void>;
+  onCreateTransfer: (file: File) => Promise<unknown>;
 }
 
 export const NewItemModal: React.FC<NewItemModalProps> = ({

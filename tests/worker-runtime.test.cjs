@@ -141,4 +141,24 @@ test('release Worker runs reliably in workerd with actual D1 and R2 bindings', {
     assert.equal(objects.length, 1);
     assert.equal(objects[0].size, 700);
   });
+
+  await t.test('a text share reuses the stored file and renders escaped content under the same access rules', async () => {
+    const text = '<script>alert(1)</script>\n你好 & welcome';
+    const uploaded = await request('/v1/files/upload', { method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8', 'x-filename': 'share.txt', 'x-expiry': 'permanent' }, body: text });
+    assert.equal(uploaded.status, 201);
+    const { file } = await uploaded.json();
+    const page = await request(`/t/${file.id}`);
+    assert.equal(page.status, 200);
+    assert.match(page.headers.get('content-security-policy'), /default-src 'none'/);
+    assert.equal(page.headers.get('cache-control'), 'private, no-store');
+    const html = await page.text();
+    assert.ok(html.includes('&lt;script&gt;alert(1)&lt;/script&gt;'));
+    assert.ok(html.includes('你好 &amp; welcome'));
+    const denied = await request(`/t/${file.id}`, { headers: { 'cf-access-jwt-assertion': '' } });
+    assert.equal(denied.status, 401); await denied.text();
+    const deleted = await request(`/v1/files/${file.id}`, { method: 'DELETE' });
+    assert.equal(deleted.status, 200); await deleted.text();
+    const revoked = await request(`/t/${file.id}`); assert.equal(revoked.status, 404); await revoked.text();
+  });
 });
