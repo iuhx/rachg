@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Check,
   Copy,
@@ -37,9 +37,14 @@ export const FilesView: React.FC<FilesViewProps> = ({
   const [fileToDelete, setFileToDelete] = useState<FileItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [copyError, setCopyError] = useState('');
+  const [uploadError, setUploadError] = useState('');
+  const [failedUpload, setFailedUpload] = useState<{ file: File; expiry: string } | null>(null);
+  const uploadBusy = useRef(false);
+  const deletingRef = useRef(false);
 
   const confirmDelete = async () => {
-    if (!fileToDelete) return;
+    if (!fileToDelete || deletingRef.current) return;
+    deletingRef.current = true;
     setIsDeleting(true);
     try {
       await onDeleteTransfer(fileToDelete.id);
@@ -47,8 +52,21 @@ export const FilesView: React.FC<FilesViewProps> = ({
     } catch {
       // The parent displays the failure. Keep this dialog open for retry.
     } finally {
+      deletingRef.current = false;
       setIsDeleting(false);
     }
+  };
+
+  const upload = async (file: File, expiry = selectedExpiry) => {
+    if (uploadBusy.current || isUploading) return;
+    setUploadError(''); setFailedUpload(null);
+    if (file.size > 10 * 1024 * 1024) { setUploadError('Choose a file up to 10 MiB. Nothing was uploaded.'); return; }
+    uploadBusy.current = true;
+    try { await onUploadFile(file, expiry); }
+    catch (error) {
+      setFailedUpload({ file, expiry });
+      setUploadError(error instanceof Error ? error.message : 'Upload failed. Your file is ready to retry.');
+    } finally { uploadBusy.current = false; }
   };
 
   const handleCopy = async (text: string, id: string) => {
@@ -62,13 +80,14 @@ export const FilesView: React.FC<FilesViewProps> = ({
   const handleDrop = (event: React.DragEvent) => {
     event.preventDefault();
     setIsDragging(false);
+    if (event.dataTransfer.files.length > 1) { setUploadError('Upload one file at a time. Nothing was uploaded.'); return; }
     const file = event.dataTransfer.files?.[0];
-    if (file && !isUploading) void Promise.resolve().then(() => onUploadFile(file, selectedExpiry)).catch(() => {});
+    if (file) void upload(file);
   };
 
   const handleFileInput = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file && !isUploading) void Promise.resolve().then(() => onUploadFile(file, selectedExpiry)).catch(() => {});
+    if (file) void upload(file);
     event.target.value = '';
   };
 
@@ -88,6 +107,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
       </header>
 
       <section className="workspace-card p-5 sm:p-7 space-y-5" aria-labelledby="add-file-heading">
+        {uploadError && <div role="alert" className="space-y-2 type-secondary text-red-600 dark:text-red-300"><p>{uploadError}</p>{failedUpload && <button type="button" className="workspace-button workspace-button-secondary" disabled={isUploading} onClick={() => void upload(failedUpload.file, failedUpload.expiry)}>Retry {failedUpload.file.name}</button>}</div>}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h3 id="add-file-heading" className="type-section-heading text-neutral-900 dark:text-white">Add a file</h3>

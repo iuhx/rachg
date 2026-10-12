@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Inbox, Mail as MailIcon, RefreshCw, Reply, Send, Trash2 } from 'lucide-react';
 import type { MailItem, MailMessage, MailSendRequest, SentMailItem, SentMailMessage } from '../types';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -6,6 +6,7 @@ import { ConfirmDialog } from './ConfirmDialog';
 type MailFolder = 'inbox' | 'sent';
 
 interface MailViewProps {
+  isActive?: boolean;
   messages: MailItem[];
   sentMessages: SentMailItem[];
   selectedMessage: MailMessage | null;
@@ -30,6 +31,7 @@ export const MailView: React.FC<MailViewProps> = ({
   messages, sentMessages, selectedMessage, selectedSentMessage,
   isLoading, isMessageLoading, isSentLoading, isSentMessageLoading,
   onSelect, onSelectSent, onRefresh, onRefreshSent, onDelete, onSend,
+  isActive = true,
 }) => {
   const [folder, setFolder] = useState<MailFolder>('inbox');
   const [search, setSearch] = useState('');
@@ -43,24 +45,45 @@ export const MailView: React.FC<MailViewProps> = ({
   const [isReply, setIsReply] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const sendingRef = useRef(false);
+  const deletingRef = useRef(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
+  const hasDraft = Boolean(recipient || subject || body);
+
+  useEffect(() => {
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      if (hasDraft || sendingRef.current) { event.preventDefault(); event.returnValue = ''; }
+    };
+    window.addEventListener('beforeunload', beforeUnload);
+    return () => window.removeEventListener('beforeunload', beforeUnload);
+  }, [hasDraft]);
 
   const filteredInbox = useMemo(() => messages.filter((message) =>
     `${message.from} ${message.subject} ${message.preview}`.toLowerCase().includes(search.toLowerCase())), [messages, search]);
   const filteredSent = useMemo(() => sentMessages.filter((message) =>
     `${message.to} ${message.subject} ${message.preview}`.toLowerCase().includes(search.toLowerCase())), [sentMessages, search]);
 
-  const openCompose = () => {
+  const clearDraft = () => {
     setRecipient('');
     setSubject('');
     setBody('');
     setReplyHeaders({});
     setIsReply(false);
     setSendError(null);
+  };
+
+  const openCompose = () => {
+    if (!hasDraft) clearDraft();
     setIsComposeOpen(true);
   };
 
   const openReply = () => {
     if (!selectedMessage) return;
+    if (hasDraft || sendingRef.current) {
+      setSendError(current => current || 'Finish or discard your current draft before starting a reply.');
+      setIsComposeOpen(true);
+      return;
+    }
     const replySubject = /^re\s*:/i.test(selectedMessage.subject) ? selectedMessage.subject : `Re: ${selectedMessage.subject}`;
     const quoted = selectedMessage.text.split('\n').map((line) => `> ${line}`).join('\n');
     const references = [selectedMessage.references, selectedMessage.messageId].filter(Boolean).join(' ');
@@ -77,25 +100,34 @@ export const MailView: React.FC<MailViewProps> = ({
   };
 
   const removeMessage = async () => {
-    if (!pendingDelete) return;
+    if (!pendingDelete || deletingRef.current) return;
+    deletingRef.current = true;
     setIsDeleting(true);
     try { await onDelete(pendingDelete.id); setPendingDelete(null); }
     catch { /* WorkspaceApp reports the failure. */ }
-    finally { setIsDeleting(false); }
+    finally { deletingRef.current = false; setIsDeleting(false); }
   };
 
   const submitMessage = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (sendingRef.current) return;
+    if (!recipient.trim() || !subject.trim() || !body.trim()) {
+      setSendError('A recipient, subject and message are required.');
+      return;
+    }
+    sendingRef.current = true;
     setSendError(null);
     setIsSending(true);
     try {
       await onSend({ to: recipient, subject, text: body, ...replyHeaders });
+      clearDraft();
       setIsComposeOpen(false);
       setFolder('sent');
       setSearch('');
     } catch (error) {
       setSendError(error instanceof Error ? error.message : 'Unable to send email.');
     } finally {
+      sendingRef.current = false;
       setIsSending(false);
     }
   };
@@ -173,19 +205,20 @@ export const MailView: React.FC<MailViewProps> = ({
         </div>
       )}
 
-      <ConfirmDialog isOpen={pendingDelete !== null} title="Delete email?" description={pendingDelete ? `“${pendingDelete.subject || '(无标题)'}” and its stored message will be permanently removed.` : 'This message will be permanently removed.'} confirmLabel="Delete email" isConfirming={isDeleting} onConfirm={() => void removeMessage()} onCancel={() => !isDeleting && setPendingDelete(null)} />
+      <ConfirmDialog isOpen={isActive && pendingDelete !== null} title="Delete email?" description={pendingDelete ? `“${pendingDelete.subject || '(无标题)'}” and its stored message will be permanently removed.` : 'This message will be permanently removed.'} confirmLabel="Delete email" isConfirming={isDeleting} onConfirm={() => void removeMessage()} onCancel={() => !isDeleting && setPendingDelete(null)} />
+      <ConfirmDialog isOpen={isActive && discardOpen} title="Discard this draft?" description="The unsent recipient, subject and message will be removed from this tab." confirmLabel="Discard draft" onCancel={() => setDiscardOpen(false)} onConfirm={() => { clearDraft(); setDiscardOpen(false); setIsComposeOpen(false); }} />
 
-      {isComposeOpen && (
+      {isComposeOpen && isActive && (
         <div className="workspace-modal-overlay fixed inset-0 z-40 flex items-start justify-center bg-black/50 p-4 pt-16 sm:pt-24" onMouseDown={(event) => { if (event.target === event.currentTarget && !isSending) setIsComposeOpen(false); }}>
-          <form onSubmit={submitMessage} className="workspace-modal w-full max-w-xl bg-white dark:bg-[#18191d] border border-neutral-200 dark:border-white/10 p-5 sm:p-6" onMouseDown={(event) => event.stopPropagation()}>
-            <div className="flex items-start justify-between gap-4"><div><h2 className="type-modal-heading text-neutral-900 dark:text-white">{isReply ? 'Reply' : 'New message'}</h2><p className="type-secondary mt-1">Sent from your verified Resend address.</p></div><button type="button" onClick={() => setIsComposeOpen(false)} disabled={isSending} className="type-secondary cursor-pointer">Cancel</button></div>
-            <div className="space-y-3 mt-5">
+          <form role="dialog" aria-modal="true" aria-label="Email composer" onSubmit={submitMessage} className="workspace-modal w-full max-w-xl bg-white dark:bg-[#18191d] border border-neutral-200 dark:border-white/10 p-5 sm:p-6" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="flex items-start justify-between gap-4"><div><h2 className="type-modal-heading text-neutral-900 dark:text-white">{isReply ? 'Reply' : 'New message'}</h2><p className="type-secondary mt-1">Draft kept in this tab until sent or discarded.</p></div><button type="button" onClick={() => setIsComposeOpen(false)} disabled={isSending} className="type-secondary cursor-pointer">Close</button></div>
+            <fieldset disabled={isSending} className="space-y-3 mt-5">
               <input required type="email" value={recipient} onChange={(event) => setRecipient(event.target.value)} placeholder="To" aria-label="Recipient" className="workspace-input" />
               <input required value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Subject" aria-label="Subject" className="workspace-input" />
               <textarea required value={body} onChange={(event) => setBody(event.target.value)} placeholder="Write a message…" aria-label="Message" rows={10} className="workspace-input resize-y" />
-            </div>
+            </fieldset>
             {sendError && <p className="type-secondary mt-3 text-red-600 dark:text-red-300" role="alert">{sendError}</p>}
-            <div className="flex justify-end mt-5"><button type="submit" disabled={isSending} className="workspace-button workspace-button-primary cursor-pointer disabled:opacity-50">{isSending ? 'Sending…' : isReply ? 'Send reply' : 'Send email'}</button></div>
+            <div className="flex justify-between gap-3 mt-5"><button type="button" disabled={isSending || !hasDraft} className="workspace-button workspace-button-secondary" onClick={() => setDiscardOpen(true)}>Discard draft</button><button type="submit" disabled={isSending} className="workspace-button workspace-button-primary cursor-pointer disabled:opacity-50">{isSending ? 'Sending…' : isReply ? 'Send reply' : 'Send email'}</button></div>
           </form>
         </div>
       )}

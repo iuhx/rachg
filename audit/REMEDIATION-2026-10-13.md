@@ -1,5 +1,7 @@
 # Audit remediation status — 2026-10-13
 
+Latest functional follow-up: [71-test review and fixes](FOLLOWUP-2026-10-13.md).
+
 The verified changes are ready for Git submission on `fix/audit-hardening`.
 This report describes the current implementation, replacing the earlier intermediate
 status lists. It does **not** claim that every original audit item is complete.

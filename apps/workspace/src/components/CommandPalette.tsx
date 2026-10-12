@@ -42,6 +42,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        if (!isOpen && document.querySelector?.('[role="dialog"], [role="alertdialog"]')) return;
         e.preventDefault();
         if (isOpen) {
           onClose();

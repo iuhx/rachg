@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import type { NoteItem } from '../types';
 
@@ -25,6 +25,7 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const submittingRef = useRef(false);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -38,7 +39,12 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isSubmitting || type === 'project') return;
+    if (submittingRef.current || type === 'project') return;
+    if ((type === 'note' && !noteTitle.trim()) || (type === 'transfer' && !selectedFile)) {
+      setSubmitError(type === 'note' ? 'A note title is required.' : 'Choose a file before uploading.');
+      return;
+    }
+    submittingRef.current = true;
     setIsSubmitting(true);
     setSubmitError(null);
     try {
@@ -50,7 +56,7 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
     onClose();
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : 'Unable to save. Please retry.');
-    } finally { setIsSubmitting(false); }
+    } finally { submittingRef.current = false; setIsSubmitting(false); }
   };
 
   return (

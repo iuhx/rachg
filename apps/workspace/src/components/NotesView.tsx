@@ -54,7 +54,8 @@ export const NotesView: React.FC<NotesViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [isDeleting, setIsDeleting] = useState(false);
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [noteToDelete, setNoteToDelete] = useState<NoteItem | null>(null);
+  const deletingRef = useRef(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [clock, setClock] = useState(() => Date.now());
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -117,12 +118,17 @@ export const NotesView: React.FC<NotesViewProps> = ({
   };
 
   const saveDraft = useCallback(async (exitAfterSave = false) => {
+    if (deletingRef.current) return false;
     if (!activeNote || !editTitle.trim()) {
       setSaveState('error');
       setErrorMessage('A note title is required.');
       return false;
     }
-    if (savingRef.current) { await savingRef.current; return false; }
+    if (savingRef.current) {
+      const unchanged = await savingRef.current;
+      if (exitAfterSave && unchanged) setIsEditing(false);
+      return unchanged;
+    }
 
     clearAutosaveTimer();
     setSaveState('saving');
@@ -174,6 +180,7 @@ export const NotesView: React.FC<NotesViewProps> = ({
   useEffect(() => {
     if (!isActive) return;
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (document.activeElement?.closest?.('[role="dialog"], [role="alertdialog"]')) return;
       const isMod = event.metaKey || event.ctrlKey;
       if (isMod && event.key.toLowerCase() === 's' && isEditing) {
         event.preventDefault();
@@ -184,7 +191,7 @@ export const NotesView: React.FC<NotesViewProps> = ({
         if (isDirty) void saveDraft(true);
         else setIsEditing(false);
       }
-      if (event.key === '/' && !isEditing && document.activeElement?.tagName !== 'INPUT') {
+      if (event.key === '/' && !isEditing && !['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName || '')) {
         event.preventDefault();
         searchInputRef.current?.focus();
       }
@@ -217,17 +224,21 @@ export const NotesView: React.FC<NotesViewProps> = ({
   };
 
   const removeNote = async () => {
-    if (!activeNote) return;
+    if (!noteToDelete || deletingRef.current) return;
+    const targetId = noteToDelete.id;
+    deletingRef.current = true;
     clearAutosaveTimer();
     setIsDeleting(true);
     setErrorMessage(null);
     try {
-      await onDeleteNote(activeNote.id);
-      discardDeletedDraft(activeNote.id);
-      setIsDeleteDialogOpen(false);
+      if (savingRef.current) await savingRef.current;
+      await onDeleteNote(targetId);
+      discardDeletedDraft(targetId);
+      setNoteToDelete(null);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Unable to delete note.');
     } finally {
+      deletingRef.current = false;
       setIsDeleting(false);
     }
   };
@@ -327,7 +338,7 @@ export const NotesView: React.FC<NotesViewProps> = ({
                       ) : (
                         <button onClick={startEdit} className="workspace-button workspace-button-secondary min-h-8 px-3 py-1 cursor-pointer"><Edit3 className="w-3.5 h-3.5" /><span>Edit</span></button>
                       )}
-                      <button onClick={() => setIsDeleteDialogOpen(true)} disabled={isDeleting} title="Delete note" aria-label="Delete note" className="workspace-button workspace-button-secondary min-h-8 px-2 text-red-500 hover:text-red-600 cursor-pointer disabled:opacity-50"><Trash2 className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => setNoteToDelete(activeNote)} disabled={isDeleting} title="Delete note" aria-label="Delete note" className="workspace-button workspace-button-secondary min-h-8 px-2 text-red-500 hover:text-red-600 cursor-pointer disabled:opacity-50"><Trash2 className="w-3.5 h-3.5" /></button>
                     </div>
                   </div>
 
@@ -356,13 +367,13 @@ export const NotesView: React.FC<NotesViewProps> = ({
       )}
 
       <ConfirmDialog
-        isOpen={isDeleteDialogOpen}
+        isOpen={isActive && noteToDelete !== null}
         title="Delete note?"
-        description={activeNote ? `“${activeNote.title}” will be permanently removed from your private workspace.` : 'This note will be permanently removed from your private workspace.'}
+        description={noteToDelete ? `“${noteToDelete.title}” will be permanently removed from your private workspace.` : 'This note will be permanently removed from your private workspace.'}
         confirmLabel="Delete note"
         isConfirming={isDeleting}
         onConfirm={() => void removeNote()}
-        onCancel={() => { if (!isDeleting) setIsDeleteDialogOpen(false); }}
+        onCancel={() => { if (!isDeleting) setNoteToDelete(null); }}
       />
     </div>
   );

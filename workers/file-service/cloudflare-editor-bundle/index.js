@@ -4330,15 +4330,9 @@ var PostalMime = class _PostalMime {
 function getFileExpiry(expiry, now) {
   const value = expiry?.trim().toLowerCase() || "48 hours";
   if (value === "permanent") return 0;
-  let hours = 48;
-  if (value.includes("1 hour") || value === "1h") hours = 1;
-  else if (value.includes("24 hour") || value === "24h" || value === "1 day") hours = 24;
-  else if (value.includes("48 hour") || value === "48h" || value === "2 days") hours = 48;
-  else if (value.includes("7 day") || value === "7d" || value === "168h") hours = 168;
-  else {
-    const numericHours = parseInt(value, 10);
-    hours = isNaN(numericHours) ? 48 : Math.max(1, Math.min(168, numericHours));
-  }
+  const match = /^(\d+)\s*(h|hours?|d|days?)?$/.exec(value);
+  const requested = match ? Number(match[1]) * (match[2]?.startsWith("d") ? 24 : 1) : 48;
+  const hours = Math.max(1, Math.min(168, requested));
   return now + hours * 3600 * 1e3;
 }
 function isFileExpired(expiresAt, now = Date.now()) {

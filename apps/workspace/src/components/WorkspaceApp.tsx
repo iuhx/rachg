@@ -11,7 +11,6 @@ import { CommandPalette } from './CommandPalette';
 import { NewItemModal } from './NewItemModal';
 import type { FileQrRequest } from './ToolsView';
 
-const ToolsView = React.lazy(() => import('./ToolsView').then(module => ({ default: module.ToolsView })));
 import {
   INITIAL_PROJECTS,
   INITIAL_TRANSFERS,
@@ -27,6 +26,8 @@ import { getAccessIdentity, startAccessLogout } from '../services/accessService'
 import { deleteMailMessage, fetchMail, fetchMailMessage, fetchSentMail, fetchSentMailMessage, sendMail } from '../services/mailService';
 import type { NavTab, Project, FileItem, NoteItem, MailItem, MailMessage, SentMailItem, SentMailMessage, MailSendRequest } from '../types';
 
+const ToolsView = React.lazy(() => import('./ToolsView').then(module => ({ default: module.ToolsView })));
+
 export const WorkspaceApp: React.FC = () => {
   const [activeTab, setActiveTab] = useState<NavTab>('home');
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
@@ -40,6 +41,7 @@ export const WorkspaceApp: React.FC = () => {
   const [notes, setNotes] = useState<NoteItem[]>([]);
   const [isNotesLoading, setIsNotesLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
+  const pendingUploads = useRef(0);
   const deletedTransfers = useRef(new Set<string>());
   const [mailMessages, setMailMessages] = useState<MailItem[]>([]);
   const [selectedMail, setSelectedMail] = useState<MailMessage | null>(null);
@@ -51,6 +53,12 @@ export const WorkspaceApp: React.FC = () => {
   const [isSentMailMessageLoading, setIsSentMailMessageLoading] = useState(false);
   const mailSelection = useRef(0);
   const sentSelection = useRef(0);
+  const mailListVersion = useRef(0);
+  const sentListVersion = useRef(0);
+  const selectedInboxId = useRef<string | null>(null);
+  const selectedSentId = useRef<string | null>(null);
+  const [mailVisited, setMailVisited] = useState(false);
+  useEffect(() => { if (activeTab === 'mail') setMailVisited(true); }, [activeTab]);
   const [fileQrRequest, setFileQrRequest] = useState<FileQrRequest | null>(null);
   const [toolsVisited, setToolsVisited] = useState(false);
   useEffect(() => { if (activeTab === 'tools') setToolsVisited(true); }, [activeTab]);
@@ -89,29 +97,39 @@ export const WorkspaceApp: React.FC = () => {
 
   const loadMail = useCallback(async () => {
     if (authStatus !== 'authenticated') return;
+    const version = ++mailListVersion.current;
     setIsMailLoading(true);
     try {
       const messages = await fetchMail();
+      if (version !== mailListVersion.current) return;
       setMailMessages(messages);
-      setSelectedMail((current) => current && messages.some((message) => message.id === current.id) ? current : null);
+      if (selectedInboxId.current && !messages.some(message => message.id === selectedInboxId.current)) {
+        selectedInboxId.current = null; mailSelection.current++;
+        setSelectedMail(null); setIsMailMessageLoading(false);
+      }
     } catch (error) {
-      showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to continue.' : error instanceof Error ? error.message : 'Unable to load mail.');
+      if (version === mailListVersion.current) showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to continue.' : error instanceof Error ? error.message : 'Unable to load mail.');
     } finally {
-      setIsMailLoading(false);
+      if (version === mailListVersion.current) setIsMailLoading(false);
     }
   }, [authStatus]);
 
   const loadSentMail = useCallback(async () => {
     if (authStatus !== 'authenticated') return;
+    const version = ++sentListVersion.current;
     setIsSentMailLoading(true);
     try {
       const messages = await fetchSentMail();
+      if (version !== sentListVersion.current) return;
       setSentMessages(messages);
-      setSelectedSentMail((current) => current && messages.some((message) => message.id === current.id) ? current : null);
+      if (selectedSentId.current && !messages.some(message => message.id === selectedSentId.current)) {
+        selectedSentId.current = null; sentSelection.current++;
+        setSelectedSentMail(null); setIsSentMailMessageLoading(false);
+      }
     } catch (error) {
-      showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to continue.' : error instanceof Error ? error.message : 'Unable to load sent mail.');
+      if (version === sentListVersion.current) showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to continue.' : error instanceof Error ? error.message : 'Unable to load sent mail.');
     } finally {
-      setIsSentMailLoading(false);
+      if (version === sentListVersion.current) setIsSentMailLoading(false);
     }
   }, [authStatus]);
 
@@ -123,6 +141,7 @@ export const WorkspaceApp: React.FC = () => {
   }, [authStatus, loadMail, loadSentMail]);
 
   const handleSelectMail = async (item: MailItem) => {
+    selectedInboxId.current = item.id;
     const selection = ++mailSelection.current;
     setSelectedMail({ ...item, text: '' });
     setIsMailMessageLoading(true);
@@ -132,6 +151,7 @@ export const WorkspaceApp: React.FC = () => {
   };
 
   const handleSelectSentMail = async (item: SentMailItem) => {
+    selectedSentId.current = item.id;
     const selection = ++sentSelection.current;
     setSelectedSentMail({ ...item, text: '' });
     setIsSentMailMessageLoading(true);
@@ -143,7 +163,8 @@ export const WorkspaceApp: React.FC = () => {
   const handleDeleteMail = async (id: string) => {
     try {
       await deleteMailMessage(id);
-      if (selectedMail?.id === id) { mailSelection.current++; setIsMailMessageLoading(false); }
+      mailListVersion.current++; setIsMailLoading(false);
+      if (selectedInboxId.current === id) { selectedInboxId.current = null; mailSelection.current++; setIsMailMessageLoading(false); }
       setMailMessages((current) => current.filter((message) => message.id !== id));
       setSelectedMail((current) => current?.id === id ? null : current);
       showToast('Email deleted.');
@@ -205,6 +226,7 @@ export const WorkspaceApp: React.FC = () => {
   };
 
   const handleUploadFile = async (file: File, expiry: string = '48 hours') => {
+    pendingUploads.current++;
     setIsUploading(true);
     try {
       const { file: uploadedFile, isLive } = await uploadFileService(file, expiry);
@@ -217,7 +239,8 @@ export const WorkspaceApp: React.FC = () => {
       showToast(err instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to upload files.' : (err.message || 'Upload failed'));
       throw err;
     } finally {
-      setIsUploading(false);
+      pendingUploads.current--;
+      setIsUploading(pendingUploads.current > 0);
     }
   };
 
@@ -286,6 +309,7 @@ export const WorkspaceApp: React.FC = () => {
 
         {/* Dynamic Views */}
         <main className="workspace-main flex-1 px-4 pt-2 pb-16 sm:px-6 lg:px-8">
+          {authStatus === 'unauthenticated' && <p role="status" className="workspace-panel type-secondary p-3 mb-5">Sign in using the account menu to load private files, notes and mail. Local tools remain available.</p>}
           {activeTab === 'home' && (
             <DashboardView
               transfers={transfers}
@@ -305,9 +329,10 @@ export const WorkspaceApp: React.FC = () => {
               onGenerateQr={(file) => {
                 setFileQrRequest(current => ({ fileId: file.id, sequence: (current?.sequence || 0) + 1 }));
                 setActiveTab('tools');
+                window.scrollTo(0, 0);
               }}
               isUploading={isUploading}
-              isLoading={isFilesLoading}
+              isLoading={authStatus === 'loading' || (authStatus === 'authenticated' && isFilesLoading)}
             />
           )}
 
@@ -315,7 +340,7 @@ export const WorkspaceApp: React.FC = () => {
             <NotesView
               notes={notes}
               isActive={activeTab === 'notes'}
-              isLoading={isNotesLoading}
+              isLoading={authStatus === 'loading' || (authStatus === 'authenticated' && isNotesLoading)}
               onNewNote={() => setNewModalType('note')}
               onUpdateNote={handleUpdateNote}
               onDeleteNote={handleDeleteNote}
@@ -336,8 +361,9 @@ export const WorkspaceApp: React.FC = () => {
             />
           )}
 
-          {activeTab === 'mail' && (
+          {(activeTab === 'mail' || mailVisited) && <div hidden={activeTab !== 'mail'}>
             <MailView
+              isActive={activeTab === 'mail'}
               messages={mailMessages}
               sentMessages={sentMessages}
               selectedMessage={selectedMail}
@@ -353,7 +379,7 @@ export const WorkspaceApp: React.FC = () => {
               onDelete={handleDeleteMail}
               onSend={handleSendMail}
             />
-          )}
+          </div>}
 
           {activeTab === 'settings' && (
             <SettingsView

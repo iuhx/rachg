@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Cloud,
   RefreshCw,
@@ -24,19 +24,30 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 }) => {
   const [testingPing, setTestingPing] = useState(false);
   const [pingLatency, setPingLatency] = useState<number | null>(null);
+  const [pingError, setPingError] = useState<string | null>(null);
+  const pingBusy = useRef(false);
 
   const handleTestPing = async () => {
+    if (pingBusy.current) return;
+    pingBusy.current = true;
     setTestingPing(true);
+    setPingError(null); setPingLatency(null);
     const start = performance.now();
     try {
       const apiBaseUrl = 'https://files.rachg.com';
-      const response = await fetch(`${apiBaseUrl}/health`, { method: 'GET', credentials: 'include' });
+      const response = await fetch(`${apiBaseUrl}/health`, { method: 'GET', credentials: 'include', signal: AbortSignal.timeout(10_000) });
+      if (response.redirected || response.status === 401 || response.status === 403) throw new Error('Sign in to the file service to check its status.');
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('The server did not return a health response.');
+      const health = await response.json();
+      if (!health || health.service !== 'rachg-file-service' || health.status !== 'healthy' || health.schema !== 'ready') throw new Error('The file service did not report ready.');
       const duration = Math.round(performance.now() - start);
       setPingLatency(duration);
-    } catch {
+    } catch (error) {
       setPingLatency(null);
+      setPingError(error instanceof Error ? error.message : 'Unable to reach the file service.');
     } finally {
+      pingBusy.current = false;
       setTestingPing(false);
     }
   };
@@ -65,7 +76,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 Cloudflare Edge Architecture
               </h3>
               <p className="type-secondary">
-                Connected to <span className="font-mono text-neutral-700 dark:text-neutral-300">rachg.com</span>
+                Configured for <span className="font-mono text-neutral-700 dark:text-neutral-300">rachg.com</span>
               </p>
             </div>
           </div>
@@ -79,12 +90,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <RefreshCw className={`w-3.5 h-3.5 ${testingPing ? 'animate-spin' : ''}`} />
               <span>{pingLatency !== null ? `${pingLatency}ms` : 'Ping Edge'}</span>
             </button>
-          <span className="type-label flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-800/30">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-              Active
+          <span role="status" className={`type-label flex items-center gap-1 px-2.5 py-1 rounded-full border ${pingLatency !== null ? 'text-emerald-700 dark:text-emerald-400 border-emerald-200' : 'text-neutral-500 border-neutral-200 dark:border-white/10'}`}>
+              {testingPing ? 'Checking…' : pingLatency !== null ? 'API reachable' : pingError ? 'Check failed' : 'Not checked'}
             </span>
           </div>
         </div>
+
+        {pingError && <p role="alert" className="type-secondary text-red-600 dark:text-red-300">{pingError}</p>}
 
         {/* Real Production Services */}
         <div className="divide-y divide-neutral-100 dark:divide-white/[0.05] pt-2 text-xs">
