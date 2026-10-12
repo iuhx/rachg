@@ -147,6 +147,30 @@ test('mail schema failure occurs before writing raw mail', () => withFixture(asy
   assert.equal(f.objects.size,0);
 }));
 
+test('identical deliveries create one mail record and capacity is released on deletion', () => withFixture(async f => {
+  const ingest=f.load('workers/mail-ingest/src/index.ts').default;
+  const raw='From: sender@example.invalid\r\nSubject: delivery\r\n\r\nhello';
+  const message=()=>({from:'sender@example.invalid',to:'inbox@rachg.com',rawSize:Buffer.byteLength(raw),raw:new Response(raw).body});
+  await ingest.email(message(),f.env,f.ctx);await ingest.email(message(),f.env,f.ctx);
+  assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM mail').get().n,1);assert.equal(f.objects.size,1);
+  const row=f.sqlite.prepare('SELECT * FROM mail').get();
+  assert.equal((await f.request(`/v1/mail/${row.id}`,{method:'DELETE'})).status,200);
+  assert.equal(f.sqlite.prepare('SELECT state FROM mail_ingestions').get().state,'purged');assert.equal(f.objects.size,0);
+  await ingest.email(message(),f.env,f.ctx);assert.equal(f.objects.size,0);
+}));
+
+test('mail capacity refusal writes no object and stale failed deliveries are reconciled', () => withFixture(async f => {
+  const ingest=f.load('workers/mail-ingest/src/index.ts').default;
+  const raw='Subject: test\r\n\r\nhello';
+  const message=()=>({from:'sender@example.invalid',to:'inbox@rachg.com',rawSize:Buffer.byteLength(raw),raw:new Response(raw).body});
+  f.env.MAX_MAIL_STORAGE_BYTES='1';await assert.rejects(ingest.email(message(),f.env,f.ctx),/budget/);assert.equal(f.objects.size,0);
+  f.env.MAX_MAIL_STORAGE_BYTES='1000';f.hooks.failPut=true;
+  await assert.rejects(ingest.email(message(),f.env,f.ctx));assert.equal(f.sqlite.prepare('SELECT state FROM mail_ingestions').get().state,'pending');
+  f.hooks.failPut=false;f.sqlite.prepare('UPDATE mail_ingestions SET created_at=0').run();
+  await f.load('workers/file-service/src/cleanup.ts').cleanupStorage(f.DB,f.bucket);
+  assert.equal(f.sqlite.prepare('SELECT COUNT(*) n FROM mail_ingestions').get().n,0);
+}));
+
 test('unauthenticated requests remain rejected before private writes', () => withFixture(async f => {
   const response=await f.worker.fetch(new Request('https://fixture.invalid/v1/files/upload',{method:'POST'}),f.env,f.ctx);
   assert.equal(response.status,401);assert.equal(f.objects.size,0);assert.equal(f.queries.length,0);
@@ -155,4 +179,25 @@ test('unauthenticated requests remain rejected before private writes', () => wit
 test('authenticated browser writes reject foreign Origin before accessing storage', () => withFixture(async f => {
   const response=await f.request('/v1/files/upload',{method:'POST',headers:{Origin:'https://untrusted.invalid'},body:'test'});
   assert.equal(response.status,403);assert.equal(f.queries.length,0);assert.equal(f.objects.size,0);
+}));
+
+test('download byte ranges, suffix ranges and HEAD return correct metadata without counting partial reads', () => withFixture(async f => {
+  const {file}=await (await f.upload(100)).json();
+  const route=`/f/${file.id}`;
+  const partial=await f.request(route,{headers:{Range:'bytes=10-19'}});
+  assert.equal(partial.status,206);assert.equal(partial.headers.get('content-range'),'bytes 10-19/100');assert.equal((await partial.arrayBuffer()).byteLength,10);
+  const suffix=await f.request(route,{headers:{Range:'bytes=-7'}});
+  assert.equal(suffix.status,206);assert.equal(suffix.headers.get('content-length'),'7');
+  const head=await f.request(route,{method:'HEAD'});
+  assert.equal(head.status,200);assert.equal(head.headers.get('content-length'),'100');assert.equal(await head.text(),'');
+  assert.equal(f.sqlite.prepare('SELECT download_count FROM files').get().download_count,0);
+}));
+
+test('invalid ranges return 416 while a stale If-Range returns the complete object', () => withFixture(async f => {
+  const {file}=await (await f.upload(100)).json();const route=`/f/${file.id}`;
+  for(const range of ['bytes=200-300','bytes=-0','bytes=20-10','bytes=0-1,3-4','bytes=9007199254740992-']) {
+    const response=await f.request(route,{headers:{Range:range}});assert.equal(response.status,416);assert.equal(response.headers.get('content-range'),'bytes */100');
+  }
+  const full=await f.request(route,{headers:{Range:'bytes=0-9','If-Range':'"stale"'}});
+  assert.equal(full.status,200);assert.equal((await full.arrayBuffer()).byteLength,100);
 }));

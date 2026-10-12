@@ -1,5 +1,6 @@
 import PostalMime from 'postal-mime';
 import { mailPlainText, MAX_MAIL_BYTES, readBounded } from '../../common/content';
+import { ensureMailLedger, mailFingerprint } from '../../common/mail-ledger';
 
 interface Env {
   DB: D1Database;
@@ -7,10 +8,7 @@ interface Env {
   FORWARD_TO?: string;
   TG_BOT_TOKEN?: string;
   TG_CHAT_ID?: string;
-}
-
-function makeId(): string {
-  return crypto.randomUUID().replace(/-/g, '');
+  MAX_MAIL_STORAGE_BYTES?: string;
 }
 
 function plainTextFromHtml(html: string): string {
@@ -51,18 +49,10 @@ export default {
       return;
     }
 
-    const id = makeId();
     const receivedAt = Date.now();
-    const r2Key = `mail/${receivedAt}-${id}.eml`;
     const raw = await readBounded(message.raw, MAX_MAIL_BYTES);
-    const parsed = await PostalMime.parse(raw);
-
-    const from = parsed.from?.address || message.from || 'Unknown sender';
-    const to = message.to || parsed.to?.map((address) => address.address).filter(Boolean).join(', ') || 'Unknown recipient';
-    const subject = parsed.subject?.trim().slice(0, 200) || '(无标题)';
-    const text = parsed.text?.trim() || plainTextFromHtml(parsed.html || '');
-    const preview = text.replace(/\s+/g, ' ').slice(0, 240);
-    const messageId = parsed.messageId?.slice(0, 998) || null;
+    const id = await mailFingerprint(raw, message.to);
+    const r2Key = `mail/${id}.eml`;
 
     await env.DB.prepare(`CREATE TABLE IF NOT EXISTS mail (
       id TEXT PRIMARY KEY,
@@ -75,21 +65,48 @@ export default {
       message_id TEXT
     )`).run();
     await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_mail_received ON mail (received_at DESC)`).run();
-    await env.FILES_BUCKET.put(r2Key, raw, {
-      httpMetadata: { contentType: 'message/rfc822' },
-    });
+    await ensureMailLedger(env.DB);
+    const existing = await env.DB.prepare('SELECT state FROM mail_ingestions WHERE id = ?').bind(id).first<{ state: string }>();
+    if (existing?.state === 'stored' || existing?.state === 'purged') return;
+    if (existing) {
+      // An earlier INSERT may have committed even if its response was lost.
+      const saved = await env.DB.prepare('SELECT id FROM mail WHERE id = ?').bind(id).first();
+      if (saved) {
+        await env.DB.prepare("UPDATE mail_ingestions SET state = 'stored' WHERE id = ?").bind(id).run();
+        return;
+      }
+      throw new Error('An identical delivery is still pending; retry after cleanup');
+    }
+    const maximum = Number(env.MAX_MAIL_STORAGE_BYTES || 1024 * 1024 * 1024);
+    if (!Number.isSafeInteger(maximum) || maximum <= 0) throw new Error('Invalid mailbox storage budget');
+    const reserved = await env.DB.prepare(`INSERT OR IGNORE INTO mail_ingestions (id, r2_key, size_bytes, created_at)
+      SELECT ?, ?, ?, ? WHERE
+        (SELECT COALESCE(SUM(size_bytes), 0) FROM mail_ingestions WHERE state != 'purged') + ? <= ?
+        AND (SELECT COUNT(*) FROM mail) < 5000
+        AND (SELECT COUNT(*) FROM mail_ingestions WHERE created_at > ?) < 200
+    `).bind(id, r2Key, raw.byteLength, receivedAt, raw.byteLength, maximum, receivedAt - 3600_000).run();
+    if (!(reserved.meta?.changes)) throw new Error('Mailbox budget or concurrent delivery prevents acceptance');
+    let from = message.from, subject = '(无标题)';
+    const to = message.to;
     try {
+      const parsed = await PostalMime.parse(raw);
+      from = parsed.from?.address || message.from || 'Unknown sender';
+      subject = parsed.subject?.trim().slice(0, 200) || '(无标题)';
+      const text = parsed.text?.trim() || plainTextFromHtml(parsed.html || '');
+      const preview = text.replace(/\s+/g, ' ').slice(0, 240);
+      const messageId = parsed.messageId?.slice(0, 998) || null;
+      await env.FILES_BUCKET.put(r2Key, raw, {
+        httpMetadata: { contentType: 'message/rfc822' },
+      });
       await env.DB.prepare(`INSERT INTO mail (id, from_address, to_address, subject, received_at, preview, r2_key, message_id)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, from, to, subject, receivedAt, preview, r2Key, messageId).run();
     } catch (error) {
-      // An INSERT can commit even if its response is lost. Check the reference
-      // before compensating; never delete an object still referenced by mail.
-      try {
-        const saved = await env.DB.prepare('SELECT id FROM mail WHERE id = ?').bind(id).first();
-        if (!saved) await env.FILES_BUCKET.delete(r2Key);
-      } catch { console.error('Mail storage needs reconciliation', { id, r2Key }); }
+      // The durable ledger retains both the bytes and exact key until the
+      // scheduled reconciler can distinguish a committed INSERT from an orphan.
+      console.error('Mail delivery is pending reconciliation', { id });
       throw error;
     }
+    await env.DB.prepare("UPDATE mail_ingestions SET state = 'stored' WHERE id = ?").bind(id).run();
 
     ctx.waitUntil(notifyTelegram(env, from, to, subject));
 

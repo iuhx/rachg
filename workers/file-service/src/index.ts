@@ -50,11 +50,12 @@ import {
   type MailRecord,
   type SentMailRecord,
 } from './db';
-import { buildR2Key, uploadToR2, getFromR2, deleteFromR2, buildScratchpadKey, getScratchpadObject, getMailObject, deleteMailObject } from './storage';
+import { buildR2Key, uploadToR2, getFromR2, headFromR2, deleteFromR2, buildScratchpadKey, getScratchpadObject, getMailObject, deleteMailObject } from './storage';
 import { checkStorageQuota, getActiveStorageUsage } from './quota';
 import { isAuthenticated, resolveAuth } from './auth';
 import { getFileExpiry, isFileExpired } from './expiry';
 import { cleanupStorage } from './cleanup';
+import { parseByteRange } from './download';
 import { boundedForm, boundedJson, InputError, mailPlainText, MAX_FILE_BYTES, MAX_MAIL_BYTES, MAX_TEXT_BYTES, readBounded, utf8Size } from '../../common/content';
 
 export interface Env {
@@ -85,7 +86,7 @@ function jsonResponse<T>(data: T, status: number = 200, origin: string): Respons
       'X-Content-Type-Options': 'nosniff',
       'Referrer-Policy': 'no-referrer',
       'Access-Control-Allow-Origin': origin,
-      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, HEAD, POST, PUT, DELETE, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
       'Access-Control-Allow-Credentials': 'true',
       Vary: 'Origin',
@@ -180,7 +181,7 @@ export default {
       return new Response(null, {
         headers: {
           'Access-Control-Allow-Origin': origin,
-          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+          'Access-Control-Allow-Methods': 'GET, HEAD, POST, PUT, DELETE, OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type, Authorization',
           'Access-Control-Allow-Credentials': 'true',
           'Access-Control-Max-Age': '86400',
@@ -710,7 +711,7 @@ export default {
       // Streams file from R2 directly with download header
       // -------------------------------------------------------------
       const downloadMatch = url.pathname.match(/^\/f\/([a-zA-Z0-9_-]+)$/);
-      if (request.method === 'GET' && downloadMatch) {
+      if ((request.method === 'GET' || request.method === 'HEAD') && downloadMatch) {
         const id = downloadMatch[1];
         const record = await getFileRecordById(env.DB, id);
 
@@ -728,8 +729,19 @@ export default {
           });
         }
 
-        // Fetch from R2
-        const r2Object = await getFromR2(env.FILES_BUCKET, record.r2_key);
+        let range: { offset: number; length: number } | undefined;
+        const requestedRange = request.headers.get('Range');
+        let head: R2Object | null = null;
+        if (request.method === 'HEAD' || requestedRange) {
+          head = await headFromR2(env.FILES_BUCKET, record.r2_key);
+          if (!head) return new Response('File storage object missing.', { status: 404 });
+          const ifRange = request.headers.get('If-Range');
+          if (request.method === 'GET' && requestedRange && (!ifRange || ifRange === head.httpEtag)) {
+            range = parseByteRange(requestedRange, head.size) ?? undefined;
+            if (!range) return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${head.size}`, 'Cache-Control': 'private, no-store' } });
+          }
+        }
+        const r2Object = request.method === 'HEAD' ? head : await getFromR2(env.FILES_BUCKET, record.r2_key, range);
         if (!r2Object) {
           return new Response('File storage object missing.', {
             status: 404,
@@ -738,7 +750,7 @@ export default {
         }
 
         // Increment download counter asynchronously in ctx
-        ctx.waitUntil(incrementDownloadCount(env.DB, id));
+        if (request.method === 'GET' && !range) ctx.waitUntil(incrementDownloadCount(env.DB, id));
 
         // Prepare streaming download headers
         const headers = new Headers();
@@ -747,6 +759,9 @@ export default {
         headers.set('X-Content-Type-Options', 'nosniff');
         headers.set('Referrer-Policy', 'no-referrer');
         headers.set('etag', r2Object.httpEtag);
+        headers.set('Accept-Ranges', 'bytes');
+        headers.set('Content-Length', String(range?.length ?? r2Object.size));
+        if (range) headers.set('Content-Range', `bytes ${range.offset}-${range.offset + range.length - 1}/${r2Object.size}`);
         headers.set(
           'Content-Disposition',
           `attachment; filename="${record.filename.replace(/[^a-zA-Z0-9._-]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(record.filename).replace(/['()*]/g, (c) => '%' + c.charCodeAt(0).toString(16))}`
@@ -755,8 +770,8 @@ export default {
         headers.set('Access-Control-Allow-Credentials', 'true');
         headers.set('Vary', 'Origin');
 
-        return new Response(r2Object.body, {
-          status: 200,
+        return new Response(request.method === 'HEAD' ? null : (r2Object as R2ObjectBody).body, {
+          status: range ? 206 : 200,
           headers,
         });
       }

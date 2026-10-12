@@ -1,6 +1,7 @@
 import type { FileItem, FileCategory, NoteItem } from '@rachg/shared';
 import type { ScratchpadItem } from '@rachg/shared';
 import { isFileExpired } from './expiry';
+import { ensureMailLedger } from '../../common/mail-ledger';
 
 export interface FileRecord {
   id: string;
@@ -253,6 +254,7 @@ async function initializeSchema(db: D1Database): Promise<void> {
   await db.prepare(`CREATE TABLE IF NOT EXISTS scratchpad_cleanup (
     r2_key TEXT PRIMARY KEY, not_before INTEGER NOT NULL
   );`).run();
+  await ensureMailLedger(db);
 }
 
 export async function insertMailRecord(db: D1Database, record: MailRecord): Promise<void> {
@@ -275,7 +277,10 @@ export async function getMailRecord(db: D1Database, id: string): Promise<MailRec
 
 export async function deleteMailRecord(db: D1Database, id: string): Promise<boolean> {
   await ensureSchema(db);
-  const result = await db.prepare(`DELETE FROM mail WHERE id = ?`).bind(id).run();
+  const [result] = await db.batch([
+    db.prepare(`DELETE FROM mail WHERE id = ?`).bind(id),
+    db.prepare("UPDATE mail_ingestions SET state = 'purged' WHERE id = ?").bind(id),
+  ]);
   return (result.meta?.changes ?? 0) > 0;
 }
 

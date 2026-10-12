@@ -73,3 +73,12 @@ CREATE TABLE IF NOT EXISTS scratchpad_cleanup (
   r2_key TEXT PRIMARY KEY,
   not_before INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS mail_ingestions (
+  id TEXT PRIMARY KEY,
+  r2_key TEXT NOT NULL,
+  size_bytes INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  state TEXT NOT NULL DEFAULT 'pending'
+);
+CREATE INDEX IF NOT EXISTS idx_mail_ingestions_created ON mail_ingestions(created_at);

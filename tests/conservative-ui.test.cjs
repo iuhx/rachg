@@ -61,3 +61,18 @@ test('older email detail responses cannot replace the latest selection',async()=
   resolve.B({id:'B',text:'latest'});await b;resolve.A({id:'A',text:'stale'});await a;h.render();
   assert.equal(find(h,n=>n.type?.name==='MailView').props.selectedMessage.id,'B');h.unmount();
 });
+
+test('failed uploads preserve the selected file and keep the modal open',async()=>{
+  const f=components(),{NewItemModal}=f.load('apps/workspace/src/components/NewItemModal.tsx');let closed=false;
+  const h=f.mount(NewItemModal,{isOpen:true,type:'transfer',onClose(){closed=true;},onCreateProject(){},onCreateNote:async()=>{},onCreateTransfer:async()=>{throw new Error('Upload unavailable');}});
+  const file=new File(['test'],'draft.txt');find(h,n=>n.type==='input'&&n.props.type==='file').props.onChange({target:{files:[file]}});h.render();
+  await find(h,n=>n.type==='form').props.onSubmit({preventDefault(){}});h.render();
+  assert.equal(closed,false);assert.match(label(h.tree),/Upload unavailable/);assert.equal(find(h,n=>n.type==='button'&&n.props.type==='submit').props.disabled,false);h.unmount();
+});
+
+test('overview has read-only date and activity displays without the scratchpad editor',()=>{
+  const f=components(),{DashboardView}=f.load('apps/workspace/src/components/DashboardView.tsx');
+  const h=f.mount(DashboardView,{transfers:[],notes:[],messages:[],sentMessages:[],onNavigate(){}});
+  assert.match(label(h.tree),/This week/);assert.match(label(h.tree),/Recent activity/);assert.equal(elements(h.tree).some(n=>n.type==='textarea'),false);
+  assert.equal(elements(h.tree).filter(n=>n.props['aria-current']==='date').length,1);h.unmount();
+});

@@ -216,6 +216,12 @@ a {
   box-shadow: var(--shadow-card);
 }
 
+.overview-today {
+  background: #202127;
+  color: #fff;
+  border-color: #303138;
+}
+
 .workspace-panel {
   background: var(--color-surface-muted);
   border: 1px solid var(--color-line);

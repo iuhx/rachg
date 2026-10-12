@@ -8,7 +8,7 @@ interface NewItemModalProps {
   onClose: () => void;
   onCreateProject: (p: Partial<Project>) => void;
   onCreateNote: (n: Partial<NoteItem>) => Promise<void>;
-  onCreateTransfer: (file: File) => void;
+  onCreateTransfer: (file: File) => Promise<void>;
 }
 
 export const NewItemModal: React.FC<NewItemModalProps> = ({
@@ -30,6 +30,8 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
 
   // Transfer form state
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -39,12 +41,17 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
     setNoteTitle('');
     setNoteContent('');
     setSelectedFile(null);
+    setSubmitError(null);
   }, [isOpen, type]);
 
   if (!isOpen || !type) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    setSubmitError(null);
+    try {
     if (type === 'project' && projName) {
       onCreateProject({
         name: projName,
@@ -53,21 +60,20 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
         status: 'Planning',
       });
     } else if (type === 'note' && noteTitle) {
-      try {
-        await onCreateNote({ title: noteTitle, content: noteContent || '' });
-      } catch {
-        return;
-      }
+      await onCreateNote({ title: noteTitle, content: noteContent || '' });
     } else if (type === 'transfer' && selectedFile) {
-      onCreateTransfer(selectedFile);
+      await onCreateTransfer(selectedFile);
     }
     onClose();
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'Unable to save. Please retry.');
+    } finally { setIsSubmitting(false); }
   };
 
   return (
     <div
       className="workspace-modal-overlay fixed inset-0 bg-black/60 backdrop-blur-xs flex items-start sm:items-center justify-center p-4 z-50 animate-in fade-in duration-100"
-      onClick={onClose}
+      onClick={() => { if (!isSubmitting) onClose(); }}
     >
       <div
         className="workspace-modal bg-white dark:bg-[#18191d] border border-neutral-200 dark:border-white/10 rounded-2xl w-full max-w-lg p-6 shadow-2xl relative"
@@ -80,6 +86,7 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
           type="button"
           onClick={onClose}
           aria-label="Close dialog"
+          disabled={isSubmitting}
           className="absolute top-5 right-5 text-neutral-400 hover:text-neutral-900 dark:hover:text-white p-1 rounded-lg"
         >
           <X className="w-4 h-4" />
@@ -95,6 +102,8 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {submitError && <p role="alert" className="type-secondary text-red-600 dark:text-red-300">{submitError}</p>}
+          <fieldset disabled={isSubmitting} className="space-y-4">
           {type === 'project' && (
             <>
               <div>
@@ -184,6 +193,7 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
           <div className="pt-3 flex justify-end gap-2">
             <button
               type="button"
+              disabled={isSubmitting}
               onClick={onClose}
               className="workspace-button workspace-button-secondary"
             >
@@ -191,11 +201,13 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
             </button>
             <button
               type="submit"
+              disabled={isSubmitting}
               className="workspace-button workspace-button-primary cursor-pointer"
             >
               Confirm
             </button>
           </div>
+          </fieldset>
         </form>
       </div>
     </div>

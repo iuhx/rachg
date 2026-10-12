@@ -13,6 +13,18 @@
     "check": "pnpm --filter @rachg/shared build && pnpm --filter @rachg/file-service typecheck && pnpm --filter @rachg/mail-ingest typecheck && pnpm --filter @rachg/workspace exec tsc --noEmit && pnpm --filter @rachg/file-service test:retention && pnpm test:hardening && pnpm run build:all"
   },
   "devDependencies": {
-    "typescript": "^5.7.3"
+    "typescript": "^5.9.3"
+  },
+  "packageManager": "pnpm@10.26.0",
+  "pnpm": {
+    "overrides": {
+      "smol-toml": "1.9.0",
+      "source-map-js": "1.2.2"
+    },
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "sharp",
+      "workerd"
+    ]
   }
 }

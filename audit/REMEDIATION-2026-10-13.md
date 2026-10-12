@@ -1,7 +1,8 @@
 # Audit remediation status — partial
 
-The request to fix every audit item is **not complete**. No production deployment,
-DNS changes, Cloudflare configuration changes, mail sending, or Git push occurred.
+The request to fix every audit item is **not complete**. No production Worker deployment,
+DNS changes, Cloudflare permission changes or real mail sending occurred. This update
+is prepared for the explicitly requested Git push; the final chat reports its result.
 
 ## Independently completed
 
@@ -20,7 +21,7 @@ DNS changes, Cloudflare configuration changes, mail sending, or Git push occurre
 ## Validation
 
 `pnpm check` completed successfully on 2026-10-13. It includes all listed typechecks,
-the existing retention regression suite, 25 additional regression cases, the static
+the existing retention regression suite, 31 additional regression cases, the static
 Astro production build, and generation of both Worker editor artifacts.
 These checks do not establish that the remaining security or data-loss findings
 have been fixed. CI itself has not yet run on the remote repository.
@@ -84,3 +85,34 @@ The blocked service-layer batch was not retried, split up or reimplemented by an
 route; independent compatible fixes were developed and tested separately.
 
 The earlier audit report and local evidence remain available in `audit/2026-10-12/`.
+
+## Homepage and third-pass fixes
+
+- The homepage scratchpad editor and its startup request are removed. Existing
+  scratchpad data is preserved. The replacement shows local date/time, the current
+  week, recent notes, recent note/mail activity and upcoming expiry among recent files.
+  It requires no weather provider, geolocation permission, API key or external data feed.
+- **A15:** Updated Astro, Wrangler, Worker types and compatible dependencies. Pinned
+  repaired `smol-toml` and `source-map-js` versions. The local registry audit now reports
+  **0 known vulnerabilities**; this does not guarantee absence of undisclosed issues.
+  CI now rejects high-severity advisories rather than only uploading a report.
+- **A20:** Download GET supports single byte ranges and suffix ranges; HEAD returns
+  metadata without reading/counting a download. Invalid ranges return 416 and stale
+  If-Range validators return the full object. New regression cases cover these paths.
+- **A16:** Upload modals await completion, preserve failed submissions, prevent repeat
+  submission and keep the chosen file for retry. File deletion dialogs remain open
+  on failure. Parent handlers propagate failures without rewriting frontend services.
+- **A12:** Added `mail_ingestions`, an additive D1 ledger with SHA-256 content/recipient
+  deduplication and atomic reservation before MIME parsing/R2 writes. Defaults are
+  1 GiB of newly tracked mail, 5,000 indexed messages and 200 new receipts/hour.
+  Pending failures are reconciled using exact keys; referenced objects are retained.
+  Mail deletion and budget release are one D1 batch. Legacy byte inventory and
+  end-to-end delivery/recovery drills remain open.
+- Cleanup batches now process at most 8 transfer records, 3 scratchpad keys and 2
+  incoming-mail records, retaining the conservative per-invocation request budget.
+
+The remaining list now excludes completed A15/A20. Still open: Projects persistence,
+end-to-end outgoing-mail idempotency, cross-device edit conflicts, full pagination,
+note-list payload optimization, versioned migrations, legacy storage inventory,
+DMARC/production configuration and authenticated acceptance/recovery testing.
+The previously blocked frontend service batch remains untouched.

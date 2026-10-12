@@ -21,7 +21,6 @@ import {
 } from '../services/fileService';
 import { createNote, deleteNote, fetchNotes, updateNote as updateNoteService } from '../services/noteService';
 import { getAccessIdentity, startAccessLogout } from '../services/accessService';
-import { clearScratchpad, fetchScratchpad, saveScratchpad } from '../services/scratchpadService';
 import { deleteMailMessage, fetchMail, fetchMailMessage, fetchSentMail, fetchSentMailMessage, sendMail } from '../services/mailService';
 import type { NavTab, Project, FileItem, NoteItem, MailItem, MailMessage, SentMailItem, SentMailMessage, MailSendRequest } from '../types';
 
@@ -38,9 +37,6 @@ export const WorkspaceApp: React.FC = () => {
   const [notes, setNotes] = useState<NoteItem[]>([]);
   const [isNotesLoading, setIsNotesLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
-  const [scratchpad, setScratchpad] = useState<import('../types').ScratchpadItem | null>(null);
-  const [isScratchpadLoading, setIsScratchpadLoading] = useState(true);
-  const [isScratchpadSaving, setIsScratchpadSaving] = useState(false);
   const [mailMessages, setMailMessages] = useState<MailItem[]>([]);
   const [selectedMail, setSelectedMail] = useState<MailMessage | null>(null);
   const [isMailLoading, setIsMailLoading] = useState(false);
@@ -83,21 +79,6 @@ export const WorkspaceApp: React.FC = () => {
       }
     }).catch(() => setAuthStatus('unauthenticated'));
   }, []);
-
-  useEffect(() => {
-    if (authStatus !== 'authenticated') return;
-    setIsScratchpadLoading(true);
-    fetchScratchpad().then(setScratchpad).catch((error: unknown) => {
-      showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to continue.' : 'Unable to load scratchpad.');
-    }).finally(() => setIsScratchpadLoading(false));
-  }, [authStatus]);
-
-  const handleSaveScratchpad = async (content: string, image?: File | null) => {
-    setIsScratchpadSaving(true);
-    try { setScratchpad(await saveScratchpad(content, image)); showToast('Scratchpad saved.'); }
-    catch (error: any) { showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to save scratchpad.' : (error.message || 'Unable to save scratchpad.')); throw error; }
-    finally { setIsScratchpadSaving(false); }
-  };
 
   const loadMail = useCallback(async () => {
     if (authStatus !== 'authenticated') return;
@@ -176,12 +157,6 @@ export const WorkspaceApp: React.FC = () => {
     }
   };
 
-  const handleClearScratchpad = async () => {
-    setIsScratchpadSaving(true);
-    try { setScratchpad(await clearScratchpad()); showToast('Scratchpad cleared.'); }
-    catch (error: any) { showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to clear scratchpad.' : (error.message || 'Unable to clear scratchpad.')); }
-    finally { setIsScratchpadSaving(false); }
-  };
 
   // Load active transfers from live Worker on mount
   useEffect(() => {
@@ -241,6 +216,7 @@ export const WorkspaceApp: React.FC = () => {
       }
     } catch (err: any) {
       showToast(err instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to upload files.' : (err.message || 'Upload failed'));
+      throw err;
     } finally {
       setIsUploading(false);
     }
@@ -253,6 +229,7 @@ export const WorkspaceApp: React.FC = () => {
       showToast('File transfer revoked.');
     } catch (err: any) {
       showToast(err instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to delete files.' : (err.message || 'Delete failed'));
+      throw err;
     }
   };
 
@@ -311,17 +288,12 @@ export const WorkspaceApp: React.FC = () => {
         <main className="workspace-main flex-1 px-4 pt-2 pb-16 sm:px-6 lg:px-8">
           {activeTab === 'home' && (
             <DashboardView
-              projects={projects}
               transfers={transfers}
               notes={notes}
-              scratchpad={scratchpad}
-              isScratchpadLoading={isScratchpadLoading}
-              isScratchpadSaving={isScratchpadSaving}
-              onSaveScratchpad={handleSaveScratchpad}
-              onClearScratchpad={handleClearScratchpad}
+              messages={mailMessages}
+              sentMessages={sentMessages}
+              isLoading={authStatus === 'loading' || (authStatus === 'authenticated' && (isNotesLoading || isFilesLoading || isMailLoading || isSentMailLoading))}
               onNavigate={setActiveTab}
-              onUploadFile={handleUploadFile}
-              isUploading={isUploading}
             />
           )}
 

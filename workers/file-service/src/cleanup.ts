@@ -1,5 +1,5 @@
 import { ensureSchema } from './db';
-import { deleteFromR2, deleteScratchpadObject } from './storage';
+import { deleteFromR2, deleteScratchpadObject, deleteMailObject } from './storage';
 
 /** Operates only on exact keys recorded by this service, never bucket-wide prefixes. */
 export async function cleanupStorage(db: D1Database, bucket: R2Bucket): Promise<{ deleted: number; failed: number }> {
@@ -9,7 +9,7 @@ export async function cleanupStorage(db: D1Database, bucket: R2Bucket): Promise<
   const files = await db.prepare(`SELECT id, r2_key FROM files
     WHERE (status IN ('active', 'expired') AND expires_at != 0 AND expires_at <= ?)
        OR (status = 'uploading' AND created_at < ?)
-    ORDER BY created_at LIMIT 10`).bind(now, now - 3600_000).all<{ id: string; r2_key: string }>();
+    ORDER BY created_at LIMIT 8`).bind(now, now - 3600_000).all<{ id: string; r2_key: string }>();
   for (const record of files.results) {
     try {
       await deleteFromR2(bucket, record.r2_key);
@@ -18,7 +18,7 @@ export async function cleanupStorage(db: D1Database, bucket: R2Bucket): Promise<
     } catch { failed++; }
   }
   // Keep the combined cold-start invocation within the Free plan's request budget.
-  const images = await db.prepare('SELECT r2_key FROM scratchpad_cleanup WHERE not_before <= ? ORDER BY not_before LIMIT 5').bind(now).all<{ r2_key: string }>();
+  const images = await db.prepare('SELECT r2_key FROM scratchpad_cleanup WHERE not_before <= ? ORDER BY not_before LIMIT 3').bind(now).all<{ r2_key: string }>();
   for (const record of images.results) {
     try {
       const referenced = await db.prepare('SELECT id FROM scratchpad WHERE image_key = ?').bind(record.r2_key).first();
@@ -29,6 +29,19 @@ export async function cleanupStorage(db: D1Database, bucket: R2Bucket): Promise<
       await deleteScratchpadObject(bucket, record.r2_key);
       await db.prepare('DELETE FROM scratchpad_cleanup WHERE r2_key = ?').bind(record.r2_key).run();
       deleted++;
+    } catch { failed++; }
+  }
+  const mail = await db.prepare("SELECT id, r2_key FROM mail_ingestions WHERE state = 'pending' AND created_at < ? ORDER BY created_at LIMIT 2").bind(now - 3600_000).all<{ id: string; r2_key: string }>();
+  for (const receipt of mail.results) {
+    try {
+      const saved = await db.prepare('SELECT id FROM mail WHERE id = ?').bind(receipt.id).first();
+      if (saved) {
+        await db.prepare("UPDATE mail_ingestions SET state = 'stored' WHERE id = ?").bind(receipt.id).run();
+      } else {
+        await deleteMailObject(bucket, receipt.r2_key);
+        await db.prepare('DELETE FROM mail_ingestions WHERE id = ?').bind(receipt.id).run();
+        deleted++;
+      }
     } catch { failed++; }
   }
   if (failed) console.error('Storage cleanup will retry', { failed });

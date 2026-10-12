@@ -46,13 +46,18 @@ export async function uploadToR2(
 /**
  * Get an object from R2 for streaming download.
  */
-export async function getFromR2(bucket: R2Bucket, key: string): Promise<R2ObjectBody | null> {
+export async function getFromR2(bucket: R2Bucket, key: string, range?: { offset: number; length: number }): Promise<R2ObjectBody | null> {
   // Defensive check: ensure key starts with transfers/
   if (!key.startsWith(TRANSFERS_PREFIX)) {
     throw new Error('Access denied: key is outside transfers/ prefix');
   }
-  const obj = await bucket.get(key);
+  const obj = await bucket.get(key, range ? { range } : undefined);
   return obj;
+}
+
+export async function headFromR2(bucket: R2Bucket, key: string): Promise<R2Object | null> {
+  if (!key.startsWith(TRANSFERS_PREFIX)) throw new Error('Access denied: key is outside transfers/ prefix');
+  return bucket.head(key);
 }
 
 /**

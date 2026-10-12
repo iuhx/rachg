@@ -16,7 +16,7 @@ import { ConfirmDialog } from './ConfirmDialog';
 interface FilesViewProps {
   transfers: FileItem[];
   onUploadFile: (file: File, expiry: string) => Promise<void> | void;
-  onDeleteTransfer: (id: string) => void;
+  onDeleteTransfer: (id: string) => Promise<void>;
   isUploading?: boolean;
   isLoading?: boolean;
 }
@@ -40,6 +40,8 @@ export const FilesView: React.FC<FilesViewProps> = ({
     try {
       await onDeleteTransfer(fileToDelete.id);
       setFileToDelete(null);
+    } catch {
+      // The parent displays the failure. Keep this dialog open for retry.
     } finally {
       setIsDeleting(false);
     }
@@ -55,12 +57,12 @@ export const FilesView: React.FC<FilesViewProps> = ({
     event.preventDefault();
     setIsDragging(false);
     const file = event.dataTransfer.files?.[0];
-    if (file) onUploadFile(file, selectedExpiry);
+    if (file && !isUploading) void Promise.resolve().then(() => onUploadFile(file, selectedExpiry)).catch(() => {});
   };
 
   const handleFileInput = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) onUploadFile(file, selectedExpiry);
+    if (file && !isUploading) void Promise.resolve().then(() => onUploadFile(file, selectedExpiry)).catch(() => {});
     event.target.value = '';
   };
 

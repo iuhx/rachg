@@ -45,11 +45,13 @@ const FILES_BUCKET = {
   async get(key) {
     const object = objects.get(key);
     return object ? {
+      size: object.bytes.byteLength,
       body: object.bytes,
       httpEtag: 'test-etag',
       writeHttpMetadata(headers) { headers.set('Content-Type', object.options.httpMetadata.contentType); },
     } : null;
   },
+  async head(key) { return this.get(key); },
   async delete(key) { objects.delete(key); },
 };
 const worker = loadModule('index').default;

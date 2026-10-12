@@ -22,16 +22,23 @@ function fixture() {
     };
     return { bind(...values) { args = values; return this; }, run: () => execute('run'), all: () => execute('all'), first: () => execute('first') };
   } };
+  DB.batch = async (statements) => {
+    sqlite.exec('BEGIN');
+    try { const results=[]; for(const statement of statements)results.push(await statement.run()); sqlite.exec('COMMIT'); return results; }
+    catch(error){sqlite.exec('ROLLBACK');throw error;}
+  };
   const bucket = {
     async put(key, body, options) {
       if (hooks.failPut) throw new Error('fixture storage failure');
       const bytes = await new Response(body).arrayBuffer(); objects.set(key, { bytes, options }); return { size: bytes.byteLength };
     },
-    async get(key) {
+    async get(key, options) {
       const stored = objects.get(key);
-      return stored ? { size: stored.bytes.byteLength, body: stored.bytes, httpEtag: '"fixture"', arrayBuffer: async () => stored.bytes,
+      const range = options?.range;
+      return stored ? { size: stored.bytes.byteLength, body: range ? stored.bytes.slice(range.offset, range.offset + range.length) : stored.bytes, httpEtag: '"fixture"', arrayBuffer: async () => stored.bytes,
         writeHttpMetadata(headers) { headers.set('Content-Type', stored.options.httpMetadata.contentType); } } : null;
     },
+    async head(key) { return this.get(key); },
     async delete(key) { if (hooks.failDelete) throw new Error('fixture delete failure'); objects.delete(key); },
   };
   function load(file) {
