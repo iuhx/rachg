@@ -49,8 +49,7 @@ test('release Worker runs reliably in workerd with actual D1 and R2 bindings', {
       return MockResponse.json(jwks);
     },
     bindings: { ACCESS_TEAM_DOMAIN: issuer, ACCESS_AUDIENCE: 'local-workspace',
-      ACCESS_ADMIN_EMAIL: 'admin@example.invalid', MAX_STORAGE_BYTES: '1000', RESEND_API_KEY: 'local-fixture-only', PUBLIC_NOTE_SHARES_ENABLED: 'true',
-      CF_VERSION_METADATA: { id: 'runtime-version', timestamp: '2026-10-13T10:00:00Z' } },
+      ACCESS_ADMIN_EMAIL: 'admin@example.invalid', MAX_STORAGE_BYTES: '1000', RESEND_API_KEY: 'local-fixture-only', PUBLIC_NOTE_SHARES_ENABLED: 'true' },
   }));
   t.after(() => mf.dispose());
   await mf.ready;
@@ -80,11 +79,11 @@ test('release Worker runs reliably in workerd with actual D1 and R2 bindings', {
     assert.equal((await response.json()).schema, 'ready');
   });
 
-  await t.test('private system health reads live D1 and R2 and returns only safe registry/version metadata', async () => {
+  await t.test('private system health checks Worker, R2 and domain without deployment metadata', async () => {
     const anonymous = await mf.dispatchFetch('https://workspace.example.invalid/v1/system-health');
     assert.equal(anonymous.status, 401); await anonymous.text();
     const response = await request('/v1/system-health'); assert.equal(response.status, 200);
-    const result = await response.json(); assert.equal(result.worker.status, 'reachable'); assert.equal(result.worker.versionId, 'runtime-version');
+    const result = await response.json(); assert.deepEqual(result.worker, { status: 'reachable' });
     assert.equal(result.storage.status, 'available'); assert.equal(result.storage.availableBytes, 1000); assert.equal(result.storage.quotaScope, 'files');
     assert.equal(result.domain.expiresAt, Date.parse('2027-09-03T13:27:43Z'));
     assert.equal((await bucket.list()).objects.length, 0);

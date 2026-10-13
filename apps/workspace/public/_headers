@@ -10,6 +10,3 @@
 
 /index.html
   Cache-Control: private, no-store
-
-/build-info.json
-  Cache-Control: private, no-store

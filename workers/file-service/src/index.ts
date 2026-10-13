@@ -64,7 +64,6 @@ import { systemHealth } from './system-health';
 import { boundedForm, boundedJson, InputError, mailPlainText, MAX_FILE_BYTES, MAX_MAIL_BYTES, MAX_TEXT_BYTES, readBounded, utf8Size } from '../../common/content';
 
 export interface Env {
-  CF_VERSION_METADATA?: { id: string; timestamp: string };
   PUBLIC_NOTE_SHARES_ENABLED?: string;
   DB: D1Database;
   FILES_BUCKET: R2Bucket;

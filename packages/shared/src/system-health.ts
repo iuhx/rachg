@@ -1,14 +1,7 @@
-export interface PagesBuildInfo {
-  service: 'rachg-workspace';
-  buildTimestamp: number;
-  commit: string | null;
-  branch: string | null;
-}
-
 export interface SystemHealth {
   service: 'rachg-system-health';
   checkedAt: number;
-  worker: { status: 'reachable'; versionId: string | null; versionCreatedAt: number | null };
+  worker: { status: 'reachable' };
   storage: {
     status: 'available' | 'unavailable';
     usedBytes: number | null;

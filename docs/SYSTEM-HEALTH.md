@@ -2,15 +2,14 @@
 
 The home card replaces Project overview and sits beside the latest five activity
 items. It refreshes on opening Home, manually, and every five minutes while the
-page is visible. Each dependency has its own result; a registry outage does not
-hide a working Pages or Worker check. Failed refreshes mark retained metadata as
-last known rather than keeping a green status.
+page is visible. The three rows use one refresh control and check timestamp.
+A registry outage does not hide a working Worker check. Failed refreshes mark
+retained domain data as cached and clear the green status and old response time.
 
-- **Pages**: authenticated, uncached same-origin request to `/build-info.json`.
-  The response must contain the workspace service marker and valid build metadata;
-  Access login pages and redirects are failures, not healthy results.
 - **Worker**: authenticated `GET /v1/system-health` against the live API. A response
   means that the API is reachable, not that every Cloudflare product is operational.
+  The response time measures the complete status request, including dependency
+  checks; it is not pure network latency. Login pages and redirects fail the check.
 - **R2**: a read-only HEAD of a fixed probe key checks the bucket binding. No object
   is created. Remaining space is the existing **file upload quota**, calculated
   from D1 using the same accounting as upload admission. It includes expired and
@@ -21,10 +20,9 @@ last known rather than keeping a green status.
   renewal deadline. Results are cached for 24 hours per warm Worker isolate. On
   failure, at most seven-day-old values are explicitly stale; failures retry after
   five minutes. Contact data is never returned or logged.
-- **Current deployment**: the build timestamp and commit of the Pages artifact
-  currently being served, plus the live Worker's version ID and version creation
-  timestamp from Cloudflare's native version-metadata binding. These are explicitly
-  labeled build/version times, **not Cloudflare deployment-completion timestamps**.
+
+Pages checks, commit/build information and Worker version monitoring are removed.
+The old static build-info endpoint and version-metadata binding are also removed.
 
 ## Configuration and security
 
@@ -32,11 +30,6 @@ No Cloudflare management API token, registrar credential, or new public bypass i
 required. `/v1/system-health` uses the existing administrator JWT protection.
 All registry requests use a fixed HTTPS host/path, reject redirects, forward no
 cookies or authentication, time out after five seconds, and bound response size.
-The static Pages endpoint emits only an allowlist of build metadata and uses the
-same Access protection as the site. `public/_headers` disables browser caching.
-
-Wrangler binds `CF_VERSION_METADATA`; Pages provides `CF_PAGES_COMMIT_SHA` and
-`CF_PAGES_BRANCH` during builds. Local builds omit unavailable commit metadata.
 No database migration or new storage resource is needed.
 
 ## Verification

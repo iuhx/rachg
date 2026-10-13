@@ -6,7 +6,6 @@ interface HealthEnv {
   DB: D1Database;
   FILES_BUCKET: R2Bucket;
   MAX_STORAGE_BYTES?: string;
-  CF_VERSION_METADATA?: { id: string; timestamp: string };
 }
 
 const RDAP_URL = 'https://rdap.verisign.com/com/v1/domain/rachg.com';
@@ -53,10 +52,9 @@ export async function systemHealth(request: Request, env: HealthEnv): Promise<Sy
   const usedBytes = usage.status === 'fulfilled' && Number.isSafeInteger(usage.value) && usage.value >= 0 ? usage.value : null;
   const configuredLimit = Number(env.MAX_STORAGE_BYTES ?? 4 * 1024 ** 3);
   const limitBytes = Number.isSafeInteger(configuredLimit) && configuredLimit > 0 ? configuredLimit : null;
-  const versionCreatedAt = Date.parse(env.CF_VERSION_METADATA?.timestamp ?? '');
   return {
     service: 'rachg-system-health', checkedAt: Date.now(),
-    worker: { status: 'reachable', versionId: env.CF_VERSION_METADATA?.id || null, versionCreatedAt: Number.isFinite(versionCreatedAt) ? versionCreatedAt : null },
+    worker: { status: 'reachable' },
     storage: {
       status: bucket.status === 'fulfilled' && usedBytes !== null && limitBytes !== null ? 'available' : 'unavailable',
       usedBytes, limitBytes, availableBytes: usedBytes !== null && limitBytes !== null ? Math.max(0, limitBytes - usedBytes) : null,

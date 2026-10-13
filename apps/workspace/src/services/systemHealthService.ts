@@ -1,11 +1,10 @@
-import type { PagesBuildInfo, SystemHealth } from '@rachg/shared';
+import type { SystemHealth } from '@rachg/shared';
 import { API_BASE_URL } from '../config/api';
 
 export interface HealthCheck<T> { data: T | null; error: string | null; checkedAt: number; latencyMs: number | null }
-export interface HealthSnapshot { pages: HealthCheck<PagesBuildInfo>; api: HealthCheck<SystemHealth> }
+export type HealthSnapshot = HealthCheck<SystemHealth>;
 const timestamp = (value: unknown) => typeof value === 'number' && Number.isSafeInteger(value) && value > 0 && value <= 8_640_000_000_000_000;
 const size = (value: unknown) => value === null || (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0);
-const textOrNull = (value: unknown) => value === null || (typeof value === 'string' && value.length <= 128);
 
 async function check<T>(url: string, validate: (value: any) => boolean, signal?: AbortSignal): Promise<HealthCheck<T>> {
   const start = performance.now();
@@ -24,17 +23,12 @@ async function check<T>(url: string, validate: (value: any) => boolean, signal?:
   }
 }
 
-export async function fetchSystemHealth(signal?: AbortSignal): Promise<HealthSnapshot> {
-  const [pages, api] = await Promise.all([
-    check<PagesBuildInfo>(`/build-info.json?check=${Date.now()}`, value => value?.service === 'rachg-workspace' && timestamp(value.buildTimestamp)
-      && (value.commit === null || (typeof value.commit === 'string' && /^[a-f0-9]{40}$/i.test(value.commit))) && textOrNull(value.branch), signal),
-    check<SystemHealth>(`${API_BASE_URL}/v1/system-health`, value => value?.service === 'rachg-system-health' && timestamp(value.checkedAt)
-      && value.worker?.status === 'reachable' && textOrNull(value.worker.versionId) && (value.worker.versionCreatedAt === null || timestamp(value.worker.versionCreatedAt))
+export function fetchSystemHealth(signal?: AbortSignal): Promise<HealthSnapshot> {
+  return check<SystemHealth>(`${API_BASE_URL}/v1/system-health`, value => value?.service === 'rachg-system-health' && timestamp(value.checkedAt)
+      && value.worker?.status === 'reachable'
       && ['available', 'unavailable'].includes(value.storage?.status) && value.storage?.quotaScope === 'files'
       && [value.storage.usedBytes, value.storage.limitBytes, value.storage.availableBytes].every(size)
       && (value.storage.status !== 'available' || [value.storage.usedBytes, value.storage.limitBytes, value.storage.availableBytes].every(item => item !== null))
       && value.domain?.name === 'rachg.com' && ['current', 'stale', 'unavailable'].includes(value.domain.status)
-      && (value.domain.expiresAt === null || timestamp(value.domain.expiresAt)) && (value.domain.checkedAt === null || timestamp(value.domain.checkedAt)), signal),
-  ]);
-  return { pages, api };
+      && (value.domain.expiresAt === null || timestamp(value.domain.expiresAt)) && (value.domain.checkedAt === null || timestamp(value.domain.checkedAt)), signal);
 }
