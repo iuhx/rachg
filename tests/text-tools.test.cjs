@@ -56,13 +56,13 @@ test('both conversion directions save their reviewed output and remember saved s
     assert.equal(modal.props.initialNote.content,'Title\n\nPlain result');
     await modal.props.onCreateNote(modal.props.initialNote); modal.props.onClose(); h.render();
     assert.equal(button(h,'Saved to Notes').props.disabled,true);
-    button(h,'Rich text → Markdown').props.onClick(); h.render();
+    button(h,'Rich text').props.onClick(); h.render();
     find(h,n=>n.type?.name==='RichTextInput').props.onResult('## Rich\n\n**formatted**',''); h.render();
     button(h,'Save to Notes').props.onClick(); h.render(); modal=find(h,n=>n.type?.name==='NewItemModal');
     assert.equal(modal.props.initialNote.content,'## Rich\n\n**formatted**');
     await modal.props.onCreateNote(modal.props.initialNote); modal.props.onClose(); h.render();
     assert.equal(saves.length,2);
-    button(h,'Markdown → Plain text').props.onClick(); h.render();
+    button(h,'Markdown').props.onClick(); h.render();
     assert.equal(button(h,'Saved to Notes').props.disabled,true);
     button(h,'Open Notes').props.onClick(); assert.equal(opened,true);
   } finally {h.unmount();}

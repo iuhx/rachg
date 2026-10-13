@@ -67,7 +67,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     { label: 'Notes', description: 'Categories, sharing, import & export', tab: 'notes' as NavTab, icon: FileText },
     { label: 'Files', description: 'Upload, download & manage files', tab: 'files' as NavTab, icon: Paperclip },
     { label: 'Mail', description: 'Read, reply to & send email', tab: 'mail' as NavTab, icon: Mail },
-    { label: 'Tools', description: 'QR codes, Markdown, rich text & images', tab: 'tools' as NavTab, icon: Wrench },
+    { label: 'Tools', description: 'QR codes, Word, Markdown & images', tab: 'tools' as NavTab, icon: Wrench },
     { label: 'Settings', description: 'Appearance, storage & connection status', tab: 'settings' as NavTab, icon: Settings },
   ];
 

@@ -1,8 +1,8 @@
 import React, { useRef, useState } from 'react';
 import { checkTextSize, plainTextHtml, richTextToMarkdown } from '../utils/richText';
 
-interface Props { onResult: (markdown: string, error: string) => void }
-export const RichTextInput: React.FC<Props> = ({ onResult }) => {
+interface Props { onResult: (markdown: string, error: string) => void; disabled?: boolean }
+export const RichTextInput: React.FC<Props> = ({ onResult, disabled = false }) => {
   const editor = useRef<HTMLDivElement>(null);
   const [empty, setEmpty] = useState(true);
   const read = () => {
@@ -12,7 +12,7 @@ export const RichTextInput: React.FC<Props> = ({ onResult }) => {
     catch (error) { onResult('', error instanceof Error ? error.message : 'Unable to convert this content.'); }
   };
   const insert = (html: string, text: string) => {
-    if (!editor.current) return;
+    if (!editor.current || disabled) return;
     try {
       const safe = richTextToMarkdown(html || plainTextHtml(text)).html;
       checkTextSize(editor.current.innerHTML + safe);
@@ -29,10 +29,10 @@ export const RichTextInput: React.FC<Props> = ({ onResult }) => {
     } catch (error) { onResult('', error instanceof Error ? error.message : 'Unable to paste this content.'); }
   };
   return <div className="space-y-2">
-    <div className="flex justify-between items-center gap-2"><span className="type-label">Rich text</span><button type="button" className="type-caption underline underline-offset-2" onClick={() => { editor.current?.replaceChildren(); setEmpty(true); onResult('', ''); }}>Clear input</button></div>
+    <div className="flex justify-between items-center gap-2"><span className="type-label">Rich text</span><button type="button" disabled={disabled} className="type-caption underline underline-offset-2" onClick={() => { editor.current?.replaceChildren(); setEmpty(true); onResult('', ''); }}>Clear input</button></div>
     <div className="relative">
       {empty && <p className="type-secondary absolute top-3 left-3 right-3 pointer-events-none">Copy formatted text from a page or document, then paste here.</p>}
-      <div ref={editor} role="textbox" aria-label="Rich text input" aria-multiline="true" contentEditable suppressContentEditableWarning
+      <div ref={editor} role="textbox" aria-label="Rich text input" aria-multiline="true" aria-disabled={disabled} contentEditable={!disabled} suppressContentEditableWarning
         className="workspace-input tool-markdown-input rich-text-input overflow-auto" onInput={read}
         onPaste={event => { event.preventDefault(); insert(event.clipboardData.getData('text/html'), event.clipboardData.getData('text/plain')); }}
         onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); insert(event.dataTransfer.getData('text/html'), event.dataTransfer.getData('text/plain')); }}
