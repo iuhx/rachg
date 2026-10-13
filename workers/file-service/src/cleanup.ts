@@ -1,16 +1,17 @@
 import { ensureSchema } from './db';
 import { deleteMailObject } from './storage';
 import { StoredFiles } from './stored-files';
+import type { WebdavEnv } from './webdav';
 
 /** Operates only on exact keys recorded by this service, never bucket-wide prefixes. */
-export async function cleanupStorage(db: D1Database, bucket: R2Bucket, credentialKey?: string): Promise<{ deleted: number; failed: number }> {
+export async function cleanupStorage(db: D1Database, bucket: R2Bucket, credentials: WebdavEnv = {}): Promise<{ deleted: number; failed: number }> {
   await ensureSchema(db);
-  const storage = new StoredFiles({ DB: db, FILES_BUCKET: bucket, WEBDAV_CREDENTIAL_KEY: credentialKey });
+  const storage = new StoredFiles({ FILES_BUCKET: bucket, ...credentials });
   const now = Date.now();
   let deleted = 0, failed = 0;
   // At most 41 storage calls on a cold start (16 schema calls, 2 queries,
   // 5*3 transfer calls, 2*4 mail calls); note-share cleanup adds one more.
-  // A WebDAV batch adds at most one settings schema call and one settings read.
+  // WebDAV uses Worker Secrets and requires no settings/schema reads.
   const files = await db.prepare(`SELECT id, r2_key FROM files
     WHERE status = 'purging'
        OR (status IN ('active', 'expired') AND expires_at != 0 AND expires_at <= ?)

@@ -66,7 +66,8 @@ import { systemHealth } from './system-health';
 import { boundedForm, boundedJson, InputError, mailPlainText, MAX_FILE_BYTES, MAX_MAIL_BYTES, MAX_TEXT_BYTES, readBounded, utf8Size } from '../../common/content';
 
 export interface Env {
-  WEBDAV_CREDENTIAL_KEY?: string;
+  WEBDAV_USERNAME?: string;
+  WEBDAV_PASSWORD?: string;
   PUBLIC_NOTE_SHARES_ENABLED?: string;
   DB: D1Database;
   FILES_BUCKET: R2Bucket;
@@ -841,7 +842,7 @@ export default {
     }
   },
   async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(cleanupStorage(env.DB, env.FILES_BUCKET, env.WEBDAV_CREDENTIAL_KEY));
+    ctx.waitUntil(cleanupStorage(env.DB, env.FILES_BUCKET, { WEBDAV_USERNAME: env.WEBDAV_USERNAME, WEBDAV_PASSWORD: env.WEBDAV_PASSWORD }));
     ctx.waitUntil(cleanupNoteShares(env.DB));
   },
 };

@@ -11,6 +11,8 @@
   "build": { "command": "npm --prefix ../../packages/shared run build" },
   "compatibility_date": "2026-09-01",
   "compatibility_flags": ["nodejs_compat"],
+  // Values are managed in Cloudflare Worker Secrets, never in vars or Git.
+  "secrets": { "required": ["WEBDAV_USERNAME", "WEBDAV_PASSWORD"] },
 
   // D1 Database Binding for file metadata
   "d1_databases": [

@@ -1,45 +1,41 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { WebdavSettings } from '@rachg/shared';
-import { fetchWebdavSettings, saveWebdavSettings, testWebdavConnection } from '../services/storageService';
+import { API_CONNECT_URL } from '../config/api';
+import { fetchWebdavSettings, testWebdavConnection } from '../services/storageService';
 
 export function WebdavSettingsPanel({ canManage, onChanged }: { canManage: boolean; onChanged?: (settings: WebdavSettings) => void }) {
   const [config, setConfig] = useState<WebdavSettings | null>(null);
-  const [username, setUsername] = useState(''), [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('');
-  const active = useRef(false), busyRef = useRef(false);
-  const apply = (next: WebdavSettings) => { setConfig(next); setUsername(next.username); onChanged?.(next); };
-  const run = async (task: () => Promise<void>) => {
+  const active = useRef(false), busyRef = useRef(false), sequence = useRef(0), request = useRef<AbortController | null>(null);
+  const run = async (test = false) => {
     if (busyRef.current || !canManage) return;
+    const version = ++sequence.current, controller = new AbortController(); request.current = controller;
     busyRef.current = true; setBusy(true); setError(''); setNotice('');
-    try { await task(); }
-    catch (error) { if (active.current) setError(error instanceof Error ? error.message : 'Unable to connect to InfiniCLOUD.'); }
-    finally { busyRef.current = false; if (active.current) setBusy(false); }
+    try {
+      const next = await (test ? testWebdavConnection(controller.signal) : fetchWebdavSettings(controller.signal));
+      if (!active.current || controller.signal.aborted || version !== sequence.current) return;
+      setConfig(next); onChanged?.(next);
+      if (test) setNotice('Connected. Your rachg folder is accessible.');
+    } catch (error) { if (active.current && !controller.signal.aborted && version === sequence.current) setError(error instanceof Error ? error.message : 'Unable to check InfiniCLOUD.'); }
+    finally { if (version === sequence.current) { busyRef.current = false; if (active.current) setBusy(false); } }
   };
-  const load = () => run(async () => { const result = await fetchWebdavSettings(); if (active.current) apply(result); });
-  useEffect(() => { active.current = true; if (canManage) void load(); return () => { active.current = false; }; }, [canManage]);
+  useEffect(() => {
+    active.current = true;
+    if (canManage) void run(); else { setConfig(null); setBusy(false); }
+    return () => { active.current = false; sequence.current++; request.current?.abort(); busyRef.current = false; };
+  }, [canManage]);
 
   return <section className="workspace-card p-5 sm:p-6 space-y-4" aria-labelledby="webdav-settings-heading">
-    <div><h3 id="webdav-settings-heading" className="type-section-heading">InfiniCLOUD · WebDAV</h3><p className="type-secondary mt-1">Use your rachg folder as another file storage destination.</p></div>
-    {!canManage ? <p className="type-secondary">Sign in to configure storage.</p> : <>
-      {config && <>
-        <p className="type-caption break-all">{config.baseUrl}</p>
-        <p className="type-secondary">{config.configured ? 'Configured. InfiniCLOUD is available in the upload destination selector.' : config.canConfigure ? 'Enter Connection ID and Apps Password from My Page → Apps Connection.' : 'Secure server setup is pending. Please try again after deployment finishes.'}</p>
-        <form className="space-y-3" onSubmit={event => { event.preventDefault(); void run(async () => {
-          const next = await saveWebdavSettings(username, password, config.revision);
-          if (active.current) { apply(next); setPassword(''); setNotice('Credentials saved. Access to your rachg folder was verified.'); }
-        }); }}>
-          <fieldset disabled={busy || !config.canConfigure} className="grid sm:grid-cols-2 gap-3">
-            <label className="type-label space-y-1">Connection ID<input aria-label="InfiniCLOUD Connection ID" autoComplete="off" value={username} disabled={config.configured} maxLength={200} onChange={event => setUsername(event.target.value)} required className="workspace-input" /></label>
-            <label className="type-label space-y-1">Apps Password<input aria-label="InfiniCLOUD Apps Password" autoComplete="new-password" type="password" value={password} maxLength={1024} onChange={event => setPassword(event.target.value)} required={!config.configured} placeholder={config.configured ? 'Leave blank to keep the saved password' : 'Application password, not website password'} className="workspace-input" /></label>
-          </fieldset>
-          <p className="type-caption">Encrypted on the server. The saved password is never returned to the browser. Reissuing it in InfiniCLOUD also affects your other connected apps.</p>
-          <div className="flex flex-wrap gap-2"><button disabled={busy || !config.canConfigure || !username.trim()} className="workspace-button workspace-button-primary">{busy ? 'Checking…' : 'Save & check access'}</button>
-            {config.configured && <button type="button" disabled={busy} onClick={() => void run(async () => { const next = await testWebdavConnection(); if (active.current) { apply(next); setNotice('The saved connection can access your rachg folder.'); } })} className="workspace-button workspace-button-secondary">Test saved connection</button>}
-          </div>
-        </form>
-      </>}
-      {!config && busy && <p className="type-secondary" role="status">Loading storage settings…</p>}
-      {error && <div role="alert" className="space-y-2"><p className="type-secondary text-red-600 dark:text-red-300">{error}</p><button disabled={busy} onClick={() => void load()} className="workspace-button workspace-button-secondary">Refresh settings</button></div>}
+    <div><h3 id="webdav-settings-heading" className="type-section-heading">InfiniCLOUD · WebDAV</h3><p className="type-secondary mt-1">Connection managed by Cloudflare Worker Secrets.</p></div>
+    {!canManage ? <p className="type-secondary">Sign in to check storage.</p> : <>
+      <p className="type-caption">Worker: rachg-file-service · WEBDAV_USERNAME + WEBDAV_PASSWORD</p>
+      {config && <><p className="type-caption break-all">{config.baseUrl}</p><p className="type-secondary">{config.configured ? 'Secrets are configured. Test the connection to verify folder access.' : 'Add both Secrets to the Worker and deploy, then refresh.'}</p></>}
+      {!config && busy && <p className="type-secondary" role="status">Loading storage status…</p>}
+      <div className="flex flex-wrap gap-2">
+        <button disabled={busy} onClick={() => void run()} className="workspace-button workspace-button-secondary">Refresh status</button>
+        <button disabled={busy || !config?.configured} onClick={() => void run(true)} className="workspace-button workspace-button-primary">{busy ? 'Checking…' : 'Test connection'}</button>
+      </div>
+      {error && <div role="alert" className="space-y-2"><p className="type-secondary text-red-600 dark:text-red-300">{error}</p><a href={API_CONNECT_URL} className="type-secondary underline">Reconnect workspace</a></div>}
       {notice && <p role="status" className="type-secondary text-emerald-700 dark:text-emerald-300">{notice}</p>}
     </>}
   </section>;

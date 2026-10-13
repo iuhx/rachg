@@ -29,7 +29,7 @@ test('release Worker runs reliably in workerd with actual D1 and R2 bindings', {
     keys: [{ ...publicKey.export({ format: 'jwk' }), kid: 'test-key', alg: 'RS256', use: 'sig' }],
   };
   let outgoingMail;
-  const webdavRoot = 'https://higa.teracloud.jp/v2/dav/rachg/';
+  const webdavRoot = 'https://higa.teracloud.jp/dav/rachg/';
   const webdavFiles = new Map();
   const mf = new Miniflare(convertV4MiniflareOptions({
     rootPath: root, host: '127.0.0.1', port: 0, cf: false,
@@ -40,7 +40,7 @@ test('release Worker runs reliably in workerd with actual D1 and R2 bindings', {
       if (request.url.startsWith(webdavRoot)) {
         assert.equal(request.headers.get('authorization'), 'Basic ' + Buffer.from('runtime-user:runtime-password').toString('base64'));
         assert.equal(request.headers.has('cf-access-jwt-assertion'), false);
-        if (request.method === 'PROPFIND') return new MockResponse('<d:multistatus xmlns:d="DAV:"><d:response><d:href>/v2/dav/rachg/</d:href><d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>', { status: 207 });
+        if (request.method === 'PROPFIND') return new MockResponse('<d:multistatus xmlns:d="DAV:"><d:response><d:href>/dav/rachg/</d:href><d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>', { status: 207 });
         if (request.method === 'PUT') { assert.equal(request.headers.get('if-none-match'), '*'); webdavFiles.set(request.url, await request.arrayBuffer()); return new MockResponse(null, { status: 201 }); }
         if (request.method === 'DELETE') { assert.notEqual(request.url, webdavRoot); webdavFiles.delete(request.url); return new MockResponse(null, { status: 204 }); }
         const data = webdavFiles.get(request.url);
@@ -61,7 +61,7 @@ test('release Worker runs reliably in workerd with actual D1 and R2 bindings', {
       return MockResponse.json(jwks);
     },
     bindings: { ACCESS_TEAM_DOMAIN: issuer, ACCESS_AUDIENCE: 'local-workspace',
-      ACCESS_ADMIN_EMAIL: 'admin@example.invalid', MAX_STORAGE_BYTES: '1000', RESEND_API_KEY: 'local-fixture-only', PUBLIC_NOTE_SHARES_ENABLED: 'true', WEBDAV_CREDENTIAL_KEY: 'ab'.repeat(32) },
+      ACCESS_ADMIN_EMAIL: 'admin@example.invalid', MAX_STORAGE_BYTES: '1000', RESEND_API_KEY: 'local-fixture-only', PUBLIC_NOTE_SHARES_ENABLED: 'true', WEBDAV_USERNAME: 'runtime-user', WEBDAV_PASSWORD: 'runtime-password' },
   }));
   t.after(() => mf.dispose());
   await mf.ready;
@@ -101,10 +101,10 @@ test('release Worker runs reliably in workerd with actual D1 and R2 bindings', {
     assert.equal((await bucket.list()).objects.length, 0);
   });
 
-  await t.test('WebDAV credentials encrypt and real workerd uploads/downloads/range fallback/delete preserve R2 accounting', async () => {
-    const response = await request('/v1/storage/webdav', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'runtime-user', password: 'runtime-password', revision: 0 }) });
+  await t.test('WebDAV uses Worker Secrets and real workerd uploads/downloads/range fallback/delete preserve R2 accounting', async () => {
+    const response = await request('/v1/storage/webdav', { method: 'POST' });
     assert.equal(response.status, 200); const config = await response.json(); assert.equal(config.settings.configured, true); assert.ok(!JSON.stringify(config).includes('runtime-password'));
-    const encrypted = await db.prepare('SELECT encrypted_password FROM webdav_settings').first(); assert.ok(!encrypted.encrypted_password.includes('runtime-password'));
+    assert.equal(config.settings.source, 'worker-secrets'); assert.ok(!JSON.stringify(config).includes('runtime-user'));
     const form = new RuntimeFormData(); form.set('file', new Blob(['runtime webdav contents'], { type: 'text/plain' }), 'runtime.txt'); form.set('storageBackend', 'webdav'); form.set('expiry', 'permanent');
     const uploaded = await request('/v1/files/upload', { method: 'POST', body: form }); assert.equal(uploaded.status, 201); const { file } = await uploaded.json(); assert.equal(file.storageBackend, 'webdav');
     const health = await (await request('/health')).json(); assert.equal(health.quota.usedBytes, 0);

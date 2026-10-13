@@ -17,7 +17,7 @@ export function buildWebdavKey(id: string, filename: string) {
 /** Credentials are loaded once per request/cleanup run, only for WebDAV files. */
 export class StoredFiles {
   private webdav?: Promise<WebdavClient>;
-  constructor(private env: WebdavEnv & { FILES_BUCKET: R2Bucket }) {}
+  constructor(private env: WebdavEnv & { DB?: D1Database; FILES_BUCKET: R2Bucket }) {}
   private client() { return this.webdav ??= loadWebdav(this.env); }
   async ready(backend: string) {
     if (!['r2', 'webdav'].includes(backend)) throw new InputError('Choose a valid storage destination.');

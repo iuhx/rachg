@@ -1,72 +1,65 @@
 # InfiniCLOUD storage
 
-The workspace can upload Files and QR/text-share files to either Cloudflare R2
-or InfiniCLOUD. The global upload dialog uses the same destination selector. R2
-remains the default. Configure InfiniCLOUD in **Settings → InfiniCLOUD · WebDAV**
-using the Connection ID and Apps Password from **My Page → Apps Connection**.
-The website login password is not used. Save & check access validates the exact
-folder with a read-only PROPFIND before saving the credentials.
+Files, Tools uploads and the global upload dialog can save to R2 or InfiniCLOUD.
+R2 remains the default. Credentials now come only from the `rachg-file-service`
+Worker's Cloudflare Secret bindings:
 
-The user-approved root is fixed to:
-`https://higa.teracloud.jp/v2/dav/rachg/`
+- `WEBDAV_USERNAME`: InfiniCLOUD Connection ID.
+- `WEBDAV_PASSWORD`: InfiniCLOUD Apps Password (not the website login password).
 
-The user has created this folder. We do not create or delete the folder itself.
-The v2 endpoint must accept Basic authentication with the supplied Apps Password;
-we do not guess another endpoint or silently switch to /dav/. If InfiniCLOUD
-rejects this mode or URL, Settings reports the upstream status and preserves the
-previous working credentials. Actual account verification requires the user to
-enter the credentials in Settings; anonymous probes cannot confirm compatibility.
+Wrangler declares these names in `secrets.required`; values are never copied into
+`vars`, source control or the frontend. Changes in Cloudflare must be deployed.
+The old webpage password form, encrypted D1 credential storage and
+`WEBDAV_CREDENTIAL_KEY` code path are retired. No credential database reads or
+schema initialization are needed to return storage status.
 
-## Behavior
+The verified Basic-auth WebDAV root is:
+`https://higa.teracloud.jp/dav/rachg/`
 
-- Upload size remains at most 10 MiB. Every file records its destination, and Files
-  labels it R2 or InfiniCLOUD. Existing R2 files need no migration.
-- InfiniCLOUD files use unique `UUID--filename` leaves directly in `rachg/`. Uploads
-  use conditional PUT to avoid overwriting an existing remote file.
-- File links, QR codes, text-share pages and deletion use the existing authenticated
-  workspace routes. The browser never gets a credential-bearing WebDAV link.
-- Only workspace-created files are indexed. Existing InfiniCLOUD files are not
-  imported automatically, and no recursive directory operations are performed.
-- The R2 4 GiB quota excludes InfiniCLOUD files. InfiniCLOUD enforces its own account
-  quota. System Health continues to show R2's file quota, not the combined total.
-- Range downloads work even if the remote service ignores Range. WebDAV responses
-  are bounded to the existing 10 MiB limit; R2 retains its streaming path.
-- Expired links stop working immediately; the 15-minute cleanup deletes only the
-  recorded object. Failed uploads/deletes remain retryable for reconciliation.
-  Uploads and retries never silently fall back to another storage provider.
+On 2026-10-13 the user's Worker Secrets successfully accessed this folder and
+passed a temporary file upload, full download, range read, and exact-key deletion
+through a remote Worker preview. The supplied `/v2/dav/rachg/` path returned HTTP
+400 with Apps Password authentication. This does not change or move the folder.
 
-## Credentials and configuration
+## Settings and checks
 
-`WEBDAV_CREDENTIAL_KEY` is a random 32-byte key represented as 64 hex characters in
-a Cloudflare Worker secret. Do not rotate it casually. It encrypts Apps Passwords
-with AES-256-GCM and a fresh IV; the connection root and ID are authenticated data.
-The key is never stored in D1, Git, the browser or a checked-in environment file.
+Settings shows binding availability and a **Test connection** button. It never
+returns a username or password. The status request has no unnecessary JSON header
+or CORS preflight, and an eight-second deadline covers both headers and body.
+Timeouts show a retry and reconnect action. Unmounting cancels pending requests.
+The folder test uses a bounded, read-only Depth-0 PROPFIND with a longer deadline.
 
-The additive `webdav_settings` table is initialized only when needed. Passwords
-are encrypted at rest and never returned to the browser. Connection ID is fixed
-after the first successful setup, avoiding account changes that orphan existing
-or in-flight uploads. Password updates use a revision check and validate before
-replacing working credentials. InfiniCLOUD password reissuance affects every app
-using that account's Apps Password; reuse the existing password when possible.
-
-- `GET /v1/storage/webdav`: safe configuration summary and availability.
-- `PUT /v1/storage/webdav`: `{username,password,revision}`; checks folder access,
-  then saves encrypted credentials. A blank password keeps the existing one.
-- `POST /v1/storage/webdav`: checks the saved connection without writing files.
-- `POST /v1/files/upload`: optional multipart `storageBackend=r2|webdav`, or
+- `GET /v1/storage/webdav`: whether both Secrets are configured; no network or DB IO.
+- `POST /v1/storage/webdav`: verify folder access using the bound credentials.
+- Credential-writing methods return 405.
+- `POST /v1/files/upload`: multipart `storageBackend=r2|webdav`, or
   `x-storage-backend` for binary API uploads. Omission uses R2.
 
-All routes retain the administrator JWT checks and write-Origin protection.
-Provider requests only target the fixed approved HTTPS root, reject redirects,
-forward no workspace cookies/JWTs, and never return provider response bodies or
-credentials as errors. The existing `r2_key` database field is a legacy name:
-`transfers/` keys identify R2, while `webdav/` keys identify InfiniCLOUD. Storage
-adapters strictly validate their own key namespace before any operation.
+## Storage behavior
 
-## Validation
+- Files are at most 10 MiB. The list labels R2 versus InfiniCLOUD. Existing R2 files
+  require no migration, and a retry never silently changes storage destination.
+- InfiniCLOUD files use UUID-prefixed filenames directly inside `rachg/`; conditional
+  PUT avoids overwriting an existing file. Original filenames remain in D1.
+- File links, QR codes, text pages, downloads and deletion retain workspace Access
+  authentication. Existing InfiniCLOUD files are not automatically imported.
+- The R2 4 GiB quota excludes InfiniCLOUD. InfiniCLOUD enforces its account quota.
+- WebDAV downloads are bounded; range reads work when a server ignores Range.
+  Existing R2 downloads retain their streaming path.
+- Expiry cleanup receives the same Worker Secrets and deletes only recorded keys.
+  Failed uploads/deletes remain retryable. There are no recursive directory operations.
+- Keep the same InfiniCLOUD account when rotating Secrets so existing files remain
+  accessible. Reissuing Apps Password affects other applications using that account.
 
-The test suite covers encrypted persistence, revision conflicts, wrong keys and
-credentials, path isolation, byte ranges (including servers ignoring Range),
-file/QR reuse, quota separation, retries, expiry, and preservation of unrelated
-objects. The release bundle also runs in actual workerd with D1, R2 and a mock
-WebDAV service. These checks do not replace testing the user's real account.
+The Worker accepts only the fixed HTTPS host and root, rejects redirects, and
+forwards no workspace cookies or JWTs to InfiniCLOUD. Provider error bodies and
+credential values are not logged or returned. The legacy database field `r2_key`
+stores `transfers/` keys for R2 and `webdav/` keys for InfiniCLOUD; each adapter
+validates its namespace before operating on any object.
+
+## Verification
+
+Tests cover Secret isolation, no settings-database dependency, rejected credential
+writes, unauthorized requests, quota separation, uploads/downloads/ranges, cleanup,
+path traversal, collision safety, the request deadline, and UI error recovery.
+The release bundle also runs in actual workerd with D1/R2 and a mock WebDAV service.

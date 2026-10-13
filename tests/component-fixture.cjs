@@ -25,7 +25,7 @@ function components(){
     useCallback(fn,deps){return hooks.useMemo(()=>fn,deps);},
     useEffect(fn,deps){const h=current,i=h.cursor++,old=h.effects[i];if(!old||!deps||deps.some((v,j)=>!Object.is(v,old.deps[j])))h.pending.push(()=>{old?.cleanup?.();h.effects[i]={deps,cleanup:fn()};});},
   };
-  const services={accessService:{getAccessIdentity:async()=>null,startAccessLogout(){}},fileService:{AuthenticationRequiredError:class extends Error{}},noteService:{fetchNoteCategories:async()=>[]},mailService:{},projectService:{fetchProjects:async()=>[]},storageService:{fetchWebdavSettings:async()=>({configured:false,canConfigure:true,username:"",baseUrl:"https://higa.teracloud.jp/v2/dav/rachg/",revision:0,verifiedAt:null})},todoService:{fetchTodos:async()=>[],fetchTodoMonth:async()=>[]},imageConversionService:{}};
+  const services={accessService:{getAccessIdentity:async()=>null,startAccessLogout(){}},fileService:{AuthenticationRequiredError:class extends Error{}},noteService:{fetchNoteCategories:async()=>[]},mailService:{},projectService:{fetchProjects:async()=>[]},storageService:{fetchWebdavSettings:async()=>({configured:false,source:"worker-secrets",baseUrl:"https://higa.teracloud.jp/dav/rachg/",verifiedAt:null})},todoService:{fetchTodos:async()=>[],fetchTodoMonth:async()=>[]},imageConversionService:{}};
   function load(file){
     file=path.isAbsolute(file)?file:path.join(root,file);
     if(modules.has(file))return modules.get(file);

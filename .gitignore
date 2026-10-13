@@ -23,6 +23,8 @@ wrangler.dev.json*
 # Environment variables and secrets (CRITICAL: never commit tokens or credentials)
 .env
 .env.*
+.dev.vars
+.dev.vars.*
 !.env.example
 *.pem
 *.key
