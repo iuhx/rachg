@@ -58,6 +58,7 @@ import { publicShareHeaders } from './note-share-page';
 import { formatOutgoingMail } from './mail-format';
 import { routeProjects } from './projects';
 import { routeNoteTransfer } from './note-transfer';
+import { routeTodos } from './todos';
 import { boundedForm, boundedJson, InputError, mailPlainText, MAX_FILE_BYTES, MAX_MAIL_BYTES, MAX_TEXT_BYTES, readBounded, utf8Size } from '../../common/content';
 
 export interface Env {
@@ -240,6 +241,9 @@ export default {
       if (url.pathname === '/v1/projects' || url.pathname.startsWith('/v1/projects/')) {
         const result = await routeProjects(request, env.DB);
         return jsonResponse(result.body, result.status, origin);
+      }
+      if (url.pathname === '/v1/todos' || url.pathname.startsWith('/v1/todos/')) {
+        return jsonResponse(await routeTodos(request, env.DB), 200, origin);
       }
       if (url.pathname === '/' || url.pathname === '/health') {
         await ensureSchema(env.DB);

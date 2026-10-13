@@ -216,7 +216,7 @@ a {
   box-shadow: var(--shadow-card);
 }
 
-.overview-today {
+.overview-calendar {
   background: #202127;
   color: #fff;
   border-color: #303138;

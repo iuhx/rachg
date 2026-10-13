@@ -6979,6 +6979,13 @@ ${quotedText}`;
 }
 
 // packages/shared/dist/types.js
+var TODO_LIMITS = { text: 300, perDay: 100 };
+function isCalendarDate(value) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value))
+    return false;
+  const date = /* @__PURE__ */ new Date(`${value}T12:00:00Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
 var PROJECT_STATUSES = ["Planning", "In Progress", "Completed", "Archived"];
 var PROJECT_LIMITS = { name: 120, tagline: 200, descriptionBytes: 1e4, externalUrl: 2048, count: 200 };
 
@@ -7130,6 +7137,84 @@ async function routeNoteTransfer(request, db) {
   return { success: true, note: mapRecordToNoteItem(record), imported: (inserted.meta?.changes ?? 0) > 0 };
 }
 
+// workers/file-service/src/todos.ts
+var ready3 = /* @__PURE__ */ new WeakMap();
+async function ensureTodos(db) {
+  let pending = ready3.get(db);
+  if (!pending) {
+    pending = (async () => {
+      await db.prepare(`CREATE TABLE IF NOT EXISTS daily_todos (
+        id TEXT PRIMARY KEY, day TEXT NOT NULL, text TEXT NOT NULL,
+        completed INTEGER NOT NULL DEFAULT 0 CHECK(completed IN (0,1)),
+        revision INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+      )`).run();
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_daily_todos_day ON daily_todos(day,created_at,id)").run();
+    })().catch((error) => {
+      ready3.delete(db);
+      throw error;
+    });
+    ready3.set(db, pending);
+  }
+  await pending;
+}
+function mapTodo(row) {
+  return {
+    id: row.id,
+    date: row.day,
+    text: row.text,
+    completed: row.completed === 1,
+    revision: row.revision,
+    createdTimestamp: row.created_at,
+    updatedTimestamp: row.updated_at
+  };
+}
+async function routeTodos(request, db) {
+  const url = new URL(request.url), method = request.method;
+  const match = url.pathname.match(/^\/v1\/todos(?:\/([a-f0-9-]{36}))?$/i);
+  if (!match) throw new InputError("Not found", 404);
+  const id = match[1];
+  if (!id && method === "GET") {
+    const day = url.searchParams.get("date"), month = url.searchParams.get("month");
+    if (day && !month && isCalendarDate(day)) {
+      await ensureTodos(db);
+      const result = await db.prepare("SELECT * FROM daily_todos WHERE day=? ORDER BY completed,created_at,id").bind(day).all();
+      return { success: true, todos: result.results.map(mapTodo) };
+    }
+    if (month && !day && /^\d{4}-\d{2}$/.test(month) && isCalendarDate(`${month}-01`)) {
+      await ensureTodos(db);
+      const result = await db.prepare("SELECT day AS date,COUNT(*) AS total,SUM(completed) AS completed FROM daily_todos WHERE day>=? AND day<=? GROUP BY day ORDER BY day").bind(`${month}-01`, `${month}-31`).all();
+      return { success: true, days: result.results };
+    }
+    throw new InputError("Choose a valid date or month.");
+  }
+  if (!id && method !== "POST" || id && !["PUT", "DELETE"].includes(method)) throw new InputError("Method not allowed", 405);
+  const body = await boundedJson(request);
+  if (!body || !isCalendarDate(body.date)) throw new InputError("A valid date is required.");
+  if (!id) {
+    if (typeof body.id !== "string" || !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(body.id) || typeof body.text !== "string" || !body.text.trim() || body.text.trim().length > TODO_LIMITS.text) throw new InputError(`Enter a task of 1\u2013${TODO_LIMITS.text} characters and a valid creation ID.`);
+  } else if (!Number.isSafeInteger(body.revision) || Number(body.revision) < 1 || method === "PUT" && typeof body.completed !== "boolean") throw new InputError("A valid revision and completion state are required.");
+  await ensureTodos(db);
+  if (!id) {
+    const text = body.text.trim(), now = Date.now();
+    const result = await db.prepare(`INSERT INTO daily_todos (id,day,text,created_at,updated_at)
+      SELECT ?,?,?,?,? WHERE (SELECT COUNT(*) FROM daily_todos WHERE day=?) < ? ON CONFLICT(id) DO NOTHING RETURNING *`).bind(body.id, body.date, text, now, now, body.date, TODO_LIMITS.perDay).first();
+    if (result) return { success: true, todo: mapTodo(result) };
+    const existing = await db.prepare("SELECT * FROM daily_todos WHERE id=?").bind(body.id).first();
+    if (existing && existing.day === body.date && existing.text === text) return { success: true, todo: mapTodo(existing) };
+    throw new InputError(existing ? "This task was already created with different content. Refresh before retrying." : `A day can contain up to ${TODO_LIMITS.perDay} tasks.`, 409);
+  }
+  if (method === "PUT") {
+    const row = await db.prepare(`UPDATE daily_todos SET completed=?,revision=revision+1,updated_at=MAX(updated_at+1,?) WHERE id=? AND day=? AND revision=? RETURNING *`).bind(body.completed ? 1 : 0, Date.now(), id, body.date, body.revision).first();
+    if (row) return { success: true, todo: mapTodo(row) };
+  } else {
+    const result = await db.prepare("DELETE FROM daily_todos WHERE id=? AND day=? AND revision=?").bind(id, body.date, body.revision).run();
+    if ((result.meta?.changes ?? 0) > 0) return { success: true, id };
+    const existing = await db.prepare("SELECT id FROM daily_todos WHERE id=?").bind(id).first();
+    if (!existing) return { success: true, id };
+  }
+  throw new InputError("This task changed in another tab. Refresh the day before trying again.", 409);
+}
+
 // workers/file-service/src/index.ts
 function getAllowedOrigin(request, env) {
   const requestOrigin = request.headers.get("Origin");
@@ -7271,6 +7356,9 @@ var index_default = {
       if (url.pathname === "/v1/projects" || url.pathname.startsWith("/v1/projects/")) {
         const result = await routeProjects(request, env.DB);
         return jsonResponse(result.body, result.status, origin);
+      }
+      if (url.pathname === "/v1/todos" || url.pathname.startsWith("/v1/todos/")) {
+        return jsonResponse(await routeTodos(request, env.DB), 200, origin);
       }
       if (url.pathname === "/" || url.pathname === "/health") {
         await ensureSchema(env.DB);

@@ -19,6 +19,18 @@ CREATE TABLE IF NOT EXISTS files (
 CREATE INDEX IF NOT EXISTS idx_files_status_expires ON files (status, expires_at);
 CREATE INDEX IF NOT EXISTS idx_files_created ON files (created_at DESC);
 
+-- Private daily tasks; completed items remain associated with their date.
+CREATE TABLE IF NOT EXISTS daily_todos (
+  id TEXT PRIMARY KEY,
+  day TEXT NOT NULL,
+  text TEXT NOT NULL,
+  completed INTEGER NOT NULL DEFAULT 0 CHECK(completed IN (0,1)),
+  revision INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_daily_todos_day ON daily_todos(day,created_at,id);
+
 -- Private Markdown notes. Access authentication is enforced by the Worker.
 CREATE TABLE IF NOT EXISTS notes (
   id TEXT PRIMARY KEY,

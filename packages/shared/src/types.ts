@@ -1,5 +1,23 @@
 export type NavTab = 'home' | 'projects' | 'notes' | 'files' | 'mail' | 'tools' | 'settings';
 
+export const TODO_LIMITS = { text: 300, perDay: 100 } as const;
+export interface TodoItem {
+  id: string;
+  date: string;
+  text: string;
+  completed: boolean;
+  revision: number;
+  createdTimestamp: number;
+  updatedTimestamp: number;
+}
+export interface TodoDaySummary { date: string; total: number; completed: number }
+
+export function isCalendarDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T12:00:00Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
 export const PROJECT_STATUSES = ['Planning', 'In Progress', 'Completed', 'Archived'] as const;
 export type ProjectStatus = typeof PROJECT_STATUSES[number];
 export const PROJECT_LIMITS = { name: 120, tagline: 200, descriptionBytes: 10_000, externalUrl: 2048, count: 200 } as const;

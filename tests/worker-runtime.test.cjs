@@ -70,6 +70,18 @@ test('release Worker runs reliably in workerd with actual D1 and R2 bindings', {
     assert.equal((await response.json()).schema, 'ready');
   });
 
+  await t.test('daily task completion and dated history persist in real D1', async () => {
+    const body = { id: crypto.randomUUID(), date: '2026-10-13', text: 'Local runtime task' };
+    const created = await request('/v1/todos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    assert.equal(created.status,200);const {todo}=await created.json();
+    const saved = await request(`/v1/todos/${todo.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({date:todo.date,revision:todo.revision,completed:true}) });
+    assert.equal((await saved.json()).todo.completed,true);
+    const history=await (await request('/v1/todos?date=2026-10-13')).json();assert.equal(history.todos[0].text,body.text);
+    const month=await (await request('/v1/todos?month=2026-10')).json();assert.equal(month.days[0].completed,1);
+    assert.equal((await (await request('/v1/todos?date=2026-10-14')).json()).todos.length,0);
+    const anonymous = await mf.dispatchFetch('https://workspace.example.invalid/v1/todos?date=2026-10-13');assert.equal(anonymous.status,401);await anonymous.text();
+  });
+
   await t.test('private note CRUD persists Unicode and rejects foreign browser writes', async () => {
     const reconnect = await request('/auth/return?redirect_url=https://untrusted.invalid', { redirect: 'manual' });
     assert.equal(reconnect.status, 302);

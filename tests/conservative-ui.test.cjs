@@ -70,15 +70,14 @@ test('failed uploads preserve the selected file and keep the modal open',async()
   assert.equal(closed,false);assert.match(label(h.tree),/Upload unavailable/);assert.equal(find(h,n=>n.type==='button'&&n.props.type==='submit').props.disabled,false);h.unmount();
 });
 
-test('overview keeps one date display and opens the existing creation and tool flows',()=>{
+test('overview replaces quick-start tiles with the calendar and daily task panel',()=>{
   const f=components(),{DashboardView}=f.load('apps/workspace/src/components/DashboardView.tsx');
   const actions=[];
   const props={transfers:[],notes:[],messages:[],sentMessages:[],canCreate:true,onNewItem(type){actions.push(type);},onNavigate(tab){actions.push(tab);}};
   const h=f.mount(DashboardView,props);
-  assert.doesNotMatch(label(h.tree),/This week/);assert.match(label(h.tree),/Today/);assert.match(label(h.tree),/Recent activity/);assert.equal(elements(h.tree).some(n=>n.type==='textarea'),false);
-  for(const name of ['New note','New project','Upload a file','Open tools'])find(h,n=>n.props['aria-label']===name).props.onClick();
-  assert.deepEqual(actions,['note','project','transfer','tools']);
-  props.canCreate=false;h.render();assert.equal(find(h,n=>n.props['aria-label']==='New note').props.disabled,true);assert.equal(find(h,n=>n.props['aria-label']==='Open tools').props.disabled,false);h.unmount();
+  assert.doesNotMatch(label(h.tree),/Start something|This week/);assert.match(label(h.tree),/Recent activity/);
+  assert.equal(find(h,n=>n.type?.name==='DailyPlanner').props.canManage,true);
+  props.canCreate=false;h.render();assert.equal(find(h,n=>n.type?.name==='DailyPlanner').props.canManage,false);h.unmount();
 });
 
 test('the global new-project command opens Projects instead of the obsolete placeholder',()=>{
