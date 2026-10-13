@@ -62,21 +62,24 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   if (!isOpen) return null;
 
   const navActions = [
-    { label: 'Overview', tab: 'home' as NavTab, icon: LayoutDashboard },
-    { label: 'Projects', tab: 'projects' as NavTab, icon: FolderDot },
-    { label: 'Notes', tab: 'notes' as NavTab, icon: FileText },
-    { label: 'Files', tab: 'files' as NavTab, icon: Paperclip },
-    { label: 'Mail', tab: 'mail' as NavTab, icon: Mail },
-    { label: 'Tools · QR, Markdown & images', tab: 'tools' as NavTab, icon: Wrench },
-    { label: 'Settings', tab: 'settings' as NavTab, icon: Settings },
+    { label: 'Overview', description: 'Calendar, daily tasks & system health', tab: 'home' as NavTab, icon: LayoutDashboard },
+    { label: 'Projects', description: 'Tasks, progress & reference links', tab: 'projects' as NavTab, icon: FolderDot },
+    { label: 'Notes', description: 'Categories, sharing, import & export', tab: 'notes' as NavTab, icon: FileText },
+    { label: 'Files', description: 'Upload, download & manage files', tab: 'files' as NavTab, icon: Paperclip },
+    { label: 'Mail', description: 'Read, reply to & send email', tab: 'mail' as NavTab, icon: Mail },
+    { label: 'Tools', description: 'QR codes, Markdown, rich text & images', tab: 'tools' as NavTab, icon: Wrench },
+    { label: 'Settings', description: 'Appearance, storage & connection status', tab: 'settings' as NavTab, icon: Settings },
   ];
 
   const quickActions = [
-    { label: 'Upload File to R2...', action: () => onOpenNewModal('transfer'), icon: Plus },
-    { label: 'New Note...', action: () => onOpenNewModal('note'), icon: Plus },
-    { label: 'New Project...', action: () => onOpenNewModal('project'), icon: Plus },
-    { label: 'Toggle Appearance (Duo / Dark)', action: onToggleTheme, icon: Sun },
+    { label: 'Upload file', description: 'Save to R2 or InfiniCLOUD (WebDAV)', action: () => onOpenNewModal('transfer'), icon: Plus },
+    { label: 'New note', description: 'Write a Markdown note', action: () => onOpenNewModal('note'), icon: Plus },
+    { label: 'New project', description: 'Plan tasks and track progress', action: () => onOpenNewModal('project'), icon: Plus },
+    { label: 'Switch theme', description: 'Switch between light and dark mode', action: onToggleTheme, icon: Sun },
   ];
+  const search = query.trim().toLowerCase();
+  const matchesAction = (action: { label: string; description: string }) =>
+    `${action.label} ${action.description}`.toLowerCase().includes(search);
 
   const matchedProjects = projects.filter((p) =>
     p.name.toLowerCase().includes(query.toLowerCase())
@@ -108,7 +111,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Type a command or search..."
+            placeholder="Search workspace…"
+            aria-label="Search workspace"
             className="workspace-input workspace-input-plain type-body text-neutral-900 dark:text-white placeholder:text-neutral-400"
           />
           <kbd className="px-1.5 py-0.5 text-[10px] font-mono text-neutral-400 bg-neutral-100 dark:bg-white/5 rounded">
@@ -121,11 +125,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           {/* Navigation */}
           <div>
             <div className="type-caption px-3 py-1 uppercase tracking-wider text-neutral-400">
-              Navigation
+              Go to
             </div>
             <div className="space-y-0.5">
               {navActions
-                .filter((a) => a.label.toLowerCase().includes(query.toLowerCase()))
+                .filter(matchesAction)
                 .map((a) => {
                   const Icon = a.icon;
                   return (
@@ -137,11 +141,14 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                       }}
                       className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-white/5 hover:text-black dark:hover:text-white transition-colors cursor-pointer"
                     >
-                      <div className="flex items-center gap-2.5">
-                        <Icon className="w-4 h-4 text-neutral-400 stroke-[1.6]" />
-                        <span>{a.label}</span>
+                      <div className="min-w-0 flex items-center gap-2.5 text-left">
+                        <Icon className="w-4 h-4 shrink-0 text-neutral-400 stroke-[1.6]" />
+                        <span className="min-w-0 flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-3">
+                          <span className="shrink-0 font-medium">{a.label}</span>
+                          <span className="type-caption">{a.description}</span>
+                        </span>
                       </div>
-                      <ArrowRight className="w-3.5 h-3.5 text-neutral-400" />
+                      <ArrowRight className="w-3.5 h-3.5 shrink-0 ml-2 text-neutral-400" />
                     </button>
                   );
                 })}
@@ -151,11 +158,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           {/* Actions */}
           <div>
             <div className="type-caption px-3 py-1 uppercase tracking-wider text-neutral-400">
-              Quick Actions
+              Quick actions
             </div>
             <div className="space-y-0.5">
               {quickActions
-                .filter((a) => a.label.toLowerCase().includes(query.toLowerCase()))
+                .filter(matchesAction)
                 .map((a) => {
                   const Icon = a.icon;
                   return (
@@ -167,8 +174,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                       }}
                       className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-white/5 hover:text-black dark:hover:text-white transition-colors cursor-pointer"
                     >
-                      <Icon className="w-4 h-4 text-neutral-400 stroke-[1.6]" />
-                      <span>{a.label}</span>
+                      <Icon className="w-4 h-4 shrink-0 text-neutral-400 stroke-[1.6]" />
+                      <span className="min-w-0 flex flex-col gap-0.5 text-left sm:flex-row sm:items-baseline sm:gap-3">
+                        <span className="shrink-0 font-medium">{a.label}</span>
+                        <span className="type-caption">{a.description}</span>
+                      </span>
                     </button>
                   );
                 })}

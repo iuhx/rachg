@@ -31,7 +31,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           className="type-label flex items-center gap-2.5 px-3 py-2 workspace-control text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 bg-white dark:bg-[#18191d] border border-neutral-200/90 dark:border-white/10 hover:border-neutral-300 dark:hover:border-white/20 transition-colors w-[min(62vw,18rem)] sm:w-72 cursor-pointer"
         >
           <Search className="w-3.5 h-3.5 text-neutral-400 stroke-[1.8]" />
-          <span className="type-secondary flex-1 text-left">Search anything...</span>
+          <span className="type-secondary flex-1 text-left">Search workspace…</span>
           <kbd className="type-caption inline-flex items-center gap-0.5 px-1.5 py-0.5 text-neutral-400 bg-neutral-100 dark:bg-white/5 rounded border border-neutral-200/80 dark:border-white/10">
             <span>⌘</span>K
           </kbd>
