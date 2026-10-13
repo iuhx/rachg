@@ -1,13 +1,16 @@
 import { ensureSchema } from './db';
-import { deleteFromR2, deleteMailObject } from './storage';
+import { deleteMailObject } from './storage';
+import { StoredFiles } from './stored-files';
 
 /** Operates only on exact keys recorded by this service, never bucket-wide prefixes. */
-export async function cleanupStorage(db: D1Database, bucket: R2Bucket): Promise<{ deleted: number; failed: number }> {
+export async function cleanupStorage(db: D1Database, bucket: R2Bucket, credentialKey?: string): Promise<{ deleted: number; failed: number }> {
   await ensureSchema(db);
+  const storage = new StoredFiles({ DB: db, FILES_BUCKET: bucket, WEBDAV_CREDENTIAL_KEY: credentialKey });
   const now = Date.now();
   let deleted = 0, failed = 0;
   // At most 41 storage calls on a cold start (16 schema calls, 2 queries,
   // 5*3 transfer calls, 2*4 mail calls); note-share cleanup adds one more.
+  // A WebDAV batch adds at most one settings schema call and one settings read.
   const files = await db.prepare(`SELECT id, r2_key FROM files
     WHERE status = 'purging'
        OR (status IN ('active', 'expired') AND expires_at != 0 AND expires_at <= ?)
@@ -21,7 +24,7 @@ export async function cleanupStorage(db: D1Database, bucket: R2Bucket): Promise<
         status = 'purging' OR (status IN ('active', 'expired') AND expires_at != 0 AND expires_at <= ?)
         OR (status = 'uploading' AND created_at < ?))`).bind(record.id, record.r2_key, now, now - 3600_000).run();
       if (!claim.meta?.changes) continue;
-      await deleteFromR2(bucket, record.r2_key);
+      await storage.delete(record.r2_key);
       await db.prepare(`UPDATE files SET status = 'purged' WHERE id = ?`).bind(record.id).run();
       deleted++;
     } catch { failed++; }

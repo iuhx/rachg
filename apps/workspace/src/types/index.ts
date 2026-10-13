@@ -5,6 +5,7 @@ export type { Project, ProjectInput, ProjectStatus, ProjectListResponse, Project
 export type FileCategory = 'image' | 'pdf' | 'archive' | 'video' | 'text' | 'keynote' | 'code';
 
 export interface FileItem {
+  storageBackend?: 'r2' | 'webdav';
   id: string;
   name: string;
   size: string;

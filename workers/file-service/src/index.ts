@@ -46,7 +46,9 @@ import {
   type MailRecord,
   type SentMailRecord,
 } from './db';
-import { buildR2Key, uploadToR2, getFromR2, headFromR2, deleteFromR2, getMailObject, deleteMailObject } from './storage';
+import { buildR2Key, getMailObject, deleteMailObject } from './storage';
+import { StoredFiles, buildWebdavKey } from './stored-files';
+import { routeWebdavSettings, WebdavConflict, type StoredObject } from './webdav';
 import { checkStorageQuota, getActiveStorageUsage } from './quota';
 import { isAuthenticated, resolveAuth } from './auth';
 import { getFileExpiry, isFileExpired } from './expiry';
@@ -64,6 +66,7 @@ import { systemHealth } from './system-health';
 import { boundedForm, boundedJson, InputError, mailPlainText, MAX_FILE_BYTES, MAX_MAIL_BYTES, MAX_TEXT_BYTES, readBounded, utf8Size } from '../../common/content';
 
 export interface Env {
+  WEBDAV_CREDENTIAL_KEY?: string;
   PUBLIC_NOTE_SHARES_ENABLED?: string;
   DB: D1Database;
   FILES_BUCKET: R2Bucket;
@@ -234,6 +237,8 @@ export default {
       // -------------------------------------------------------------
       // Health check & Service status
       // -------------------------------------------------------------
+      const storage = new StoredFiles(env);
+      if (url.pathname === '/v1/storage/webdav') return jsonResponse(await routeWebdavSettings(request, env), 200, origin);
       if (url.pathname === '/v1/system-health') return jsonResponse(await systemHealth(request, env), 200, origin);
       if (request.method === 'GET' && url.pathname === '/auth/return') {
         // Access has established the API-domain cookie before this authenticated
@@ -296,7 +301,7 @@ export default {
         if (record.status !== 'active' || isFileExpired(record.expires_at)) throw new InputError('This text share has expired', 410);
         if (record.mime_type.split(';')[0].trim().toLowerCase() !== 'text/plain') throw new InputError('This file is not a plain text share', 415);
         if (record.size_bytes > 200_000) throw new InputError('Text share pages support up to 200 KB', 413);
-        const object = await getFromR2(env.FILES_BUCKET, record.r2_key);
+        const object = await storage.get(record.r2_key);
         if (!object) throw new InputError('Text share not found', 404);
         const bytes = await readBounded(new Response(object.body).body, 200_000);
         return textShareResponse(record.filename, new TextDecoder().decode(bytes), record.id);
@@ -537,6 +542,7 @@ export default {
         let mimeType = 'application/octet-stream';
         let sizeBytes = 0;
         let expiryParam = '48 hours';
+        let storageBackend = 'r2';
 
         if (contentType.includes('multipart/form-data')) {
           const formData = await boundedForm(request);
@@ -555,11 +561,15 @@ export default {
           if (sizeBytes > MAX_FILE_BYTES) throw new InputError('Files must be 10 MiB or smaller', 413);
           fileStream = fileObj.stream();
           expiryParam = (formData.get('expiry') as string) || expiryParam;
+          const requestedStorage = formData.get('storageBackend');
+          if (requestedStorage !== null && typeof requestedStorage !== 'string') throw new InputError('Invalid storage destination.');
+          storageBackend = requestedStorage || 'r2';
         } else {
           // Direct octet-stream upload
           filename = request.headers.get('x-filename') || 'uploaded-file';
           mimeType = contentType || 'application/octet-stream';
           expiryParam = request.headers.get('x-expiry') || expiryParam;
+          storageBackend = request.headers.get('x-storage-backend') || 'r2';
 
           if (!request.body) {
             return jsonResponse<ApiErrorResponse>(
@@ -572,9 +582,10 @@ export default {
           sizeBytes = fileStream.byteLength;
         }
 
-        // 4GB Quota check
-        const quota = await checkStorageQuota(env.DB, sizeBytes, maxStorageLimit);
-        if (!quota.allowed) {
+        await storage.ready(storageBackend);
+        // The local 4 GiB cap belongs to R2. InfiniCLOUD enforces its own quota.
+        const quota = storageBackend === 'r2' ? await checkStorageQuota(env.DB, sizeBytes, maxStorageLimit) : null;
+        if (quota && !quota.allowed) {
           return jsonResponse<ApiErrorResponse>(
             {
               success: false,
@@ -591,7 +602,7 @@ export default {
         if (!filename || filename.length > 240 || /[\x00-\x1f\x7f]/.test(filename)) throw new InputError('Invalid filename');
         const id = crypto.randomUUID();
         const deleteToken = generateCode(24);
-        const r2Key = buildR2Key(id, filename);
+        const r2Key = storageBackend === 'webdav' ? buildWebdavKey(id, filename) : buildR2Key(id, filename);
 
         const now = Date.now();
         const expiresAt = getFileExpiry(expiryParam, now);
@@ -613,14 +624,16 @@ export default {
 
         if (!await insertFileRecord(env.DB, record, maxStorageLimit)) throw new InputError('Storage quota exceeded', 413);
         try {
-          await uploadToR2(env.FILES_BUCKET, r2Key, fileStream, mimeType, { fileId: id, filename, deleteToken, expiresAt: expiresAt.toString() });
+          await storage.put(r2Key, fileStream, mimeType, { fileId: id, filename, deleteToken, expiresAt: expiresAt.toString() });
           const committed = await env.DB.prepare(`UPDATE files SET status = 'active' WHERE id = ? AND status = 'uploading'`).bind(id).run();
           if ((committed.meta?.changes ?? 0) === 0) {
-            await deleteFromR2(env.FILES_BUCKET, r2Key);
+            await storage.delete(r2Key);
             throw new Error('Upload reservation is no longer active');
           }
           record.status = 'active';
         } catch (error) {
+          // A conditional PUT collision is not our object; never queue its deletion.
+          if (error instanceof WebdavConflict) await env.DB.prepare("UPDATE files SET status = 'purged' WHERE id = ? AND status = 'uploading'").bind(id).run();
           // A lost D1 response can follow a committed write. Leave the exact-key
           // reservation intact for cleanup rather than guessing that commit failed.
           console.error('Upload requires reconciliation', { id });
@@ -711,8 +724,9 @@ export default {
           );
         }
 
-        // Delete from R2 (transfers/ prefix only)
-        await deleteFromR2(env.FILES_BUCKET, record.r2_key);
+        // Claim before deleting so a late upload cannot become active afterwards.
+        await env.DB.prepare("UPDATE files SET status = 'purging' WHERE id = ? AND status != 'deleted'").bind(id).run();
+        await storage.delete(record.r2_key);
 
         // Mark deleted in D1
         await markFileDeleted(env.DB, id);
@@ -753,9 +767,9 @@ export default {
 
         let range: { offset: number; length: number } | undefined;
         const requestedRange = request.headers.get('Range');
-        let head: R2Object | null = null;
+        let head: StoredObject | null = null;
         if (request.method === 'HEAD' || requestedRange) {
-          head = await headFromR2(env.FILES_BUCKET, record.r2_key);
+          head = await storage.head(record.r2_key);
           if (!head) return new Response('File storage object missing.', { status: 404 });
           const ifRange = request.headers.get('If-Range');
           if (request.method === 'GET' && requestedRange && (!ifRange || ifRange === head.httpEtag)) {
@@ -763,7 +777,7 @@ export default {
             if (!range) return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${head.size}`, 'Cache-Control': 'private, no-store' } });
           }
         }
-        const r2Object = request.method === 'HEAD' ? head : await getFromR2(env.FILES_BUCKET, record.r2_key, range);
+        const r2Object = request.method === 'HEAD' ? head : await storage.get(record.r2_key, range);
         if (!r2Object) {
           return new Response('File storage object missing.', {
             status: 404,
@@ -780,7 +794,7 @@ export default {
         headers.set('Cache-Control', 'private, no-store');
         headers.set('X-Content-Type-Options', 'nosniff');
         headers.set('Referrer-Policy', 'no-referrer');
-        headers.set('etag', r2Object.httpEtag);
+        if (r2Object.httpEtag) headers.set('etag', r2Object.httpEtag);
         headers.set('Accept-Ranges', 'bytes');
         headers.set('Content-Length', String(range?.length ?? r2Object.size));
         if (range) headers.set('Content-Range', `bytes ${range.offset}-${range.offset + range.length - 1}/${r2Object.size}`);
@@ -792,7 +806,7 @@ export default {
         headers.set('Access-Control-Allow-Credentials', 'true');
         headers.set('Vary', 'Origin');
 
-        return new Response(request.method === 'HEAD' ? null : (r2Object as R2ObjectBody).body, {
+        return new Response(request.method === 'HEAD' ? null : r2Object.body, {
           status: range ? 206 : 200,
           headers,
         });
@@ -827,7 +841,7 @@ export default {
     }
   },
   async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(cleanupStorage(env.DB, env.FILES_BUCKET));
+    ctx.waitUntil(cleanupStorage(env.DB, env.FILES_BUCKET, env.WEBDAV_CREDENTIAL_KEY));
     ctx.waitUntil(cleanupNoteShares(env.DB));
   },
 };

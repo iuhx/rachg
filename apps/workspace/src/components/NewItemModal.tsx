@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import type { NoteItem } from '../types';
+import type { StorageBackend } from '@rachg/shared';
+import { StoragePicker } from './StoragePicker';
 
 interface NewItemModalProps {
   isOpen: boolean;
@@ -9,7 +11,8 @@ interface NewItemModalProps {
   initialNote?: Pick<NoteItem, 'title' | 'content'>;
   onClose: () => void;
   onCreateNote: (n: Partial<NoteItem>) => Promise<void>;
-  onCreateTransfer: (file: File) => Promise<unknown>;
+  onCreateTransfer: (file: File, storageBackend?: StorageBackend) => Promise<unknown>;
+  webdavAvailable?: boolean;
 }
 
 export const NewItemModal: React.FC<NewItemModalProps> = ({
@@ -20,6 +23,7 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
   onClose,
   onCreateNote,
   onCreateTransfer,
+  webdavAvailable = false,
 }) => {
   // Note form state
   const [noteTitle, setNoteTitle] = useState('');
@@ -27,6 +31,7 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
 
   // Transfer form state
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [storageBackend, setStorageBackend] = useState<StorageBackend>('r2');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const submittingRef = useRef(false);
@@ -36,6 +41,7 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
     setNoteTitle(initialNote?.title || '');
     setNoteContent(initialNote?.content || '');
     setSelectedFile(null);
+    setStorageBackend('r2');
     setSubmitError(null);
   }, [isOpen, type, initialNote]);
 
@@ -55,7 +61,7 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
     if (type === 'note' && noteTitle) {
       await onCreateNote({ title: noteTitle, content: noteContent || '' });
     } else if (type === 'transfer' && selectedFile) {
-      await onCreateTransfer(selectedFile);
+      await onCreateTransfer(selectedFile, storageBackend);
     }
     onClose();
     } catch (error) {
@@ -86,11 +92,11 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
         </button>
 
         <h3 id="new-item-modal-title" className="type-modal-heading text-neutral-900 dark:text-white capitalize mb-1">
-          {type === 'transfer' ? 'Upload to R2' : `New ${type}`}
+          {type === 'transfer' ? 'Upload a file' : `New ${type}`}
         </h3>
         <p className="type-secondary mb-5">
           {type === 'transfer'
-            ? 'Select a file to stream directly into Cloudflare R2.'
+            ? 'Choose a file and where to save it.'
             : 'Add a new record to your workspace.'}
         </p>
 
@@ -128,7 +134,8 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
           )}
 
           {type === 'transfer' && (
-            <div>
+            <div className="space-y-3">
+              <StoragePicker value={storageBackend} onChange={setStorageBackend} webdavAvailable={webdavAvailable} disabled={isSubmitting} />
               <label className="type-label block text-neutral-700 dark:text-neutral-300 mb-2">
                 Choose File
               </label>

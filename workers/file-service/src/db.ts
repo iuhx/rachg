@@ -134,6 +134,7 @@ export function mapRecordToFileItem(r: FileRecord, baseUrl: string): FileItem {
   const isExpired = r.status === 'expired' || r.status === 'purged' || isFileExpired(r.expires_at, now);
 
   return {
+    storageBackend: r.r2_key.startsWith('webdav/') ? 'webdav' : 'r2',
     id: r.id,
     name: r.filename,
     size: formatBytes(r.size_bytes),
@@ -317,8 +318,8 @@ export async function insertFileRecord(db: D1Database, record: FileRecord, maxSt
       `INSERT INTO files (
         id, filename, size_bytes, mime_type, r2_key, created_at, expires_at, download_count, delete_token, owner_id, status
       ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-        WHERE (SELECT COALESCE(SUM(size_bytes), 0) FROM files
-          WHERE status NOT IN ('deleted', 'purged')) + ? <= ?`
+        WHERE (? = 1 OR (SELECT COALESCE(SUM(size_bytes), 0) FROM files
+          WHERE status NOT IN ('deleted', 'purged') AND r2_key NOT LIKE 'webdav/%') + ? <= ?)`
     )
     .bind(
       record.id,
@@ -332,6 +333,7 @@ export async function insertFileRecord(db: D1Database, record: FileRecord, maxSt
       record.delete_token,
       record.owner_id ?? null,
       record.status,
+      record.r2_key.startsWith('webdav/') ? 1 : 0,
       record.size_bytes,
       maxStorageBytes
     )

@@ -1,5 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { API_BASE_URL, API_HOSTNAME } from '../config/api';
+import type { WebdavSettings } from '@rachg/shared';
+import { WebdavSettingsPanel } from './WebdavSettingsPanel';
 import {
   Cloud,
   RefreshCw,
@@ -13,6 +15,8 @@ import {
 } from 'lucide-react';
 
 interface SettingsViewProps {
+  canManage?: boolean;
+  onStorageChanged?: (settings: WebdavSettings) => void;
   isDarkMode: boolean;
   onToggleDarkMode: () => void;
 }
@@ -20,6 +24,8 @@ interface SettingsViewProps {
 export const SettingsView: React.FC<SettingsViewProps> = ({
   isDarkMode,
   onToggleDarkMode,
+  canManage = false,
+  onStorageChanged,
 }) => {
   const [testingPing, setTestingPing] = useState(false);
   const [pingLatency, setPingLatency] = useState<number | null>(null);
@@ -61,6 +67,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           Private workspace configuration and production edge status.
         </p>
       </div>
+
+      <WebdavSettingsPanel canManage={canManage} onChanged={onStorageChanged} />
 
       {/* Cloudflare Edge Status */}
       <div className="workspace-card p-5 sm:p-6 space-y-5">

@@ -1,13 +1,16 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Copy, Download, FileText, Image as ImageIcon, QrCode, Upload } from 'lucide-react';
 import type { FileItem, NoteItem } from '../types';
+import type { StorageBackend } from '@rachg/shared';
+import { StoragePicker } from './StoragePicker';
 import { byteLength, createQr, downloadBlob, FILE_BYTES, LOCAL_QR_BYTES, qrPng, textShareUrl, TOOL_TEXT_BYTES, usableFile, type QrMatrix } from '../utils/qr';
 
 export interface FileQrRequest { fileId: string; sequence: number }
 interface ToolsViewProps {
   files: FileItem[];
   fileRequest: FileQrRequest | null;
-  onUploadFile: (file: File, expiry: string) => Promise<FileItem>;
+  onUploadFile: (file: File, expiry: string, storageBackend?: StorageBackend) => Promise<FileItem>;
+  webdavAvailable?: boolean;
   canUpload: boolean;
   onSaveNote: (note: Partial<NoteItem>) => Promise<void>;
   onOpenNotes: () => void;
@@ -31,7 +34,7 @@ function QrPreview({ matrix }: { matrix: QrMatrix }) {
   </svg>;
 }
 
-export const ToolsView: React.FC<ToolsViewProps> = ({ files, fileRequest, onUploadFile, canUpload, onSaveNote, onOpenNotes, isActive = true, isFilesLoading = false }) => {
+export const ToolsView: React.FC<ToolsViewProps> = ({ files, fileRequest, onUploadFile, canUpload, onSaveNote, onOpenNotes, isActive = true, isFilesLoading = false, webdavAvailable = false }) => {
   const [tool, setTool] = useState<'qr' | 'markdown' | 'images'>('qr');
   const [imagesVisited, setImagesVisited] = useState(false);
   const [textVisited, setTextVisited] = useState(false);
@@ -41,11 +44,12 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ files, fileRequest, onUplo
   const [pageLink, setPageLink] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [expiry, setExpiry] = useState('48 hours');
+  const [storageBackend, setStorageBackend] = useState<StorageBackend>('r2');
   const [filter, setFilter] = useState('');
   const [uploading, setUploading] = useState(false);
   const uploadBusy = useRef(false);
   const selectionVersion = useRef(0);
-  const [confirmation, setConfirmation] = useState<{ text: string; expiry: string } | null>(null);
+  const [confirmation, setConfirmation] = useState<{ text: string; expiry: string; storageBackend: StorageBackend } | null>(null);
   const cancelShare = useRef<HTMLButtonElement>(null);
   const [notice, setNotice] = useState<{ error: boolean; text: string } | null>(null);
   const [now, setNow] = useState(Date.now);
@@ -108,12 +112,12 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ files, fileRequest, onUplo
     if (file.size > FILE_BYTES) { reportError(new Error('Choose a file up to 10 MiB. Nothing was uploaded.')); return; }
     setPendingFile(file); setSelectedId(''); setPageLink(false); setSource('upload'); setNotice(null);
   };
-  const upload = async (file: File, retention: string, asPage = false) => {
+  const upload = async (file: File, retention: string, asPage = false, backend = storageBackend) => {
     if (uploadBusy.current || !canUpload) return;
     uploadBusy.current = true; setUploading(true); setNotice(null);
     const version = selectionVersion.current;
     try {
-      const saved = await onUploadFile(file, retention);
+      const saved = await onUploadFile(file, retention, backend);
       if (selectionVersion.current !== version) return;
       setSelectedId(saved.id); setPageLink(asPage); setSource('existing'); setPendingFile(null); setConfirmation(null);
       setNotice({ error: false, text: asPage ? 'Text share page created. The TXT file is also in Files.' : 'File saved. It is also available in Files.' });
@@ -123,7 +127,7 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ files, fileRequest, onUplo
   const shareText = () => {
     if (!confirmation) return;
     const file = new File([confirmation.text], `text-share-${Date.now()}.txt`, { type: 'text/plain;charset=utf-8' });
-    void upload(file, confirmation.expiry, true);
+    void upload(file, confirmation.expiry, true, confirmation.storageBackend);
   };
   const changeSource = (next: typeof source) => {
     setSource(next); setNotice(null);
@@ -160,7 +164,8 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ files, fileRequest, onUplo
                 <p className="type-body">This text is too long for a reliable QR code.</p>
                 <p className="type-secondary">You can create a text share page and encode its link instead. Nothing is uploaded until you confirm.</p>
                 <label className="type-label flex items-center gap-3">Keep for<select aria-label="Text share expiration" className="workspace-input w-auto" value={expiry} onChange={e => setExpiry(e.target.value)}>{expiries.map(item => <option key={item} value={item}>{item === 'permanent' ? 'Permanent' : item}</option>)}</select></label>
-                <button className="workspace-button workspace-button-primary" disabled={!canUpload || textSize > TOOL_TEXT_BYTES} onClick={() => setConfirmation({ text, expiry })}>Review text share</button>
+                <StoragePicker value={storageBackend} onChange={setStorageBackend} webdavAvailable={webdavAvailable} disabled={uploading} />
+                <button className="workspace-button workspace-button-primary" disabled={!canUpload || textSize > TOOL_TEXT_BYTES} onClick={() => setConfirmation({ text, expiry, storageBackend })}>Review text share</button>
                 {textSize > TOOL_TEXT_BYTES && <p className="type-secondary text-red-600">Text share pages support up to 200 KB.</p>}
                 {!canUpload && <p className="type-secondary">Sign in to the workspace to create a share page.</p>}
               </div>}
@@ -177,6 +182,7 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ files, fileRequest, onUplo
               </div>
               {pendingFile && <p className="type-body break-all">{pendingFile.name} · {(pendingFile.size / 1024).toFixed(1)} KB</p>}
               <label className="type-label flex items-center gap-3">Keep for<select aria-label="QR file expiration" className="workspace-input w-auto" value={expiry} onChange={e => setExpiry(e.target.value)}>{expiries.map(item => <option key={item} value={item}>{item === 'permanent' ? 'Permanent' : item}</option>)}</select></label>
+              <StoragePicker value={storageBackend} onChange={setStorageBackend} webdavAvailable={webdavAvailable} disabled={uploading} />
               <button className="workspace-button workspace-button-primary" disabled={!pendingFile || !canUpload} onClick={() => { if (pendingFile) void upload(pendingFile, expiry); }}><Upload className="w-4 h-4" />{uploading ? 'Uploading…' : 'Upload & generate QR'}</button>
               <p className="type-caption">{canUpload ? 'Uploads appear in Files and use the same storage quota.' : 'Sign in to upload. Local text QR codes remain available.'}</p>
             </div>}
@@ -225,7 +231,7 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ files, fileRequest, onUplo
         if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
       }}>
         <h2 id="text-share-title" className="type-modal-heading">Create a text share page?</h2>
-        <p id="text-share-description" className="type-secondary">This uploads the text below as a TXT file to your R2 workspace. It will appear in Files. Opening the page requires sign-in. {confirmation.expiry === 'permanent' ? 'It stays until you delete it.' : `It expires after ${confirmation.expiry}.`}</p>
+        <p id="text-share-description" className="type-secondary">This uploads the text below as a TXT file to {confirmation.storageBackend === 'webdav' ? 'InfiniCLOUD' : 'R2'}. It will appear in Files. Opening the page requires sign-in. {confirmation.expiry === 'permanent' ? 'It stays until you delete it.' : `It expires after ${confirmation.expiry}.`}</p>
         <pre className="workspace-panel p-3 max-h-48 overflow-auto whitespace-pre-wrap break-words text-xs">{confirmation.text}</pre>
         <p className="type-caption">{byteLength(confirmation.text).toLocaleString()} bytes · QR local limit: {LOCAL_QR_BYTES.toLocaleString()} bytes</p>
         {notice?.error && <p role="alert" className="type-secondary text-red-600">{notice.text}</p>}

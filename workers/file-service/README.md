@@ -9,6 +9,10 @@ the exact Access path rule, feature flag, security model and deployment checks.
 
 Required Worker variables: `ACCESS_TEAM_DOMAIN=https://rachg.cloudflareaccess.com`, `ACCESS_AUDIENCE`, `ACCESS_ADMIN_EMAIL`, and `ALLOWED_ORIGINS=https://rachg.com`. Keep the API hostname behind Access and do not expose a public bypass through the `workers.dev` hostname.
 
+Files may also use the optional InfiniCLOUD WebDAV destination configured in Settings.
+See [WebDAV storage](../../docs/WEBDAV.md) for credential encryption, directory isolation,
+quota separation and deployment requirements. Mail remains in R2.
+
 Private mail endpoints are `GET /v1/mail`, `GET /v1/mail/:id`, `DELETE /v1/mail/:id`, `GET /v1/mail/sent`, `GET /v1/mail/sent/:id`, and `POST /v1/mail/send`. The raw RFC 822 message is stored in R2 under `mail/`; D1 contains its index. Sent plain-text messages and Resend status are stored in the D1 `sent_mail` table. The detail endpoint parses received mail to plain text, never returning original HTML. Sending supports `In-Reply-To` and `References` headers so replies remain grouped by email clients. All routes pass through the same Access JWT verification as the existing private APIs.
 
 Outgoing mail uses Resend. Store the key only as the Worker secret `RESEND_API_KEY`; keep `RESEND_FROM_EMAIL` as a Worker variable set to a sender verified in Resend (the default is `me@rachg.com`). The browser never receives the Resend key.

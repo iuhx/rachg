@@ -22,6 +22,8 @@ import {
 } from '../services/fileService';
 import { createNote, deleteNote, fetchNotes, updateNote as updateNoteService } from '../services/noteService';
 import { mergeNoteOrganization } from '../utils/noteOrganization';
+import { fetchWebdavSettings } from '../services/storageService';
+import type { StorageBackend } from '@rachg/shared';
 import { getAccessIdentity, startAccessLogout } from '../services/accessService';
 import { deleteMailMessage, fetchMail, fetchMailMessage, fetchSentMail, fetchSentMailMessage, sendMail } from '../services/mailService';
 import { fetchProjects, saveProject, deleteProject } from '../services/projectService';
@@ -46,6 +48,15 @@ export const WorkspaceApp: React.FC = () => {
   const projectsMutating = useRef(false);
   const [transfers, setTransfers] = useState<FileItem[]>(INITIAL_TRANSFERS);
   const [isFilesLoading, setIsFilesLoading] = useState(true);
+  const [webdavAvailable, setWebdavAvailable] = useState(false);
+  const storageVersion = useRef(0);
+  useEffect(() => {
+    if (authStatus !== 'authenticated') { setWebdavAvailable(false); return; }
+    let active = true;
+    const version = ++storageVersion.current;
+    void fetchWebdavSettings().then(config => { if (active && version === storageVersion.current) setWebdavAvailable(config.configured); }).catch(() => { if (active && version === storageVersion.current) setWebdavAvailable(false); });
+    return () => { active = false; };
+  }, [authStatus]);
   const [notes, setNotes] = useState<NoteItem[]>([]);
   const deletedNotes = useRef(new Set<string>());
   const [isNotesLoading, setIsNotesLoading] = useState(true);
@@ -300,14 +311,14 @@ export const WorkspaceApp: React.FC = () => {
     }
   };
 
-  const handleUploadFile = async (file: File, expiry: string = '48 hours') => {
+  const handleUploadFile = async (file: File, expiry: string = '48 hours', storageBackend: StorageBackend = 'r2') => {
     pendingUploads.current++;
     setIsUploading(true);
     try {
-      const { file: uploadedFile, isLive } = await uploadFileService(file, expiry);
+      const { file: uploadedFile, isLive } = await uploadFileService(file, expiry, storageBackend);
       setTransfers((prev) => [uploadedFile, ...prev.filter((f) => f.id !== uploadedFile.id)]);
       if (isLive) {
-        showToast(`Uploaded "${file.name}" to Cloudflare R2.`);
+        showToast(`Uploaded "${file.name}" to ${uploadedFile.storageBackend === 'webdav' ? 'InfiniCLOUD' : 'Cloudflare R2'}.`);
       }
       return uploadedFile;
     } catch (err: any) {
@@ -394,6 +405,7 @@ export const WorkspaceApp: React.FC = () => {
 
           {activeTab === 'files' && (
             <FilesView
+              webdavAvailable={webdavAvailable}
               transfers={transfers}
               onUploadFile={handleUploadFile}
               onDeleteTransfer={handleDeleteTransfer}
@@ -428,7 +440,7 @@ export const WorkspaceApp: React.FC = () => {
 
           {(activeTab === 'tools' || toolsVisited) && <div hidden={activeTab !== 'tools'}>
             <React.Suspense fallback={<p className="type-secondary">Loading tools…</p>}>
-              <ToolsView files={transfers} fileRequest={fileQrRequest} onUploadFile={handleUploadFile}
+              <ToolsView files={transfers} fileRequest={fileQrRequest} onUploadFile={handleUploadFile} webdavAvailable={webdavAvailable}
                 onSaveNote={handleCreateNote} onOpenNotes={() => { setActiveTab('notes'); window.scrollTo(0, 0); }}
                 canUpload={authStatus === 'authenticated'} isFilesLoading={authStatus === 'authenticated' && isFilesLoading} isActive={activeTab === 'tools'} />
             </React.Suspense>
@@ -466,6 +478,8 @@ export const WorkspaceApp: React.FC = () => {
 
           {activeTab === 'settings' && (
             <SettingsView
+              canManage={authStatus === 'authenticated'}
+              onStorageChanged={config => { storageVersion.current++; setWebdavAvailable(config.configured); }}
               isDarkMode={isDarkMode}
               onToggleDarkMode={() => setIsDarkMode(!isDarkMode)}
             />
@@ -492,7 +506,8 @@ export const WorkspaceApp: React.FC = () => {
         type={newModalType}
         onClose={() => { setNewModalType(null); setNewNoteCategoryId(null); }}
         onCreateNote={note => handleCreateNote({ ...note, categoryId: newNoteCategoryId })}
-        onCreateTransfer={handleUploadFile}
+        webdavAvailable={webdavAvailable}
+        onCreateTransfer={(file, backend) => handleUploadFile(file, '48 hours', backend)}
       />
 
       {/* Toast Notification */}

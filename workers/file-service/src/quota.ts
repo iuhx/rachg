@@ -10,7 +10,7 @@ export async function getActiveStorageUsage(db: D1Database): Promise<number> {
     .prepare(
       `SELECT COALESCE(SUM(size_bytes), 0) AS total_bytes
        FROM files
-       WHERE status NOT IN ('deleted', 'purged')`
+       WHERE status NOT IN ('deleted', 'purged') AND r2_key NOT LIKE 'webdav/%'`
     )
     .first<{ total_bytes: number }>();
 

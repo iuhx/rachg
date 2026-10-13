@@ -352,12 +352,12 @@ function decodeURIComponentWithCharset(encodedStr, charset) {
 }
 function decodeParameterValueContinuations(header) {
   let paramKeys = /* @__PURE__ */ new Map();
-  Object.keys(header.params).forEach((key) => {
-    let match = key.match(/\*((\d+)\*?)?$/);
+  Object.keys(header.params).forEach((key2) => {
+    let match = key2.match(/\*((\d+)\*?)?$/);
     if (!match) {
       return;
     }
-    let actualKey = key.substr(0, match.index).toLowerCase();
+    let actualKey = key2.substr(0, match.index).toLowerCase();
     let nr = Number(match[2]) || 0;
     let paramVal;
     if (!paramKeys.has(actualKey)) {
@@ -369,16 +369,16 @@ function decodeParameterValueContinuations(header) {
     } else {
       paramVal = paramKeys.get(actualKey);
     }
-    let value = header.params[key];
+    let value = header.params[key2];
     let encoded = match[0].charAt(match[0].length - 1) === "*";
     if (nr === 0 && encoded && (match = value.match(/^([^']*)'[^']*'(.*)$/))) {
       paramVal.charset = match[1] || "utf-8";
       value = match[2];
     }
     paramVal.values.push({ nr, value, encoded });
-    delete header.params[key];
+    delete header.params[key2];
   });
-  paramKeys.forEach((paramVal, key) => {
+  paramKeys.forEach((paramVal, key2) => {
     let result = "";
     let pending = "";
     for (let part of paramVal.values.sort((a3, b) => a3.nr - b.nr)) {
@@ -395,7 +395,7 @@ function decodeParameterValueContinuations(header) {
     if (pending) {
       result += decodeURIComponentWithCharset(pending, paramVal.charset);
     }
-    header.params[key] = result;
+    header.params[key2] = result;
   });
 }
 
@@ -684,7 +684,7 @@ var MimeNode = class {
       value: false,
       params: {}
     };
-    let key = false;
+    let key2 = false;
     let value = "";
     let stage = "value";
     let pendingSpace = "";
@@ -713,10 +713,10 @@ var MimeNode = class {
     };
     const storeValue = () => {
       const result = takeValue();
-      if (key === false) {
+      if (key2 === false) {
         response.value = result;
       } else {
-        storeParam(key, result);
+        storeParam(key2, result);
       }
     };
     const storeEmptyKey = () => {
@@ -730,7 +730,7 @@ var MimeNode = class {
       switch (stage) {
         case "key":
           if (chr === "=") {
-            key = takeValue().trim().toLowerCase();
+            key2 = takeValue().trim().toLowerCase();
             stage = "value";
             break;
           }
@@ -844,10 +844,10 @@ var MimeNode = class {
       });
       let unfoldedLine = parts.join("");
       sep = unfoldedLine.indexOf(":");
-      let key = trimWsp(sep < 0 ? unfoldedLine : unfoldedLine.substr(0, sep));
+      let key2 = trimWsp(sep < 0 ? unfoldedLine : unfoldedLine.substr(0, sep));
       let value = sep < 0 ? "" : trimWsp(unfoldedLine.substr(sep + 1).replace(/[\r\n]+/g, " "));
-      this.headers.push({ key: key.toLowerCase(), originalKey: key, value });
-      const lowerKey = key.toLowerCase();
+      this.headers.push({ key: key2.toLowerCase(), originalKey: key2, value });
+      const lowerKey = key2.toLowerCase();
       if (CONTENT_HEADERS.has(lowerKey) && !seenContentHeaders.has(lowerKey)) {
         seenContentHeaders.add(lowerKey);
         switch (lowerKey) {
@@ -3848,8 +3848,8 @@ function base64ArrayBuffer(arrayBuffer) {
 var MAX_NESTING_DEPTH = 256;
 var MAX_HEADERS_SIZE = 2 * 1024 * 1024;
 var MAX_RFC822_NESTING_DEPTH = 10;
-function toCamelCase(key) {
-  return key.replace(/-(.)/g, (o, c) => c.toUpperCase());
+function toCamelCase(key2) {
+  return key2.replace(/-(.)/g, (o, c) => c.toUpperCase());
 }
 function parseLimitOption(value, defaultValue, name) {
   if (value === void 0 || value === null) {
@@ -4241,43 +4241,43 @@ var PostalMime = class _PostalMime {
         value: entry.value
       }))
     };
-    for (const key of ["from", "sender"]) {
-      const addressHeader = this.root.headers.find((line) => line.key === key);
+    for (const key2 of ["from", "sender"]) {
+      const addressHeader = this.root.headers.find((line) => line.key === key2);
       if (addressHeader && addressHeader.value) {
         const addresses = address_parser_default(addressHeader.value);
         if (addresses && addresses.length) {
-          message[key] = addresses[0];
+          message[key2] = addresses[0];
         }
       }
     }
-    for (const key of ["delivered-to", "return-path"]) {
-      const addressHeader = this.root.headers.find((line) => line.key === key);
+    for (const key2 of ["delivered-to", "return-path"]) {
+      const addressHeader = this.root.headers.find((line) => line.key === key2);
       if (addressHeader && addressHeader.value) {
         const addresses = address_parser_default(addressHeader.value);
         if (addresses && addresses.length && addresses[0].address) {
-          const camelKey = toCamelCase(key);
+          const camelKey = toCamelCase(key2);
           message[camelKey] = addresses[0].address;
         }
       }
     }
-    for (const key of ["to", "cc", "bcc", "reply-to"]) {
+    for (const key2 of ["to", "cc", "bcc", "reply-to"]) {
       const addresses = [];
       for (const entry of this.root.headers) {
-        if (entry.key === key && entry.value) {
+        if (entry.key === key2 && entry.value) {
           for (const address of address_parser_default(entry.value)) {
             addresses.push(address);
           }
         }
       }
       if (addresses.length) {
-        const camelKey = toCamelCase(key);
+        const camelKey = toCamelCase(key2);
         message[camelKey] = addresses;
       }
     }
-    for (const key of ["subject", "message-id", "in-reply-to", "references"]) {
-      const header = this.root.headers.find((line) => line.key === key);
+    for (const key2 of ["subject", "message-id", "in-reply-to", "references"]) {
+      const header = this.root.headers.find((line) => line.key === key2);
       if (header && header.value) {
-        const camelKey = toCamelCase(key);
+        const camelKey = toCamelCase(key2);
         message[camelKey] = decodeWords(header.value);
       }
     }
@@ -4436,6 +4436,7 @@ function mapRecordToFileItem(r, baseUrl) {
   const msRemaining = r.expires_at - now;
   const isExpired = r.status === "expired" || r.status === "purged" || isFileExpired(r.expires_at, now);
   return {
+    storageBackend: r.r2_key.startsWith("webdav/") ? "webdav" : "r2",
     id: r.id,
     name: r.filename,
     size: formatBytes(r.size_bytes),
@@ -4587,8 +4588,8 @@ async function insertFileRecord(db, record, maxStorageBytes = Number.MAX_SAFE_IN
     `INSERT INTO files (
         id, filename, size_bytes, mime_type, r2_key, created_at, expires_at, download_count, delete_token, owner_id, status
       ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-        WHERE (SELECT COALESCE(SUM(size_bytes), 0) FROM files
-          WHERE status NOT IN ('deleted', 'purged')) + ? <= ?`
+        WHERE (? = 1 OR (SELECT COALESCE(SUM(size_bytes), 0) FROM files
+          WHERE status NOT IN ('deleted', 'purged') AND r2_key NOT LIKE 'webdav/%') + ? <= ?)`
   ).bind(
     record.id,
     record.filename,
@@ -4601,6 +4602,7 @@ async function insertFileRecord(db, record, maxStorageBytes = Number.MAX_SAFE_IN
     record.delete_token,
     record.owner_id ?? null,
     record.status,
+    record.r2_key.startsWith("webdav/") ? 1 : 0,
     record.size_bytes,
     maxStorageBytes
   ).run();
@@ -4673,8 +4675,8 @@ function buildR2Key(id, filename) {
   const cleanFilename = filename.replace(/[/\\?%*:|"<>]/g, "_").trim();
   return `${TRANSFERS_PREFIX}${id}/${cleanFilename}`;
 }
-async function uploadToR2(bucket, key, body, mimeType, customMetadata = {}) {
-  const obj = await bucket.put(key, body, {
+async function uploadToR2(bucket, key2, body, mimeType, customMetadata = {}) {
+  const obj = await bucket.put(key2, body, {
     httpMetadata: {
       contentType: mimeType || "application/octet-stream"
     },
@@ -4682,219 +4684,30 @@ async function uploadToR2(bucket, key, body, mimeType, customMetadata = {}) {
   });
   return obj;
 }
-async function getFromR2(bucket, key, range) {
-  if (!key.startsWith(TRANSFERS_PREFIX)) {
+async function getFromR2(bucket, key2, range) {
+  if (!key2.startsWith(TRANSFERS_PREFIX)) {
     throw new Error("Access denied: key is outside transfers/ prefix");
   }
-  const obj = await bucket.get(key, range ? { range } : void 0);
+  const obj = await bucket.get(key2, range ? { range } : void 0);
   return obj;
 }
-async function headFromR2(bucket, key) {
-  if (!key.startsWith(TRANSFERS_PREFIX)) throw new Error("Access denied: key is outside transfers/ prefix");
-  return bucket.head(key);
+async function headFromR2(bucket, key2) {
+  if (!key2.startsWith(TRANSFERS_PREFIX)) throw new Error("Access denied: key is outside transfers/ prefix");
+  return bucket.head(key2);
 }
-async function deleteFromR2(bucket, key) {
-  if (!key.startsWith(TRANSFERS_PREFIX)) {
+async function deleteFromR2(bucket, key2) {
+  if (!key2.startsWith(TRANSFERS_PREFIX)) {
     throw new Error("Access denied: key is outside transfers/ prefix");
   }
-  await bucket.delete(key);
+  await bucket.delete(key2);
 }
-async function getMailObject(bucket, key) {
-  if (!key.startsWith(MAIL_PREFIX)) throw new Error("Access denied: key is outside mail/ prefix");
-  return bucket.get(key);
+async function getMailObject(bucket, key2) {
+  if (!key2.startsWith(MAIL_PREFIX)) throw new Error("Access denied: key is outside mail/ prefix");
+  return bucket.get(key2);
 }
-async function deleteMailObject(bucket, key) {
-  if (!key.startsWith(MAIL_PREFIX)) throw new Error("Access denied: key is outside mail/ prefix");
-  await bucket.delete(key);
-}
-
-// workers/file-service/src/quota.ts
-async function getActiveStorageUsage(db) {
-  await ensureSchema(db);
-  const row = await db.prepare(
-    `SELECT COALESCE(SUM(size_bytes), 0) AS total_bytes
-       FROM files
-       WHERE status NOT IN ('deleted', 'purged')`
-  ).first();
-  return row?.total_bytes ?? 0;
-}
-async function checkStorageQuota(db, newSizeBytes, maxSizeBytes = 4 * 1024 * 1024 * 1024) {
-  const currentTotal = await getActiveStorageUsage(db);
-  if (!Number.isSafeInteger(newSizeBytes) || newSizeBytes < 0 || !Number.isSafeInteger(maxSizeBytes) || maxSizeBytes <= 0) throw new Error("Invalid storage size configuration");
-  const projectedTotal = currentTotal + newSizeBytes;
-  const allowed = projectedTotal <= maxSizeBytes;
-  return {
-    allowed,
-    currentTotal,
-    maxLimit: maxSizeBytes
-  };
-}
-
-// workers/file-service/src/auth.ts
-var jwksCache = /* @__PURE__ */ new Map();
-var JWKS_CACHE_TTL_MS = 5 * 60 * 1e3;
-function normalizeTeamDomain(value) {
-  return value.trim().replace(/\/+$/, "");
-}
-function decodeBase64Url(value) {
-  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
-  const binary = atob(padded);
-  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
-}
-function decodeJson(value) {
-  return JSON.parse(new TextDecoder().decode(decodeBase64Url(value)));
-}
-function audienceMatches(aud, expected) {
-  return Array.isArray(aud) ? aud.includes(expected) : aud === expected;
-}
-async function getAccessKeys(teamDomain) {
-  const cached = jwksCache.get(teamDomain);
-  if (cached && cached.expiresAt > Date.now()) return cached.keys;
-  const response = await fetch(`${teamDomain}/cdn-cgi/access/certs`, {
-    headers: { Accept: "application/json" }
-  });
-  if (!response.ok) throw new Error(`Access JWKS request failed with HTTP ${response.status}`);
-  const body = await response.json();
-  const keys = body.keys?.filter((key) => key.kty === "RSA" && key.n && key.e) ?? [];
-  if (keys.length === 0) throw new Error("Access JWKS did not contain RSA keys");
-  jwksCache.set(teamDomain, { expiresAt: Date.now() + JWKS_CACHE_TTL_MS, keys });
-  return keys;
-}
-async function verifyAccessJwt(token, env) {
-  const teamDomain = env.ACCESS_TEAM_DOMAIN ? normalizeTeamDomain(env.ACCESS_TEAM_DOMAIN) : "";
-  const audience = env.ACCESS_AUDIENCE?.trim();
-  if (!teamDomain || !audience || !env.ACCESS_ADMIN_EMAIL?.trim()) {
-    throw new Error("Cloudflare Access authentication is not configured");
-  }
-  const parts = token.split(".");
-  if (parts.length !== 3) throw new Error("Malformed Access JWT");
-  const header = decodeJson(parts[0]);
-  if (header.alg !== "RS256" || typeof header.kid !== "string") {
-    throw new Error("Unsupported Access JWT header");
-  }
-  const claims = decodeJson(parts[1]);
-  const now = Math.floor(Date.now() / 1e3);
-  const issuer = teamDomain;
-  if (claims.iss !== issuer || !audienceMatches(claims.aud, audience)) {
-    throw new Error("Access JWT issuer or audience mismatch");
-  }
-  if (typeof claims.exp !== "number" || claims.exp <= now) throw new Error("Access JWT expired");
-  if (typeof claims.nbf === "number" && claims.nbf > now) throw new Error("Access JWT not active");
-  const email = typeof claims.email === "string" ? claims.email : typeof claims.preferred_username === "string" ? claims.preferred_username : "";
-  if (!email || email.toLowerCase() !== env.ACCESS_ADMIN_EMAIL.trim().toLowerCase()) {
-    throw new Error("Access JWT user is not the administrator");
-  }
-  const key = (await getAccessKeys(teamDomain)).find((candidate) => candidate.kid === header.kid);
-  if (!key) throw new Error("Access JWT key id not found");
-  const cryptoKey = await crypto.subtle.importKey(
-    "jwk",
-    key,
-    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-    false,
-    ["verify"]
-  );
-  const valid = await crypto.subtle.verify(
-    { name: "RSASSA-PKCS1-v1_5" },
-    cryptoKey,
-    decodeBase64Url(parts[2]),
-    new TextEncoder().encode(`${parts[0]}.${parts[1]}`)
-  );
-  if (!valid) throw new Error("Access JWT signature is invalid");
-  return claims;
-}
-async function resolveAuth(request, env) {
-  const assertion = request.headers.get("Cf-Access-Jwt-Assertion");
-  if (!assertion) return { authType: "anonymous" };
-  let claims;
-  try {
-    claims = await verifyAccessJwt(assertion, env);
-  } catch (error) {
-    console.warn("Cloudflare Access assertion rejected:", error);
-    return { authType: "anonymous" };
-  }
-  const email = typeof claims.email === "string" ? claims.email : typeof claims.preferred_username === "string" ? claims.preferred_username : void 0;
-  return {
-    userId: typeof claims.sub === "string" ? claims.sub : email,
-    userEmail: email,
-    authType: "cf_access"
-  };
-}
-function isAuthenticated(auth) {
-  return auth.authType === "cf_access";
-}
-
-// workers/file-service/src/cleanup.ts
-async function cleanupStorage(db, bucket) {
-  await ensureSchema(db);
-  const now = Date.now();
-  let deleted = 0, failed = 0;
-  const files = await db.prepare(`SELECT id, r2_key FROM files
-    WHERE status = 'purging'
-       OR (status IN ('active', 'expired') AND expires_at != 0 AND expires_at <= ?)
-       OR (status = 'uploading' AND created_at < ?)
-    ORDER BY created_at LIMIT 5`).bind(now, now - 36e5).all();
-  for (const record of files.results) {
-    try {
-      const claim = await db.prepare(`UPDATE files SET status = 'purging' WHERE id = ? AND r2_key = ? AND (
-        status = 'purging' OR (status IN ('active', 'expired') AND expires_at != 0 AND expires_at <= ?)
-        OR (status = 'uploading' AND created_at < ?))`).bind(record.id, record.r2_key, now, now - 36e5).run();
-      if (!claim.meta?.changes) continue;
-      await deleteFromR2(bucket, record.r2_key);
-      await db.prepare(`UPDATE files SET status = 'purged' WHERE id = ?`).bind(record.id).run();
-      deleted++;
-    } catch {
-      failed++;
-    }
-  }
-  const mail = await db.prepare("SELECT id, r2_key FROM mail_ingestions WHERE state = 'purging' OR (state = 'pending' AND created_at < ?) ORDER BY created_at LIMIT 2").bind(now - 36e5).all();
-  for (const receipt of mail.results) {
-    try {
-      const claim = await db.prepare("UPDATE mail_ingestions SET state = 'purging' WHERE id = ? AND r2_key = ? AND (state = 'purging' OR (state = 'pending' AND created_at < ?))").bind(receipt.id, receipt.r2_key, now - 36e5).run();
-      if (!claim.meta?.changes) continue;
-      const saved = await db.prepare("SELECT id FROM mail WHERE id = ?").bind(receipt.id).first();
-      if (saved) {
-        await db.prepare("UPDATE mail_ingestions SET state = 'stored' WHERE id = ?").bind(receipt.id).run();
-      } else {
-        await deleteMailObject(bucket, receipt.r2_key);
-        await db.prepare("DELETE FROM mail_ingestions WHERE id = ? AND r2_key = ? AND state = 'purging'").bind(receipt.id, receipt.r2_key).run();
-        deleted++;
-      }
-    } catch {
-      failed++;
-    }
-  }
-  if (failed) console.error("Storage cleanup will retry", { failed });
-  return { deleted, failed };
-}
-
-// workers/file-service/src/download.ts
-function parseByteRange(value, size) {
-  const match = /^bytes=(\d*)-(\d*)$/.exec(value);
-  if (!match || !match[1] && !match[2] || size <= 0) return null;
-  const first = match[1] ? Number(match[1]) : void 0;
-  const last = match[2] ? Number(match[2]) : void 0;
-  if (first !== void 0 && !Number.isSafeInteger(first) || last !== void 0 && !Number.isSafeInteger(last)) return null;
-  if (first === void 0 && (!last || last <= 0)) return null;
-  const offset = first ?? Math.max(0, size - last);
-  const end = first === void 0 ? size - 1 : Math.min(last ?? size - 1, size - 1);
-  if (offset < 0 || offset >= size || end < offset) return null;
-  return { offset, length: end - offset + 1 };
-}
-
-// workers/file-service/src/text-share.ts
-var escapeHtml2 = (value) => value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
-function textShareResponse(title, text, id) {
-  return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml2(title)} \xB7 rachg</title><style>body{font:16px/1.6 system-ui,sans-serif;max-width:900px;margin:40px auto;padding:0 20px;background:#fafaf9;color:#202124}header{border-bottom:1px solid #ddd;padding-bottom:16px}h1{font-size:22px;overflow-wrap:anywhere}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}a{color:inherit}</style></head><body><header><p>rachg \xB7 Text share</p><h1>${escapeHtml2(title)}</h1><a href="/f/${encodeURIComponent(id)}">Download TXT</a></header><pre>${escapeHtml2(text)}</pre></body></html>`, {
-    headers: {
-      "Content-Type": "text/html; charset=utf-8",
-      "Cache-Control": "private, no-store",
-      "X-Content-Type-Options": "nosniff",
-      "Referrer-Policy": "no-referrer",
-      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
-      "X-Frame-Options": "DENY"
-    }
-  });
+async function deleteMailObject(bucket, key2) {
+  if (!key2.startsWith(MAIL_PREFIX)) throw new Error("Access denied: key is outside mail/ prefix");
+  await bucket.delete(key2);
 }
 
 // workers/common/content.ts
@@ -4998,7 +4811,424 @@ function mailPlainText(html, maxOutput = 256 * 1024) {
     } else append(["br", "p", "div", "li", "tr", "h1", "h2", "h3"].includes(name || "") ? "\n" : " ");
   }
   const entities2 = { nbsp: " ", amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", "#39": "'" };
-  return chunks.join("").replace(/&(nbsp|amp|lt|gt|quot|apos|#39);/gi, (_2, key) => entities2[key.toLowerCase()]).trim();
+  return chunks.join("").replace(/&(nbsp|amp|lt|gt|quot|apos|#39);/gi, (_2, key2) => entities2[key2.toLowerCase()]).trim();
+}
+
+// workers/file-service/src/webdav.ts
+var WEBDAV_BASE_URL = "https://higa.teracloud.jp/v2/dav/rachg/";
+var schemaReady2 = /* @__PURE__ */ new WeakMap();
+var encode = (value) => btoa(String.fromCharCode(...value));
+var decode = (value) => Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
+async function schema(db) {
+  let pending = schemaReady2.get(db);
+  if (!pending) {
+    pending = (async () => {
+      await ensureSchema(db);
+      await db.prepare(`CREATE TABLE IF NOT EXISTS webdav_settings (
+      id INTEGER PRIMARY KEY CHECK (id = 1), username TEXT NOT NULL, base_url TEXT NOT NULL,
+      encrypted_password TEXT NOT NULL, revision INTEGER NOT NULL, verified_at INTEGER NOT NULL
+    )`).run();
+    })().catch((error) => {
+      schemaReady2.delete(db);
+      throw error;
+    });
+    schemaReady2.set(db, pending);
+  }
+  await pending;
+}
+async function readSettings(db) {
+  await schema(db);
+  return db.prepare("SELECT * FROM webdav_settings WHERE id = 1").first();
+}
+function configuredKey(env) {
+  return typeof env.WEBDAV_CREDENTIAL_KEY === "string" && /^[a-f0-9]{64}$/i.test(env.WEBDAV_CREDENTIAL_KEY);
+}
+async function key(env) {
+  if (!configuredKey(env)) throw new InputError("Secure storage setup is not ready. Please contact the workspace administrator.", 503);
+  const bytes = Uint8Array.from(env.WEBDAV_CREDENTIAL_KEY.match(/../g), (part) => parseInt(part, 16));
+  return crypto.subtle.importKey("raw", bytes, "AES-GCM", false, ["encrypt", "decrypt"]);
+}
+var aad = (username) => new TextEncoder().encode(`rachg-webdav-v1
+${WEBDAV_BASE_URL}
+${username}`);
+async function encrypt(env, username, password) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const value = await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: aad(username) }, await key(env), new TextEncoder().encode(password));
+  return `${encode(iv)}.${encode(new Uint8Array(value))}`;
+}
+async function decrypt(env, row) {
+  if (row.base_url !== WEBDAV_BASE_URL) throw new InputError("The configured storage location changed. Existing files require their original connection.", 409);
+  try {
+    const [iv, value] = row.encrypted_password.split(".").map(decode);
+    return new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv, additionalData: aad(row.username) }, await key(env), value));
+  } catch {
+    throw new InputError("Unable to unlock the saved WebDAV credentials. Re-enter the Apps Password in Settings.", 503);
+  }
+}
+function safeSettings(env, row) {
+  return { baseUrl: WEBDAV_BASE_URL, configured: Boolean(row && configuredKey(env)), canConfigure: configuredKey(env), username: row?.username ?? "", revision: row?.revision ?? 0, verifiedAt: row?.verified_at ?? null };
+}
+var WebdavConflict = class extends InputError {
+  constructor() {
+    super("The remote filename already exists. Nothing was overwritten. Retry with a new upload.", 409);
+  }
+};
+var WebdavClient = class {
+  authorization;
+  constructor(username, password) {
+    this.authorization = `Basic ${encode(new TextEncoder().encode(`${username}:${password}`))}`;
+  }
+  url(storageKey) {
+    if (!/^webdav\/[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}--[^/\\\x00-\x1f\x7f]+$/.test(storageKey)) throw new InputError("Invalid WebDAV storage key");
+    return WEBDAV_BASE_URL + encodeURIComponent(storageKey.slice("webdav/".length));
+  }
+  async request(url, method, headers = {}, body) {
+    try {
+      return await fetch(url, {
+        method,
+        headers: { ...headers, Authorization: this.authorization },
+        body,
+        redirect: "manual",
+        signal: AbortSignal.timeout(3e4)
+      });
+    } catch {
+      throw new InputError("InfiniCLOUD could not be reached. Check its connection in Settings and retry.", 502);
+    }
+  }
+  async failure(response) {
+    await response.body?.cancel().catch(() => {
+    });
+    if ([401, 403].includes(response.status)) throw new InputError("InfiniCLOUD rejected the credentials. Check Connection ID and Apps Password in Settings.", 502);
+    if (response.status === 507) throw new InputError("InfiniCLOUD storage is full. Free space there and retry.", 413);
+    if (response.status >= 300 && response.status < 400) throw new InputError("InfiniCLOUD redirected this request. The connection URL must point directly to your rachg folder.", 502);
+    throw new InputError(`InfiniCLOUD returned HTTP ${response.status}. Verify the WebDAV URL, Apps Connection and folder access in Settings.`, 502);
+  }
+  async test() {
+    const response = await this.request(WEBDAV_BASE_URL, "PROPFIND", { Depth: "0", "Content-Type": "application/xml;charset=utf-8" }, '<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/></d:prop></d:propfind>');
+    if (response.status !== 207) await this.failure(response);
+    const xml = new TextDecoder().decode(await readBounded(response.body, 64e3));
+    const href = xml.match(/<(?:[\w.-]+:)?href\b[^>]*>([^<]+)<\/(?:[\w.-]+:)?href>/i)?.[1]?.trim();
+    let location = "";
+    try {
+      location = new URL(href ?? "", WEBDAV_BASE_URL).href.replace(/\/$/, "");
+    } catch {
+    }
+    if (/<!DOCTYPE|<!ENTITY/i.test(xml) || !href || location !== WEBDAV_BASE_URL.replace(/\/$/, "") || !/<(?:[\w.-]+:)?collection(?:\s|\/|>)/i.test(xml) || !/HTTP\/\d(?:\.\d)?\s+200\b/.test(xml)) {
+      throw new InputError("The WebDAV response did not confirm your rachg folder. Check the Apps Connection URL and folder permissions.", 502);
+    }
+  }
+  async put(storageKey, body, mime) {
+    const data = body instanceof ArrayBuffer ? body : await readBounded(body, MAX_FILE_BYTES);
+    const response = await this.request(this.url(storageKey), "PUT", { "Content-Type": mime, "If-None-Match": "*" }, data);
+    if (response.status === 412) {
+      await response.body?.cancel();
+      throw new WebdavConflict();
+    }
+    if (![200, 201, 204].includes(response.status)) await this.failure(response);
+    await response.body?.cancel();
+  }
+  async delete(storageKey) {
+    const response = await this.request(this.url(storageKey), "DELETE");
+    if (![200, 204, 404, 410].includes(response.status)) await this.failure(response);
+    await response.body?.cancel();
+  }
+  object(response, size, body) {
+    return { size, body, httpEtag: response.headers.get("etag") || "", writeHttpMetadata: (headers) => {
+      headers.set("Content-Type", response.headers.get("content-type") || "application/octet-stream");
+    } };
+  }
+  async head(storageKey) {
+    const response = await this.request(this.url(storageKey), "HEAD");
+    if (response.status === 404) {
+      await response.body?.cancel();
+      return null;
+    }
+    if (response.status !== 200) await this.failure(response);
+    const length = response.headers.get("content-length");
+    const size = length !== null && /^\d+$/.test(length) ? Number(length) : NaN;
+    await response.body?.cancel();
+    if (!Number.isSafeInteger(size) || size < 0 || size > MAX_FILE_BYTES) throw new InputError("InfiniCLOUD returned an unsupported file size.", 502);
+    return this.object(response, size);
+  }
+  async get(storageKey, range) {
+    const response = await this.request(this.url(storageKey), "GET", range ? { Range: `bytes=${range.offset}-${range.offset + range.length - 1}` } : {});
+    if (response.status === 404) {
+      await response.body?.cancel();
+      return null;
+    }
+    if (response.status !== 200 && !(range && response.status === 206)) await this.failure(response);
+    const data = await readBounded(response.body, MAX_FILE_BYTES);
+    if (response.status === 206 && range) {
+      const contentRange = response.headers.get("content-range")?.match(/^bytes (\d+)-(\d+)\/(\d+)$/);
+      const size = Number(contentRange?.[3]);
+      if (!contentRange || Number(contentRange[1]) !== range.offset || Number(contentRange[2]) !== range.offset + range.length - 1 || data.byteLength !== range.length || size > MAX_FILE_BYTES || size <= Number(contentRange[2])) throw new InputError("InfiniCLOUD returned an invalid byte range.", 502);
+      return this.object(response, size, new Response(data).body);
+    }
+    if (range && data.byteLength < range.offset + range.length) throw new InputError("The remote file changed during download. Retry the download.", 409);
+    return this.object(response, data.byteLength, new Response(range ? data.slice(range.offset, range.offset + range.length) : data).body);
+  }
+};
+async function loadWebdav(env) {
+  const row = await readSettings(env.DB);
+  if (!row) throw new InputError("Set up InfiniCLOUD in Settings before uploading there.", 409);
+  return new WebdavClient(row.username, await decrypt(env, row));
+}
+async function routeWebdavSettings(request, env) {
+  if (!["GET", "PUT", "POST"].includes(request.method)) throw new InputError("Method not allowed", 405);
+  const row = await readSettings(env.DB);
+  if (request.method === "GET") return { success: true, settings: safeSettings(env, row) };
+  if (request.method === "POST") {
+    await (await loadWebdav(env)).test();
+    return { success: true, settings: safeSettings(env, row) };
+  }
+  const body = await boundedJson(request);
+  if (!body || typeof body.username !== "string" || !body.username.trim() || body.username.length > 200 || /[:\x00-\x1f\x7f]/.test(body.username) || typeof body.password !== "string" || body.password.length > 1024 || /[\x00-\x1f\x7f]/.test(body.password) || !Number.isSafeInteger(body.revision) || Number(body.revision) < 0) throw new InputError("A valid Connection ID, Apps Password and settings revision are required.");
+  const username = body.username.trim();
+  if (!body.password && (!row || row.username !== username)) throw new InputError("Enter the Apps Password for this connection.");
+  const password = body.password || await decrypt(env, row);
+  const encrypted = await encrypt(env, username, password);
+  if (row && row.username !== username) throw new InputError("This storage location is already linked to another Connection ID. Keep its ID and update only the Apps Password to preserve file access.", 409);
+  await new WebdavClient(username, password).test();
+  const now = Date.now();
+  const result = await env.DB.prepare(`INSERT INTO webdav_settings (id,username,base_url,encrypted_password,revision,verified_at)
+    SELECT 1,?,?,?,1,? WHERE ? = 0 OR EXISTS (SELECT 1 FROM webdav_settings WHERE id = 1)
+    ON CONFLICT(id) DO UPDATE SET username=excluded.username, encrypted_password=excluded.encrypted_password,
+      revision=webdav_settings.revision+1, verified_at=excluded.verified_at
+    WHERE webdav_settings.revision = ? AND webdav_settings.username=excluded.username`).bind(username, WEBDAV_BASE_URL, encrypted, now, body.revision, body.revision).run();
+  if (!result.meta.changes) throw new InputError("Storage settings or files changed. Refresh Settings and retry.", 409);
+  return { success: true, settings: safeSettings(env, await readSettings(env.DB)) };
+}
+
+// workers/file-service/src/stored-files.ts
+var isWebdavKey = (key2) => key2.startsWith("webdav/");
+function buildWebdavKey(id, filename) {
+  const cleaned = filename.replace(/[/\\?%*:|"<>]/g, "_").trim() || "file";
+  let name = "", bytes = 0;
+  for (const character of cleaned) {
+    const size = new TextEncoder().encode(character).byteLength;
+    if (bytes + size > 200) break;
+    name += character;
+    bytes += size;
+  }
+  return `webdav/${id}--${name}`;
+}
+var StoredFiles = class {
+  constructor(env) {
+    this.env = env;
+  }
+  env;
+  webdav;
+  client() {
+    return this.webdav ??= loadWebdav(this.env);
+  }
+  async ready(backend) {
+    if (!["r2", "webdav"].includes(backend)) throw new InputError("Choose a valid storage destination.");
+    if (backend === "webdav") await this.client();
+  }
+  async put(key2, body, mime, metadata2) {
+    if (isWebdavKey(key2)) await (await this.client()).put(key2, body, mime);
+    else await uploadToR2(this.env.FILES_BUCKET, key2, body, mime, metadata2);
+  }
+  async head(key2) {
+    return isWebdavKey(key2) ? (await this.client()).head(key2) : headFromR2(this.env.FILES_BUCKET, key2);
+  }
+  async get(key2, range) {
+    return isWebdavKey(key2) ? (await this.client()).get(key2, range) : getFromR2(this.env.FILES_BUCKET, key2, range);
+  }
+  async delete(key2) {
+    if (isWebdavKey(key2)) await (await this.client()).delete(key2);
+    else await deleteFromR2(this.env.FILES_BUCKET, key2);
+  }
+};
+
+// workers/file-service/src/quota.ts
+async function getActiveStorageUsage(db) {
+  await ensureSchema(db);
+  const row = await db.prepare(
+    `SELECT COALESCE(SUM(size_bytes), 0) AS total_bytes
+       FROM files
+       WHERE status NOT IN ('deleted', 'purged') AND r2_key NOT LIKE 'webdav/%'`
+  ).first();
+  return row?.total_bytes ?? 0;
+}
+async function checkStorageQuota(db, newSizeBytes, maxSizeBytes = 4 * 1024 * 1024 * 1024) {
+  const currentTotal = await getActiveStorageUsage(db);
+  if (!Number.isSafeInteger(newSizeBytes) || newSizeBytes < 0 || !Number.isSafeInteger(maxSizeBytes) || maxSizeBytes <= 0) throw new Error("Invalid storage size configuration");
+  const projectedTotal = currentTotal + newSizeBytes;
+  const allowed = projectedTotal <= maxSizeBytes;
+  return {
+    allowed,
+    currentTotal,
+    maxLimit: maxSizeBytes
+  };
+}
+
+// workers/file-service/src/auth.ts
+var jwksCache = /* @__PURE__ */ new Map();
+var JWKS_CACHE_TTL_MS = 5 * 60 * 1e3;
+function normalizeTeamDomain(value) {
+  return value.trim().replace(/\/+$/, "");
+}
+function decodeBase64Url(value) {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+  const binary = atob(padded);
+  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+}
+function decodeJson(value) {
+  return JSON.parse(new TextDecoder().decode(decodeBase64Url(value)));
+}
+function audienceMatches(aud, expected) {
+  return Array.isArray(aud) ? aud.includes(expected) : aud === expected;
+}
+async function getAccessKeys(teamDomain) {
+  const cached = jwksCache.get(teamDomain);
+  if (cached && cached.expiresAt > Date.now()) return cached.keys;
+  const response = await fetch(`${teamDomain}/cdn-cgi/access/certs`, {
+    headers: { Accept: "application/json" }
+  });
+  if (!response.ok) throw new Error(`Access JWKS request failed with HTTP ${response.status}`);
+  const body = await response.json();
+  const keys = body.keys?.filter((key2) => key2.kty === "RSA" && key2.n && key2.e) ?? [];
+  if (keys.length === 0) throw new Error("Access JWKS did not contain RSA keys");
+  jwksCache.set(teamDomain, { expiresAt: Date.now() + JWKS_CACHE_TTL_MS, keys });
+  return keys;
+}
+async function verifyAccessJwt(token, env) {
+  const teamDomain = env.ACCESS_TEAM_DOMAIN ? normalizeTeamDomain(env.ACCESS_TEAM_DOMAIN) : "";
+  const audience = env.ACCESS_AUDIENCE?.trim();
+  if (!teamDomain || !audience || !env.ACCESS_ADMIN_EMAIL?.trim()) {
+    throw new Error("Cloudflare Access authentication is not configured");
+  }
+  const parts = token.split(".");
+  if (parts.length !== 3) throw new Error("Malformed Access JWT");
+  const header = decodeJson(parts[0]);
+  if (header.alg !== "RS256" || typeof header.kid !== "string") {
+    throw new Error("Unsupported Access JWT header");
+  }
+  const claims = decodeJson(parts[1]);
+  const now = Math.floor(Date.now() / 1e3);
+  const issuer = teamDomain;
+  if (claims.iss !== issuer || !audienceMatches(claims.aud, audience)) {
+    throw new Error("Access JWT issuer or audience mismatch");
+  }
+  if (typeof claims.exp !== "number" || claims.exp <= now) throw new Error("Access JWT expired");
+  if (typeof claims.nbf === "number" && claims.nbf > now) throw new Error("Access JWT not active");
+  const email = typeof claims.email === "string" ? claims.email : typeof claims.preferred_username === "string" ? claims.preferred_username : "";
+  if (!email || email.toLowerCase() !== env.ACCESS_ADMIN_EMAIL.trim().toLowerCase()) {
+    throw new Error("Access JWT user is not the administrator");
+  }
+  const key2 = (await getAccessKeys(teamDomain)).find((candidate) => candidate.kid === header.kid);
+  if (!key2) throw new Error("Access JWT key id not found");
+  const cryptoKey = await crypto.subtle.importKey(
+    "jwk",
+    key2,
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["verify"]
+  );
+  const valid = await crypto.subtle.verify(
+    { name: "RSASSA-PKCS1-v1_5" },
+    cryptoKey,
+    decodeBase64Url(parts[2]),
+    new TextEncoder().encode(`${parts[0]}.${parts[1]}`)
+  );
+  if (!valid) throw new Error("Access JWT signature is invalid");
+  return claims;
+}
+async function resolveAuth(request, env) {
+  const assertion = request.headers.get("Cf-Access-Jwt-Assertion");
+  if (!assertion) return { authType: "anonymous" };
+  let claims;
+  try {
+    claims = await verifyAccessJwt(assertion, env);
+  } catch (error) {
+    console.warn("Cloudflare Access assertion rejected:", error);
+    return { authType: "anonymous" };
+  }
+  const email = typeof claims.email === "string" ? claims.email : typeof claims.preferred_username === "string" ? claims.preferred_username : void 0;
+  return {
+    userId: typeof claims.sub === "string" ? claims.sub : email,
+    userEmail: email,
+    authType: "cf_access"
+  };
+}
+function isAuthenticated(auth) {
+  return auth.authType === "cf_access";
+}
+
+// workers/file-service/src/cleanup.ts
+async function cleanupStorage(db, bucket, credentialKey) {
+  await ensureSchema(db);
+  const storage = new StoredFiles({ DB: db, FILES_BUCKET: bucket, WEBDAV_CREDENTIAL_KEY: credentialKey });
+  const now = Date.now();
+  let deleted = 0, failed = 0;
+  const files = await db.prepare(`SELECT id, r2_key FROM files
+    WHERE status = 'purging'
+       OR (status IN ('active', 'expired') AND expires_at != 0 AND expires_at <= ?)
+       OR (status = 'uploading' AND created_at < ?)
+    ORDER BY created_at LIMIT 5`).bind(now, now - 36e5).all();
+  for (const record of files.results) {
+    try {
+      const claim = await db.prepare(`UPDATE files SET status = 'purging' WHERE id = ? AND r2_key = ? AND (
+        status = 'purging' OR (status IN ('active', 'expired') AND expires_at != 0 AND expires_at <= ?)
+        OR (status = 'uploading' AND created_at < ?))`).bind(record.id, record.r2_key, now, now - 36e5).run();
+      if (!claim.meta?.changes) continue;
+      await storage.delete(record.r2_key);
+      await db.prepare(`UPDATE files SET status = 'purged' WHERE id = ?`).bind(record.id).run();
+      deleted++;
+    } catch {
+      failed++;
+    }
+  }
+  const mail = await db.prepare("SELECT id, r2_key FROM mail_ingestions WHERE state = 'purging' OR (state = 'pending' AND created_at < ?) ORDER BY created_at LIMIT 2").bind(now - 36e5).all();
+  for (const receipt of mail.results) {
+    try {
+      const claim = await db.prepare("UPDATE mail_ingestions SET state = 'purging' WHERE id = ? AND r2_key = ? AND (state = 'purging' OR (state = 'pending' AND created_at < ?))").bind(receipt.id, receipt.r2_key, now - 36e5).run();
+      if (!claim.meta?.changes) continue;
+      const saved = await db.prepare("SELECT id FROM mail WHERE id = ?").bind(receipt.id).first();
+      if (saved) {
+        await db.prepare("UPDATE mail_ingestions SET state = 'stored' WHERE id = ?").bind(receipt.id).run();
+      } else {
+        await deleteMailObject(bucket, receipt.r2_key);
+        await db.prepare("DELETE FROM mail_ingestions WHERE id = ? AND r2_key = ? AND state = 'purging'").bind(receipt.id, receipt.r2_key).run();
+        deleted++;
+      }
+    } catch {
+      failed++;
+    }
+  }
+  if (failed) console.error("Storage cleanup will retry", { failed });
+  return { deleted, failed };
+}
+
+// workers/file-service/src/download.ts
+function parseByteRange(value, size) {
+  const match = /^bytes=(\d*)-(\d*)$/.exec(value);
+  if (!match || !match[1] && !match[2] || size <= 0) return null;
+  const first = match[1] ? Number(match[1]) : void 0;
+  const last = match[2] ? Number(match[2]) : void 0;
+  if (first !== void 0 && !Number.isSafeInteger(first) || last !== void 0 && !Number.isSafeInteger(last)) return null;
+  if (first === void 0 && (!last || last <= 0)) return null;
+  const offset = first ?? Math.max(0, size - last);
+  const end = first === void 0 ? size - 1 : Math.min(last ?? size - 1, size - 1);
+  if (offset < 0 || offset >= size || end < offset) return null;
+  return { offset, length: end - offset + 1 };
+}
+
+// workers/file-service/src/text-share.ts
+var escapeHtml2 = (value) => value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
+function textShareResponse(title, text, id) {
+  return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml2(title)} \xB7 rachg</title><style>body{font:16px/1.6 system-ui,sans-serif;max-width:900px;margin:40px auto;padding:0 20px;background:#fafaf9;color:#202124}header{border-bottom:1px solid #ddd;padding-bottom:16px}h1{font-size:22px;overflow-wrap:anywhere}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}a{color:inherit}</style></head><body><header><p>rachg \xB7 Text share</p><h1>${escapeHtml2(title)}</h1><a href="/f/${encodeURIComponent(id)}">Download TXT</a></header><pre>${escapeHtml2(text)}</pre></body></html>`, {
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "private, no-store",
+      "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "no-referrer",
+      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
+      "X-Frame-Options": "DENY"
+    }
+  });
 }
 
 // node_modules/.pnpm/marked@18.1.1/node_modules/marked/lib/marked.esm.js
@@ -6574,12 +6804,12 @@ function determineBranch(decodeTree, current, nodeIndex, char) {
   const branchEnd = nodeIndex + packedKeySlots + branchCount;
   for (let index = 0; index < branchCount; index++) {
     const packed = decodeTree[nodeIndex + (index >> 1)];
-    const key = packed >> ((index & 1) << 3) & 255;
-    if (key === char) {
+    const key2 = packed >> ((index & 1) << 3) & 255;
+    if (key2 === char) {
       const pointerIndex = nodeIndex + packedKeySlots + index;
       return branchEnd + decodeTree[pointerIndex] & 65535;
     }
-    if (key > char)
+    if (key2 > char)
       return -1;
   }
   return -1;
@@ -7161,15 +7391,15 @@ async function routeNoteCategories(request, db, id) {
   if (!id) {
     const newId = categoryId(body.id);
     if (!newId) throw new InputError("A category ID is required.");
-    const { name, key } = categoryName(body.name), now = Date.now();
+    const { name, key: key2 } = categoryName(body.name), now = Date.now();
     await db.prepare(`INSERT INTO note_categories (id, name, name_key, created_at, updated_at)
-      SELECT ?, ?, ?, ?, ? WHERE (SELECT COUNT(*) FROM note_categories) < 50 ON CONFLICT DO NOTHING`).bind(newId, name, key, now, now).run();
+      SELECT ?, ?, ?, ?, ? WHERE (SELECT COUNT(*) FROM note_categories) < 50 ON CONFLICT DO NOTHING`).bind(newId, name, key2, now, now).run();
     const saved = await db.prepare("SELECT id, name_key FROM note_categories WHERE id = ?").bind(newId).first();
-    if (!saved || saved.name_key !== key) throw new InputError("That category already exists, or the 50-category limit was reached. Refresh and try again.", 409);
+    if (!saved || saved.name_key !== key2) throw new InputError("That category already exists, or the 50-category limit was reached. Refresh and try again.", 409);
   } else if (request.method === "PUT") {
-    const { name, key } = categoryName(body.name);
+    const { name, key: key2 } = categoryName(body.name);
     const result = await db.prepare(`UPDATE note_categories SET name = ?, name_key = ?, revision = revision + 1, updated_at = ?
-      WHERE id = ? AND revision = ? AND NOT EXISTS (SELECT 1 FROM note_categories WHERE name_key = ? AND id != ?)`).bind(name, key, Date.now(), id, revision(body.revision), key, id).run();
+      WHERE id = ? AND revision = ? AND NOT EXISTS (SELECT 1 FROM note_categories WHERE name_key = ? AND id != ?)`).bind(name, key2, Date.now(), id, revision(body.revision), key2, id).run();
     if (!result.meta.changes) throw new InputError("The category changed or that name already exists. Refresh and try again.", 409);
   } else {
     const expected = revision(body.revision);
@@ -7510,6 +7740,8 @@ var index_default = {
           return jsonResponse({ success: false, error: "Request origin is not allowed", code: "INVALID_ORIGIN", status: 403 }, 403, origin);
         }
       }
+      const storage = new StoredFiles(env);
+      if (url.pathname === "/v1/storage/webdav") return jsonResponse(await routeWebdavSettings(request, env), 200, origin);
       if (url.pathname === "/v1/system-health") return jsonResponse(await systemHealth(request, env), 200, origin);
       if (request.method === "GET" && url.pathname === "/auth/return") {
         return new Response(null, { status: 302, headers: {
@@ -7566,7 +7798,7 @@ var index_default = {
         if (record.status !== "active" || isFileExpired(record.expires_at)) throw new InputError("This text share has expired", 410);
         if (record.mime_type.split(";")[0].trim().toLowerCase() !== "text/plain") throw new InputError("This file is not a plain text share", 415);
         if (record.size_bytes > 2e5) throw new InputError("Text share pages support up to 200 KB", 413);
-        const object = await getFromR2(env.FILES_BUCKET, record.r2_key);
+        const object = await storage.get(record.r2_key);
         if (!object) throw new InputError("Text share not found", 404);
         const bytes = await readBounded(new Response(object.body).body, 2e5);
         return textShareResponse(record.filename, new TextDecoder().decode(bytes), record.id);
@@ -7787,6 +8019,7 @@ var index_default = {
         let mimeType = "application/octet-stream";
         let sizeBytes = 0;
         let expiryParam = "48 hours";
+        let storageBackend = "r2";
         if (contentType.includes("multipart/form-data")) {
           const formData = await boundedForm(request);
           const formFile = formData.get("file");
@@ -7804,10 +8037,14 @@ var index_default = {
           if (sizeBytes > MAX_FILE_BYTES) throw new InputError("Files must be 10 MiB or smaller", 413);
           fileStream = fileObj.stream();
           expiryParam = formData.get("expiry") || expiryParam;
+          const requestedStorage = formData.get("storageBackend");
+          if (requestedStorage !== null && typeof requestedStorage !== "string") throw new InputError("Invalid storage destination.");
+          storageBackend = requestedStorage || "r2";
         } else {
           filename = request.headers.get("x-filename") || "uploaded-file";
           mimeType = contentType || "application/octet-stream";
           expiryParam = request.headers.get("x-expiry") || expiryParam;
+          storageBackend = request.headers.get("x-storage-backend") || "r2";
           if (!request.body) {
             return jsonResponse(
               { success: false, error: "Empty request body", code: "EMPTY_BODY", status: 400 },
@@ -7818,8 +8055,9 @@ var index_default = {
           fileStream = await readBounded(request.body, MAX_FILE_BYTES);
           sizeBytes = fileStream.byteLength;
         }
-        const quota = await checkStorageQuota(env.DB, sizeBytes, maxStorageLimit);
-        if (!quota.allowed) {
+        await storage.ready(storageBackend);
+        const quota = storageBackend === "r2" ? await checkStorageQuota(env.DB, sizeBytes, maxStorageLimit) : null;
+        if (quota && !quota.allowed) {
           return jsonResponse(
             {
               success: false,
@@ -7834,7 +8072,7 @@ var index_default = {
         if (!filename || filename.length > 240 || /[\x00-\x1f\x7f]/.test(filename)) throw new InputError("Invalid filename");
         const id = crypto.randomUUID();
         const deleteToken = generateCode(24);
-        const r2Key = buildR2Key(id, filename);
+        const r2Key = storageBackend === "webdav" ? buildWebdavKey(id, filename) : buildR2Key(id, filename);
         const now = Date.now();
         const expiresAt = getFileExpiry(expiryParam, now);
         const record = {
@@ -7852,14 +8090,15 @@ var index_default = {
         };
         if (!await insertFileRecord(env.DB, record, maxStorageLimit)) throw new InputError("Storage quota exceeded", 413);
         try {
-          await uploadToR2(env.FILES_BUCKET, r2Key, fileStream, mimeType, { fileId: id, filename, deleteToken, expiresAt: expiresAt.toString() });
+          await storage.put(r2Key, fileStream, mimeType, { fileId: id, filename, deleteToken, expiresAt: expiresAt.toString() });
           const committed = await env.DB.prepare(`UPDATE files SET status = 'active' WHERE id = ? AND status = 'uploading'`).bind(id).run();
           if ((committed.meta?.changes ?? 0) === 0) {
-            await deleteFromR2(env.FILES_BUCKET, r2Key);
+            await storage.delete(r2Key);
             throw new Error("Upload reservation is no longer active");
           }
           record.status = "active";
         } catch (error) {
+          if (error instanceof WebdavConflict) await env.DB.prepare("UPDATE files SET status = 'purged' WHERE id = ? AND status = 'uploading'").bind(id).run();
           console.error("Upload requires reconciliation", { id });
           throw error;
         }
@@ -7927,7 +8166,8 @@ var index_default = {
             origin
           );
         }
-        await deleteFromR2(env.FILES_BUCKET, record.r2_key);
+        await env.DB.prepare("UPDATE files SET status = 'purging' WHERE id = ? AND status != 'deleted'").bind(id).run();
+        await storage.delete(record.r2_key);
         await markFileDeleted(env.DB, id);
         return jsonResponse(
           {
@@ -7959,7 +8199,7 @@ var index_default = {
         const requestedRange = request.headers.get("Range");
         let head = null;
         if (request.method === "HEAD" || requestedRange) {
-          head = await headFromR2(env.FILES_BUCKET, record.r2_key);
+          head = await storage.head(record.r2_key);
           if (!head) return new Response("File storage object missing.", { status: 404 });
           const ifRange = request.headers.get("If-Range");
           if (request.method === "GET" && requestedRange && (!ifRange || ifRange === head.httpEtag)) {
@@ -7967,7 +8207,7 @@ var index_default = {
             if (!range) return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${head.size}`, "Cache-Control": "private, no-store" } });
           }
         }
-        const r2Object = request.method === "HEAD" ? head : await getFromR2(env.FILES_BUCKET, record.r2_key, range);
+        const r2Object = request.method === "HEAD" ? head : await storage.get(record.r2_key, range);
         if (!r2Object) {
           return new Response("File storage object missing.", {
             status: 404,
@@ -7980,7 +8220,7 @@ var index_default = {
         headers.set("Cache-Control", "private, no-store");
         headers.set("X-Content-Type-Options", "nosniff");
         headers.set("Referrer-Policy", "no-referrer");
-        headers.set("etag", r2Object.httpEtag);
+        if (r2Object.httpEtag) headers.set("etag", r2Object.httpEtag);
         headers.set("Accept-Ranges", "bytes");
         headers.set("Content-Length", String(range?.length ?? r2Object.size));
         if (range) headers.set("Content-Range", `bytes ${range.offset}-${range.offset + range.length - 1}/${r2Object.size}`);
@@ -8024,7 +8264,7 @@ var index_default = {
     }
   },
   async scheduled(_event, env, ctx) {
-    ctx.waitUntil(cleanupStorage(env.DB, env.FILES_BUCKET));
+    ctx.waitUntil(cleanupStorage(env.DB, env.FILES_BUCKET, env.WEBDAV_CREDENTIAL_KEY));
     ctx.waitUntil(cleanupNoteShares(env.DB));
   }
 };

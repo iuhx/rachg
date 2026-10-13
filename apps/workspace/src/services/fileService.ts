@@ -1,4 +1,5 @@
 import type { FileItem, UploadResponse, FileListResponse, ApiErrorResponse } from '../types';
+import type { StorageBackend } from '@rachg/shared';
 
 import { API_BASE_URL, API_CONNECT_URL } from '../config/api';
 
@@ -33,10 +34,11 @@ export async function fetchActiveFiles(): Promise<FileItem[]> {
   return data.files;
 }
 
-export async function uploadFileService(file: File, expiry: string = '48 hours'):
+export async function uploadFileService(file: File, expiry: string = '48 hours', storageBackend: StorageBackend = 'r2'):
   Promise<{ file: FileItem; isLive: boolean }> {
   const formData = new FormData();
   formData.append('file', file); formData.append('expiry', expiry);
+  formData.append('storageBackend', storageBackend);
   let response: Response;
   try {
     response = await fetch(`${API_BASE_URL}/v1/files/upload`, {

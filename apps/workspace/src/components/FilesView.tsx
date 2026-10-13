@@ -14,11 +14,14 @@ import {
   Presentation,
 } from 'lucide-react';
 import type { FileItem, FileCategory } from '../types';
+import type { StorageBackend } from '@rachg/shared';
 import { ConfirmDialog } from './ConfirmDialog';
+import { StoragePicker } from './StoragePicker';
 
 interface FilesViewProps {
   transfers: FileItem[];
-  onUploadFile: (file: File, expiry: string) => Promise<unknown> | void;
+  onUploadFile: (file: File, expiry: string, storageBackend?: StorageBackend) => Promise<unknown> | void;
+  webdavAvailable?: boolean;
   onDeleteTransfer: (id: string) => Promise<void>;
   onGenerateQr: (file: FileItem) => void;
   isUploading?: boolean;
@@ -42,8 +45,10 @@ export const FilesView: React.FC<FilesViewProps> = ({
   onGenerateQr,
   isUploading = false,
   isLoading = false,
+  webdavAvailable = false,
 }) => {
   const [selectedExpiry, setSelectedExpiry] = useState('48 hours');
+  const [storageBackend, setStorageBackend] = useState<StorageBackend>('r2');
   const [typeFilter, setTypeFilter] = useState<FileCategory | 'all'>('all');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -51,7 +56,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [copyError, setCopyError] = useState('');
   const [uploadError, setUploadError] = useState('');
-  const [failedUpload, setFailedUpload] = useState<{ file: File; expiry: string } | null>(null);
+  const [failedUpload, setFailedUpload] = useState<{ file: File; expiry: string; storageBackend: StorageBackend } | null>(null);
   const uploadBusy = useRef(false);
   const deletingRef = useRef(false);
   const fileType = (file: FileItem) => FILE_TYPES.some(type => type.value === file.type) ? file.type : 'text';
@@ -76,14 +81,14 @@ export const FilesView: React.FC<FilesViewProps> = ({
     }
   };
 
-  const upload = async (file: File, expiry = selectedExpiry) => {
+  const upload = async (file: File, expiry = selectedExpiry, backend = storageBackend) => {
     if (uploadBusy.current || isUploading) return;
     setUploadError(''); setFailedUpload(null);
     if (file.size > 10 * 1024 * 1024) { setUploadError('Choose a file up to 10 MiB. Nothing was uploaded.'); return; }
     uploadBusy.current = true;
-    try { await onUploadFile(file, expiry); setTypeFilter('all'); }
+    try { await onUploadFile(file, expiry, backend); setTypeFilter('all'); }
     catch (error) {
-      setFailedUpload({ file, expiry });
+      setFailedUpload({ file, expiry, storageBackend: backend });
       setUploadError(error instanceof Error ? error.message : 'Upload failed. Your file is ready to retry.');
     } finally { uploadBusy.current = false; }
   };
@@ -123,7 +128,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
       </header>
 
       <section className="workspace-card p-5 sm:p-7 space-y-5" aria-labelledby="add-file-heading">
-        {uploadError && <div role="alert" className="space-y-2 type-secondary text-red-600 dark:text-red-300"><p>{uploadError}</p>{failedUpload && <button type="button" className="workspace-button workspace-button-secondary" disabled={isUploading} onClick={() => void upload(failedUpload.file, failedUpload.expiry)}>Retry {failedUpload.file.name}</button>}</div>}
+        {uploadError && <div role="alert" className="space-y-2 type-secondary text-red-600 dark:text-red-300"><p>{uploadError}</p>{failedUpload && <button type="button" className="workspace-button workspace-button-secondary" disabled={isUploading} onClick={() => void upload(failedUpload.file, failedUpload.expiry, failedUpload.storageBackend)}>Retry {failedUpload.file.name}</button>}</div>}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h3 id="add-file-heading" className="type-section-heading text-neutral-900 dark:text-white">Add a file</h3>
@@ -147,6 +152,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
           </div>
         </div>
 
+        <StoragePicker value={storageBackend} onChange={setStorageBackend} webdavAvailable={webdavAvailable} disabled={isUploading} />
         <label
           onDragOver={(event) => { event.preventDefault(); setIsDragging(true); }}
           onDragLeave={() => setIsDragging(false)}
@@ -192,7 +198,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
                   <div className="w-8 h-8 rounded-lg bg-neutral-100 dark:bg-white/5 flex items-center justify-center flex-shrink-0">{getFileIcon(file)}</div>
                   <div className="min-w-0">
                     <p className="type-body font-medium text-neutral-900 dark:text-white truncate">{file.name}</p>
-                    <p className="type-caption mt-0.5">{file.size} · {file.expiresIn === 'Permanent' ? 'Permanent' : `Expires in ${file.expiresIn}`} · {file.downloads || 0} downloads</p>
+                    <p className="type-caption mt-0.5">{file.storageBackend === 'webdav' ? 'InfiniCLOUD' : 'R2'} · {file.size} · {file.expiresIn === 'Permanent' ? 'Permanent' : `Expires in ${file.expiresIn}`} · {file.downloads || 0} downloads</p>
                   </div>
                 </div>
 
