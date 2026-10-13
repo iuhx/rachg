@@ -57,6 +57,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
   const [uploadError, setUploadError] = useState('');
   const [failedUpload, setFailedUpload] = useState<{ file: File; expiry: string; storageBackend: StorageBackend } | null>(null);
   const uploadBusy = useRef(false);
+  const fileInput = useRef<HTMLInputElement>(null);
   const deletingRef = useRef(false);
   const fileType = (file: FileItem) => FILE_TYPES.some(type => type.value === file.type) ? file.type : 'text';
   const typeCounts = Object.fromEntries(FILE_TYPES.map(type => [type.value, transfers.filter(file => fileType(file) === type.value).length]));
@@ -133,13 +134,14 @@ export const FilesView: React.FC<FilesViewProps> = ({
             <h3 id="add-file-heading" className="type-section-heading text-neutral-900 dark:text-white">Add a file</h3>
             <p className="type-secondary mt-0.5">Up to 10 MiB per file. Choose how long it should stay available.</p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="type-label text-neutral-400">Keep for</span>
+          <div className="workspace-field-inline">
+            <span className="type-label">Keep for</span>
             <div className="workspace-segment flex-wrap" role="group" aria-label="File expiration">
               {['1 hour', '24 hours', '48 hours', '7 days', 'permanent'].map((expiry) => (
                 <button
                   key={expiry}
                   type="button"
+                  disabled={isUploading}
                   onClick={() => setSelectedExpiry(expiry)}
                   aria-pressed={selectedExpiry === expiry}
                   className={`workspace-segment-item cursor-pointer ${selectedExpiry === expiry ? 'workspace-segment-item-active' : ''}`}
@@ -152,21 +154,22 @@ export const FilesView: React.FC<FilesViewProps> = ({
         </div>
 
         <StoragePicker value={storageBackend} onChange={setStorageBackend} webdavAvailable={webdavAvailable} disabled={isUploading} />
-        <label
+        <div
           onDragOver={(event) => { event.preventDefault(); setIsDragging(true); }}
           onDragLeave={() => setIsDragging(false)}
           onDrop={handleDrop}
-          className={`workspace-panel flex flex-col items-center justify-center text-center cursor-pointer border-dashed p-8 transition-colors ${
+          className={`workspace-panel flex flex-col items-center justify-center text-center border-dashed p-8 transition-colors ${
             isDragging ? 'border-neutral-500 bg-neutral-100 dark:bg-white/10' : 'hover:border-neutral-400 dark:hover:border-white/20'
           }`}
         >
-          <input type="file" className="hidden" disabled={isUploading} onChange={handleFileInput} />
+          <input ref={fileInput} type="file" aria-label="Choose file to upload" className="hidden" disabled={isUploading} onChange={handleFileInput} />
           <span className="w-10 h-10 rounded-lg bg-neutral-100 dark:bg-white/5 flex items-center justify-center mb-3 text-neutral-500">
             {isUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
           </span>
-          <span className="type-section-heading text-neutral-900 dark:text-white">{isUploading ? 'Saving file…' : 'Drop a file here or browse'}</span>
+          <span className="type-section-heading text-neutral-900 dark:text-white">{isUploading ? 'Saving file…' : 'Drop a file here'}</span>
           <span className="type-caption mt-1">{selectedExpiry === 'permanent' ? 'Private. Kept until you delete it.' : 'Private. Expires after the selected time.'}</span>
-        </label>
+          <button type="button" disabled={isUploading} onClick={() => fileInput.current?.click()} className="workspace-button workspace-button-secondary mt-3">Choose file</button>
+        </div>
       </section>
 
       <section className="workspace-card p-5 sm:p-6 space-y-4" aria-labelledby="recent-files-heading">
@@ -176,9 +179,9 @@ export const FilesView: React.FC<FilesViewProps> = ({
           {!isLoading && <span className="type-caption">{typeFilter === 'all' ? transfers.length : `${visibleFiles.length} of ${transfers.length}`} {transfers.length === 1 ? 'file' : 'files'}</span>}
         </div>
 
-        {!isLoading && transfers.length > 0 && <div role="group" aria-label="Filter files by type" className="flex flex-wrap gap-2">
-          <button type="button" aria-pressed={typeFilter === 'all'} onClick={() => setTypeFilter('all')} className={`workspace-button ${typeFilter === 'all' ? 'workspace-button-primary' : 'workspace-button-secondary'}`}>All <span className="opacity-60">{transfers.length}</span></button>
-          {FILE_TYPES.filter(type => typeCounts[type.value] > 0).map(type => <button key={type.value} type="button" aria-pressed={typeFilter === type.value} onClick={() => setTypeFilter(type.value)} className={`workspace-button ${typeFilter === type.value ? 'workspace-button-primary' : 'workspace-button-secondary'}`}><type.icon className="w-3.5 h-3.5" />{type.label} <span className="opacity-60">{typeCounts[type.value]}</span></button>)}
+        {!isLoading && transfers.length > 0 && <div role="group" aria-label="Filter files by type" className="workspace-segment">
+          <button type="button" aria-pressed={typeFilter === 'all'} onClick={() => setTypeFilter('all')} className={`workspace-segment-item ${typeFilter === 'all' ? 'workspace-segment-item-active' : ''}`}>All <span className="type-caption">{transfers.length}</span></button>
+          {FILE_TYPES.filter(type => typeCounts[type.value] > 0).map(type => <button key={type.value} type="button" aria-pressed={typeFilter === type.value} onClick={() => setTypeFilter(type.value)} className={`workspace-segment-item ${typeFilter === type.value ? 'workspace-segment-item-active' : ''}`}><type.icon className="w-3.5 h-3.5" />{type.label} <span className="type-caption">{typeCounts[type.value]}</span></button>)}
         </div>}
 
         {isLoading ? (

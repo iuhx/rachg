@@ -31,6 +31,7 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
 
   // Transfer form state
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
   const [storageBackend, setStorageBackend] = useState<StorageBackend>('r2');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -136,15 +137,19 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
           {type === 'transfer' && (
             <div className="space-y-3">
               <StoragePicker value={storageBackend} onChange={setStorageBackend} webdavAvailable={webdavAvailable} disabled={isSubmitting} />
-              <label className="type-label block text-neutral-700 dark:text-neutral-300 mb-2">
-                Choose File
-              </label>
+              <p className="type-label">File</p>
               <input
+                ref={fileInput}
                 type="file"
-                required
-                onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-                className="w-full text-xs text-neutral-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-medium file:bg-neutral-900 file:text-white dark:file:bg-white dark:file:text-black hover:file:opacity-90 cursor-pointer"
+                aria-label="Choose file to transfer"
+                disabled={isSubmitting}
+                onChange={event => { const file = event.target.files?.[0]; if (file) setSelectedFile(file); event.target.value = ''; }}
+                className="hidden"
               />
+              <div className="workspace-field-inline">
+                <button type="button" disabled={isSubmitting} onClick={() => fileInput.current?.click()} className="workspace-button workspace-button-secondary">Choose file</button>
+                {selectedFile && <span className="type-secondary min-w-0 break-all">{selectedFile.name}</span>}
+              </div>
             </div>
           )}
 

@@ -47,6 +47,7 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ files, fileRequest, onUplo
   const [filter, setFilter] = useState('');
   const [uploading, setUploading] = useState(false);
   const uploadBusy = useRef(false);
+  const fileInput = useRef<HTMLInputElement>(null);
   const selectionVersion = useRef(0);
   const [confirmation, setConfirmation] = useState<{ text: string; expiry: string; storageBackend: StorageBackend } | null>(null);
   const cancelShare = useRef<HTMLButtonElement>(null);
@@ -162,7 +163,7 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ files, fileRequest, onUplo
               {qr.kind === 'too-long' && <div className="workspace-panel p-4 space-y-3">
                 <p className="type-body">This text is too long for a reliable QR code.</p>
                 <p className="type-secondary">You can create a text share page and encode its link instead. Nothing is uploaded until you confirm.</p>
-                <label className="type-label flex items-center gap-3">Keep for<select aria-label="Text share expiration" className="workspace-input w-auto" value={expiry} onChange={e => setExpiry(e.target.value)}>{expiries.map(item => <option key={item} value={item}>{item === 'permanent' ? 'Permanent' : item}</option>)}</select></label>
+                <div className="workspace-field-inline"><span className="type-label">Keep for</span><div className="workspace-segment" role="group" aria-label="Text share expiration">{expiries.map(item => <button key={item} type="button" disabled={uploading} aria-pressed={expiry === item} onClick={() => setExpiry(item)} className={`workspace-segment-item ${expiry === item ? 'workspace-segment-item-active' : ''}`}>{item === 'permanent' ? 'Permanent' : item}</button>)}</div></div>
                 <StoragePicker value={storageBackend} onChange={setStorageBackend} webdavAvailable={webdavAvailable} disabled={uploading} />
                 <button className="workspace-button workspace-button-primary" disabled={!canUpload || textSize > TOOL_TEXT_BYTES} onClick={() => setConfirmation({ text, expiry, storageBackend })}>Review text share</button>
                 {textSize > TOOL_TEXT_BYTES && <p className="type-secondary text-red-600">Text share pages support up to 200 KB.</p>}
@@ -177,10 +178,11 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ files, fileRequest, onUplo
               }} className={`workspace-panel border-dashed p-6 text-center space-y-3 ${dragging ? 'border-neutral-500 bg-neutral-100 dark:bg-white/10' : ''}`}>
                 <Upload className="w-6 h-6 mx-auto text-neutral-400" />
                 <p className="type-body">Drop a file or paste an image here</p><p className="type-caption">Up to 10 MiB · Saved only when you click upload</p>
-                <input type="file" aria-label="Choose QR file" className="block w-full text-xs" onChange={event => { const file = event.target.files?.[0]; if (file) chooseFile(file); event.target.value = ''; }} />
+                <input ref={fileInput} type="file" aria-label="Choose QR file" className="hidden" disabled={uploading} onChange={event => { const file = event.target.files?.[0]; if (file) chooseFile(file); event.target.value = ''; }} />
+                <button type="button" disabled={uploading} onClick={() => fileInput.current?.click()} className="workspace-button workspace-button-secondary">Choose file</button>
               </div>
               {pendingFile && <p className="type-body break-all">{pendingFile.name} · {(pendingFile.size / 1024).toFixed(1)} KB</p>}
-              <label className="type-label flex items-center gap-3">Keep for<select aria-label="QR file expiration" className="workspace-input w-auto" value={expiry} onChange={e => setExpiry(e.target.value)}>{expiries.map(item => <option key={item} value={item}>{item === 'permanent' ? 'Permanent' : item}</option>)}</select></label>
+              <div className="workspace-field-inline"><span className="type-label">Keep for</span><div className="workspace-segment" role="group" aria-label="QR file expiration">{expiries.map(item => <button key={item} type="button" disabled={uploading} aria-pressed={expiry === item} onClick={() => setExpiry(item)} className={`workspace-segment-item ${expiry === item ? 'workspace-segment-item-active' : ''}`}>{item === 'permanent' ? 'Permanent' : item}</button>)}</div></div>
               <StoragePicker value={storageBackend} onChange={setStorageBackend} webdavAvailable={webdavAvailable} disabled={uploading} />
               <button className="workspace-button workspace-button-primary" disabled={!pendingFile || !canUpload} onClick={() => { if (pendingFile) void upload(pendingFile, expiry); }}><Upload className="w-4 h-4" />{uploading ? 'Uploading…' : 'Upload & generate QR'}</button>
               <p className="type-caption">{canUpload ? 'Uploads appear in Files and use the same storage quota.' : 'Sign in to upload. Local text QR codes remain available.'}</p>

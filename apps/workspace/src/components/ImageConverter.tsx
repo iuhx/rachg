@@ -105,7 +105,7 @@ export const ImageConverter: React.FC = () => {
         <span className="type-caption">Up to 20 images · 25 MiB each · 100 MiB per batch · 24 megapixels per image</span>
       </div>
       <fieldset disabled={Boolean(busy)} className="flex flex-wrap items-end gap-5">
-        <label className="type-label space-y-2">Convert to<select aria-label="Output image format" className="workspace-input block mt-2 min-w-36" value={format} onChange={event => setFormat(event.target.value as ImageFormat)}>{IMAGE_FORMATS.map(value => <option key={value} value={value}>{value.toUpperCase()}</option>)}</select></label>
+        <label className="type-label space-y-2">Convert to<select aria-label="Output image format" className="workspace-select workspace-select-block mt-2" value={format} onChange={event => setFormat(event.target.value as ImageFormat)}>{IMAGE_FORMATS.map(value => <option key={value} value={value}>{value.toUpperCase()}</option>)}</select></label>
         <label className={`type-label flex-1 min-w-40 max-w-xs ${format === 'png' || format === 'bmp' ? 'opacity-50' : ''}`}>Quality · {quality}%<input type="range" min="1" max="100" step="1" aria-label="Image quality" value={quality} disabled={format === 'png' || format === 'bmp'} onChange={event => setQuality(Number(event.target.value))} className="block w-full mt-4 mb-3 accent-neutral-700 dark:accent-neutral-300" /></label>
       </fieldset>
       <p className="type-caption">JPEG and BMP use a white background for transparency. PNG, WebP and AVIF can keep transparency. Only the first image/frame is converted; animation, EXIF/GPS and HDR metadata are not preserved. HEIC/HEIF is supported as input.</p>

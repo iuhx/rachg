@@ -146,9 +146,9 @@ export const MailView: React.FC<MailViewProps> = ({
         <div className="flex items-center gap-2"><button type="button" onClick={openCompose} className="workspace-button workspace-button-primary cursor-pointer"><Send className="w-3.5 h-3.5" /><span>Compose</span></button><button type="button" onClick={refresh} disabled={loading} aria-label="Refresh mail" className="workspace-button workspace-button-secondary cursor-pointer disabled:opacity-50"><RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /><span>Refresh</span></button></div>
       </header>
 
-      <div className="flex items-center gap-1 border-b border-neutral-200 dark:border-white/10">
-        <button type="button" onClick={() => { setFolder('inbox'); setSearch(''); }} aria-pressed={folder === 'inbox'} className={`workspace-button rounded-b-none border-b-2 px-3 ${folder === 'inbox' ? 'border-neutral-900 text-neutral-900 dark:border-white dark:text-white' : 'border-transparent workspace-button-secondary'}`}><Inbox className="w-3.5 h-3.5" /><span>Inbox</span><span className="type-caption">{messages.length}</span></button>
-        <button type="button" onClick={() => { setFolder('sent'); setSearch(''); }} aria-pressed={folder === 'sent'} className={`workspace-button rounded-b-none border-b-2 px-3 ${folder === 'sent' ? 'border-neutral-900 text-neutral-900 dark:border-white dark:text-white' : 'border-transparent workspace-button-secondary'}`}><Send className="w-3.5 h-3.5" /><span>Sent</span><span className="type-caption">{sentMessages.length}</span></button>
+      <div className="workspace-segment" role="group" aria-label="Mail folder">
+        <button type="button" onClick={() => { setFolder('inbox'); setSearch(''); }} aria-pressed={folder === 'inbox'} className={`workspace-segment-item ${folder === 'inbox' ? 'workspace-segment-item-active' : ''}`}><Inbox className="w-3.5 h-3.5" /><span>Inbox</span><span className="type-caption">{messages.length}</span></button>
+        <button type="button" onClick={() => { setFolder('sent'); setSearch(''); }} aria-pressed={folder === 'sent'} className={`workspace-segment-item ${folder === 'sent' ? 'workspace-segment-item-active' : ''}`}><Send className="w-3.5 h-3.5" /><span>Sent</span><span className="type-caption">{sentMessages.length}</span></button>
       </div>
 
       {emptyFolder && !loading ? (
@@ -222,7 +222,7 @@ export const MailView: React.FC<MailViewProps> = ({
               <textarea id="mail-message-body" required value={body} onChange={(event) => setBody(event.target.value)} placeholder={isReply ? 'Write only your new reply here…' : 'Write a message…'} aria-label="Message" rows={10} className="workspace-input resize-y" />
               {replyContext && <div className="workspace-panel p-3 space-y-3">
                 <p className="type-secondary">Your reply is sent on its own by default. The original stays here for reference.</p>
-                <label className="type-secondary flex items-center gap-2"><input type="checkbox" checked={includeOriginal} disabled={quoteTooLarge} onChange={event => setIncludeOriginal(event.target.checked)} />Include original message in this reply</label>
+                <label className="type-secondary flex items-center gap-2"><input type="checkbox" className="workspace-checkbox" checked={includeOriginal} disabled={quoteTooLarge} onChange={event => setIncludeOriginal(event.target.checked)} />Include original message in this reply</label>
                 {includeOriginal && <p className="type-caption">It will appear below your reply in a separate gray quote block.</p>}
                 {quoteTooLarge && <p className="type-caption">This original is too large to attach as a quote. Your new reply can still be sent.</p>}
                 <details><summary className="type-caption cursor-pointer">View original · {replyContext.from} · {formatDate(replyContext.receivedAt)}</summary>

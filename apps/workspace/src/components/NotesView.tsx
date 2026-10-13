@@ -347,14 +347,15 @@ export const NotesView: React.FC<NotesViewProps> = ({
       </div>}
 
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-        <div className="workspace-panel flex items-center gap-2 px-3 py-2 min-w-0 sm:max-w-xs">
+        <label className="workspace-field-inline type-label sm:max-w-xs">
           <Folder className="w-4 h-4 shrink-0 text-neutral-400" />
-          <select value={categoryFilter} onChange={event => void changeCategoryFilter(event.target.value)} disabled={isLoading || organizationBusy} aria-label="Filter notes by category" className="workspace-input workspace-input-plain min-w-0 type-body">
+          Category
+          <select value={categoryFilter} onChange={event => void changeCategoryFilter(event.target.value)} disabled={isLoading || organizationBusy} aria-label="Filter notes by category" className="workspace-select">
             <option value="all">All notes ({notes.length})</option>
             {Boolean(counts['']) && <option value="">Uncategorized ({counts['']})</option>}
             {categories.map(category => <option key={category.id} value={category.id}>{category.name} ({counts[category.id] ?? 0})</option>)}
           </select>
-        </div>
+        </label>
         <button disabled={!canImport || isLoading || Boolean(loadError) || organizationBusy} onClick={() => setManageCategories(true)} className="workspace-button workspace-button-secondary self-start">Manage categories</button>
         <span className="type-caption sm:ml-auto">{notes.filter(note => note.pinned).length} pinned · {categories.length} categories</span>
       </div>
@@ -390,7 +391,7 @@ export const NotesView: React.FC<NotesViewProps> = ({
             {searchQuery ? (
               <button onClick={() => setSearchQuery('')} aria-label="Clear note search" className="p-1 text-neutral-400 hover:text-neutral-800 dark:hover:text-white cursor-pointer"><X className="w-3.5 h-3.5" /></button>
             ) : <span className="hidden sm:inline text-[10px] font-mono text-neutral-400">/</span>}
-            {categoryFilter !== 'all' && <select aria-label="Search scope" value={searchAll ? 'all' : 'category'} onChange={event => setSearchAll(event.target.value === 'all')} className="workspace-input w-auto max-w-full type-caption py-1"><option value="category">This category</option><option value="all">All notes</option></select>}
+            {categoryFilter !== 'all' && <select aria-label="Search scope" value={searchAll ? 'all' : 'category'} onChange={event => setSearchAll(event.target.value === 'all')} className="workspace-select"><option value="category">This category</option><option value="all">All notes</option></select>}
           </div>
 
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 xl:min-h-[500px]">
@@ -430,9 +431,9 @@ export const NotesView: React.FC<NotesViewProps> = ({
                     <div className="flex flex-wrap items-center gap-1.5">
                       {isEditing ? (
                         <>
-                          <div className="flex items-center gap-0.5 workspace-panel p-0.5">
-                            <button onClick={() => setEditorMode('write')} className={`workspace-button min-h-7 px-2 py-1 ${editorMode === 'write' ? 'workspace-button-primary' : 'workspace-button-secondary'}`}>Write</button>
-                            <button onClick={() => setEditorMode('preview')} className={`workspace-button min-h-7 px-2 py-1 ${editorMode === 'preview' ? 'workspace-button-primary' : 'workspace-button-secondary'}`}>Preview</button>
+                          <div className="workspace-segment" role="group" aria-label="Note editor mode">
+                            <button type="button" aria-pressed={editorMode === 'write'} onClick={() => setEditorMode('write')} className={`workspace-segment-item ${editorMode === 'write' ? 'workspace-segment-item-active' : ''}`}>Write</button>
+                            <button type="button" aria-pressed={editorMode === 'preview'} onClick={() => setEditorMode('preview')} className={`workspace-segment-item ${editorMode === 'preview' ? 'workspace-segment-item-active' : ''}`}>Preview</button>
                           </div>
                           <button onClick={() => void saveDraft()} disabled={saveState === 'saving' || !editTitle.trim()} className="workspace-button workspace-button-primary min-h-8 px-3 py-1 cursor-pointer disabled:opacity-50">
                             <Check className="w-3.5 h-3.5" /><span>{saveState === 'saving' ? 'Saving…' : 'Save'}</span>
@@ -449,7 +450,7 @@ export const NotesView: React.FC<NotesViewProps> = ({
 
                   <div className="flex flex-wrap items-center gap-2 pt-4">
                     <Folder className="w-3.5 h-3.5 text-neutral-400" />
-                    <select aria-label="Note category" value={activeNote.categoryId ?? ''} disabled={organizationBusy || isDeleting || !canImport} onChange={event => void changeOrganization(event.target.value || null, Boolean(activeNote.pinned))} className="workspace-input w-auto min-w-0 max-w-[min(100%,16rem)] type-caption py-1.5">
+                    <select aria-label="Note category" value={activeNote.categoryId ?? ''} disabled={organizationBusy || isDeleting || !canImport} onChange={event => void changeOrganization(event.target.value || null, Boolean(activeNote.pinned))} className="workspace-select">
                       <option value="">Uncategorized</option>
                       {activeNote.categoryId && !categories.some(category => category.id === activeNote.categoryId) && <option value={activeNote.categoryId}>{activeNote.categoryName || 'Current category'}</option>}
                       {categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
