@@ -4,7 +4,9 @@ import type { NoteItem } from '../types';
 
 interface NewItemModalProps {
   isOpen: boolean;
+  isActive?: boolean;
   type: 'note' | 'transfer' | null;
+  initialNote?: Pick<NoteItem, 'title' | 'content'>;
   onClose: () => void;
   onCreateNote: (n: Partial<NoteItem>) => Promise<void>;
   onCreateTransfer: (file: File) => Promise<unknown>;
@@ -12,7 +14,9 @@ interface NewItemModalProps {
 
 export const NewItemModal: React.FC<NewItemModalProps> = ({
   isOpen,
+  isActive = true,
   type,
+  initialNote,
   onClose,
   onCreateNote,
   onCreateTransfer,
@@ -29,13 +33,13 @@ export const NewItemModal: React.FC<NewItemModalProps> = ({
 
   useEffect(() => {
     if (!isOpen) return;
-    setNoteTitle('');
-    setNoteContent('');
+    setNoteTitle(initialNote?.title || '');
+    setNoteContent(initialNote?.content || '');
     setSelectedFile(null);
     setSubmitError(null);
-  }, [isOpen, type]);
+  }, [isOpen, type, initialNote]);
 
-  if (!isOpen || !type) return null;
+  if (!isOpen || !isActive || !type) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

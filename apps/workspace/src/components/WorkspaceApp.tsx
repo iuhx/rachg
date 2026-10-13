@@ -407,6 +407,7 @@ export const WorkspaceApp: React.FC = () => {
           {(activeTab === 'tools' || toolsVisited) && <div hidden={activeTab !== 'tools'}>
             <React.Suspense fallback={<p className="type-secondary">Loading tools…</p>}>
               <ToolsView files={transfers} fileRequest={fileQrRequest} onUploadFile={handleUploadFile}
+                onSaveNote={handleCreateNote} onOpenNotes={() => { setActiveTab('notes'); window.scrollTo(0, 0); }}
                 canUpload={authStatus === 'authenticated'} isFilesLoading={authStatus === 'authenticated' && isFilesLoading} isActive={activeTab === 'tools'} />
             </React.Suspense>
           </div>}

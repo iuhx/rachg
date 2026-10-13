@@ -57,10 +57,13 @@ test('local text and Markdown-to-QR conversion never upload, including overflow 
   button(f.h, 'Review text share').props.onClick(); f.h.render();
   assert.ok(elements(f.h.tree).some(n => n.props.role === 'dialog'));
   button(f.h, 'Cancel').props.onClick(); f.h.render(); assert.equal(uploads, 0);
-  input(f.h, 'Markdown input').props.onChange({ target: { value: '# Hello\n\n[Link](https://example.com)' } }); f.h.render();
-  button(f.h, 'Turn into QR').props.onClick(); f.h.render();
+  button(f.h, 'Text converter').props.onClick(); f.h.render();
+  const { TextConverter } = f.load('apps/workspace/src/components/TextConverter.tsx');
+  const converter = f.mount(TextConverter, find(f.h, n => typeof n.props.onToQr === 'function').props);
+  input(converter, 'Markdown input').props.onChange({ target: { value: '# Hello\n\n[Link](https://example.com)' } }); converter.render();
+  button(converter, 'Turn into QR').props.onClick(); f.h.render();
   assert.equal(input(f.h, 'QR content').props.value, 'Hello\n\nLink (https://example.com)');
-  assert.equal(uploads, 0); f.h.unmount();
+  assert.equal(uploads, 0); converter.unmount(); f.h.unmount();
 });
 
 test('confirmed long text uploads once, uses a text page and shares the Files record', async () => {

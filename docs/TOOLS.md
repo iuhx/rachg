@@ -1,5 +1,8 @@
 # Workspace tools
 
+**Text converter** combines Markdown → Plain text and Rich text → Markdown in one
+panel. Both results can be reviewed and saved to Notes. See [Text tools](TEXT-TOOLS.md).
+
 The Image converter tab supports local batch conversion to PNG, JPEG, WebP, BMP
 and AVIF, including HEIC/HEIF inputs. See [Image tools](IMAGE-TOOLS.md) for limits,
 downloads and codec details.
@@ -38,7 +41,7 @@ table is introduced. Uploading or creating a text share requires workspace sign-
 
 ## Markdown to text
 
-Paste Markdown to see plain text immediately. Paragraphs, nested/ordered/task lists,
+Open **Text converter → Markdown → Plain text** and paste Markdown to see plain text immediately. Paragraphs, nested/ordered/task lists,
 code content, link addresses, image labels/addresses and table cells are retained.
 Reference links are expanded; HTML is displayed literally, never executed.
 

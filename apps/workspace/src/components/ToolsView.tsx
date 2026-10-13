@@ -1,8 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, Check, Copy, Download, FileText, Image as ImageIcon, QrCode, Upload } from 'lucide-react';
-import type { FileItem } from '../types';
+import { Check, Copy, Download, FileText, Image as ImageIcon, QrCode, Upload } from 'lucide-react';
+import type { FileItem, NoteItem } from '../types';
 import { byteLength, createQr, downloadBlob, FILE_BYTES, LOCAL_QR_BYTES, qrPng, textShareUrl, TOOL_TEXT_BYTES, usableFile, type QrMatrix } from '../utils/qr';
-import { markdownToText } from '../utils/markdownText';
 
 export interface FileQrRequest { fileId: string; sequence: number }
 interface ToolsViewProps {
@@ -10,11 +9,14 @@ interface ToolsViewProps {
   fileRequest: FileQrRequest | null;
   onUploadFile: (file: File, expiry: string) => Promise<FileItem>;
   canUpload: boolean;
+  onSaveNote: (note: Partial<NoteItem>) => Promise<void>;
+  onOpenNotes: () => void;
   isActive?: boolean;
   isFilesLoading?: boolean;
 }
 const expiries = ['1 hour', '24 hours', '48 hours', '7 days', 'permanent'];
 const ImageConverter = React.lazy(() => import('./ImageConverter').then(module => ({ default: module.ImageConverter })));
+const TextConverter = React.lazy(() => import('./TextConverter').then(module => ({ default: module.TextConverter })));
 
 function QrPreview({ matrix }: { matrix: QrMatrix }) {
   const path = useMemo(() => {
@@ -29,12 +31,12 @@ function QrPreview({ matrix }: { matrix: QrMatrix }) {
   </svg>;
 }
 
-export const ToolsView: React.FC<ToolsViewProps> = ({ files, fileRequest, onUploadFile, canUpload, isActive = true, isFilesLoading = false }) => {
+export const ToolsView: React.FC<ToolsViewProps> = ({ files, fileRequest, onUploadFile, canUpload, onSaveNote, onOpenNotes, isActive = true, isFilesLoading = false }) => {
   const [tool, setTool] = useState<'qr' | 'markdown' | 'images'>('qr');
   const [imagesVisited, setImagesVisited] = useState(false);
+  const [textVisited, setTextVisited] = useState(false);
   const [source, setSource] = useState<'text' | 'upload' | 'existing'>('text');
   const [text, setText] = useState('');
-  const [markdown, setMarkdown] = useState('');
   const [selectedId, setSelectedId] = useState('');
   const [pageLink, setPageLink] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
@@ -75,10 +77,6 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ files, fileRequest, onUplo
   const selectedFile = activeFiles.find(file => file.id === selectedId);
   const value = source === 'text' ? text : selectedFile ? (pageLink ? textShareUrl(selectedFile) : selectedFile.shareUrl || '') : '';
   const qr = useMemo(() => createQr(value), [value]);
-  const plain = useMemo(() => {
-    try { return { text: markdownToText(markdown), error: '' }; }
-    catch (error) { return { text: '', error: error instanceof Error ? error.message : 'Unable to convert this Markdown.' }; }
-  }, [markdown]);
   const isLink = source !== 'text' || /^https?:\/\/\S+$/i.test(text);
   const textSize = text.length > TOOL_TEXT_BYTES ? TOOL_TEXT_BYTES + 1 : byteLength(text);
   const reportError = (error: unknown) => setNotice({ error: true, text: error instanceof Error ? error.message : 'Unable to complete this action.' });
@@ -136,7 +134,7 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ files, fileRequest, onUplo
     <header><h2 className="type-page-heading text-neutral-900 dark:text-white">Tools</h2><p className="type-secondary mt-1">Everyday conversions, connected to your files.</p></header>
     <div className="workspace-segment w-fit flex-wrap" role="group" aria-label="Choose a tool">
       <button className={`workspace-segment-item ${tool === 'qr' ? 'workspace-segment-item-active' : ''}`} aria-pressed={tool === 'qr'} onClick={() => { setTool('qr'); setNotice(null); }}><QrCode className="w-4 h-4" />Universal QR</button>
-      <button className={`workspace-segment-item ${tool === 'markdown' ? 'workspace-segment-item-active' : ''}`} aria-pressed={tool === 'markdown'} onClick={() => { setTool('markdown'); setNotice(null); }}><FileText className="w-4 h-4" />Markdown to text</button>
+      <button className={`workspace-segment-item ${tool === 'markdown' ? 'workspace-segment-item-active' : ''}`} aria-pressed={tool === 'markdown'} onClick={() => { setTool('markdown'); setTextVisited(true); setNotice(null); }}><FileText className="w-4 h-4" />Text converter</button>
       <button className={`workspace-segment-item ${tool === 'images' ? 'workspace-segment-item-active' : ''}`} aria-pressed={tool === 'images'} onClick={() => { setTool('images'); setImagesVisited(true); setNotice(null); }}><ImageIcon className="w-4 h-4" />Image converter</button>
     </div>
     {notice && <p role={notice.error ? 'alert' : 'status'} className={`workspace-panel p-3 type-secondary ${notice.error ? 'text-red-600 dark:text-red-300' : 'text-emerald-700 dark:text-emerald-400'}`}>{notice.text}</p>}
@@ -212,22 +210,10 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ files, fileRequest, onUplo
       </div>
     </section>
 
-    <section hidden={tool !== 'markdown'} className="workspace-card p-5 sm:p-6 space-y-5" aria-label="Markdown to plain text">
-      <div><h3 className="type-section-heading text-neutral-900 dark:text-white">Keep the words, lose the formatting.</h3><p className="type-secondary mt-1">Paragraphs, lists, code and link addresses stay intact. Converted locally; HTML is shown as literal text.</p></div>
-      <div className="grid md:grid-cols-2 gap-5">
-        <label className="type-label space-y-2">Markdown<textarea aria-label="Markdown input" value={markdown} onChange={e => { setMarkdown(e.target.value); setNotice(null); }} placeholder={'# Hello\n\n- A useful idea\n- [A link](https://example.com)'} className="workspace-input workspace-input-mono tool-markdown-input block resize-y" /></label>
-        <label className="type-label space-y-2">Plain text<textarea aria-label="Plain text preview" value={plain.text} readOnly placeholder="Your plain text appears here…" className="workspace-input tool-markdown-input block resize-y" /></label>
-      </div>
-      {plain.error && <p role="alert" className="type-secondary text-red-600 dark:text-red-300">{plain.error}</p>}
-      <div className="flex flex-wrap justify-between items-center gap-3">
-        <p className="type-caption">{plain.text.length.toLocaleString()} characters · Local only · Up to 200 KB</p>
-        <div className="flex flex-wrap gap-2">
-          <button disabled={!plain.text} onClick={() => void copyText(plain.text)} className="workspace-button workspace-button-secondary"><Copy className="w-4 h-4" />Copy text</button>
-          <button disabled={!plain.text} onClick={() => downloadBlob(new Blob([plain.text], { type: 'text/plain;charset=utf-8' }), 'plain-text.txt')} className="workspace-button workspace-button-secondary"><Download className="w-4 h-4" />Download TXT</button>
-          <button disabled={!plain.text} onClick={() => { setText(plain.text); setSource('text'); setTool('qr'); setNotice(null); }} className="workspace-button workspace-button-primary">Turn into QR<ArrowRight className="w-4 h-4" /></button>
-        </div>
-      </div>
-    </section>
+    {textVisited && <div hidden={tool !== 'markdown'}><React.Suspense fallback={<p className="type-secondary">Loading text converter…</p>}>
+      <TextConverter canSave={canUpload} isActive={isActive && tool === 'markdown'} onSaveNote={onSaveNote} onOpenNotes={onOpenNotes}
+        onToQr={value => { setText(value); setSource('text'); setTool('qr'); setNotice(null); }} />
+    </React.Suspense></div>}
 
     {confirmation && isActive && <div className="workspace-modal-overlay fixed inset-0 z-50 bg-black/50 backdrop-blur-xs p-4 flex items-center justify-center">
       <div role="dialog" aria-modal="true" aria-labelledby="text-share-title" aria-describedby="text-share-description" className="workspace-modal bg-white dark:bg-[#18191d] w-full max-w-lg p-6 space-y-4" onKeyDown={event => {

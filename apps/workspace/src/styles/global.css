@@ -264,6 +264,19 @@ a {
 
 .tool-qr-input { min-height: 13rem; }
 .tool-markdown-input { min-height: 22rem; }
+.rich-text-input { max-height: 30rem; overflow-wrap: anywhere; }
+.rich-text-input :is(p, ul, ol, pre, blockquote, table) { margin-block: 0.65rem; }
+.rich-text-input :is(h1, h2, h3, h4, h5, h6) { font-weight: 600; margin-block: 0.9rem 0.4rem; }
+.rich-text-input h1 { font-size: 1.4rem; }
+.rich-text-input h2 { font-size: 1.2rem; }
+.rich-text-input h3 { font-size: 1rem; }
+.rich-text-input ul { list-style: disc; padding-left: 1.5rem; }
+.rich-text-input ol { list-style: decimal; padding-left: 1.5rem; }
+.rich-text-input pre { white-space: pre-wrap; font-family: var(--font-mono); }
+.rich-text-input blockquote { border-left: 2px solid var(--color-line); padding-left: 0.75rem; }
+.rich-text-input a { text-decoration: underline; }
+.rich-text-input table { border-collapse: collapse; }
+.rich-text-input :is(th, td) { border: 1px solid var(--color-line); padding: 0.35rem 0.5rem; }
 .project-status-select { width: auto; min-width: 9.5rem; }
 
 .workspace-input-heading {

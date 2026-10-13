@@ -19,12 +19,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activeTab,
   onTabChange,
 }) => {
-  const navItems: { id: NavTab; label: string; icon: React.FC<{ className?: string }>; group?: string }[] = [
+  const navItems: { id: NavTab; label: string; icon: React.FC<{ className?: string }> }[] = [
     { id: 'home', label: 'Overview', icon: LayoutDashboard },
-    { id: 'projects', label: 'Projects', icon: FolderDot, group: 'Workspace' },
+    { id: 'projects', label: 'Projects', icon: FolderDot },
     { id: 'notes', label: 'Notes', icon: FileText },
     { id: 'files', label: 'Files', icon: Paperclip },
-    { id: 'mail', label: 'Mail', icon: Mail, group: 'Utilities' },
+    { id: 'mail', label: 'Mail', icon: Mail },
     { id: 'tools', label: 'Tools', icon: Wrench },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
@@ -49,9 +49,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
             const Icon = item.icon;
             const isActive = activeTab === item.id;
             return (
-              <React.Fragment key={item.id}>
-              {item.group && <p className="hidden md:block px-3 pt-4 pb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-neutral-500">{item.group}</p>}
               <button
+                key={item.id}
                 onClick={() => onTabChange(item.id)}
                 aria-label={item.label}
                 aria-current={isActive ? 'page' : undefined}
@@ -68,7 +67,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 />
                 <span>{item.label}</span>
               </button>
-              </React.Fragment>
             );
           })}
         </nav>
