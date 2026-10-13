@@ -135,6 +135,9 @@ export const NotesView: React.FC<NotesViewProps> = ({
     return result;
   }, [notes]);
   useEffect(() => {
+    if (!isLoading && !loadError && categoryFilter === '' && !counts['']) setCategoryFilter('all');
+  }, [isLoading, loadError, categoryFilter, counts['']]);
+  useEffect(() => {
     if (isEditing || !filteredNotes.length || filteredNotes.some(note => note.id === selectedNoteId)) return;
     setSelectedNoteId(filteredNotes[0].id);
   }, [filteredNotes, selectedNoteId, isEditing]);
@@ -348,7 +351,7 @@ export const NotesView: React.FC<NotesViewProps> = ({
           <Folder className="w-4 h-4 shrink-0 text-neutral-400" />
           <select value={categoryFilter} onChange={event => void changeCategoryFilter(event.target.value)} disabled={isLoading || organizationBusy} aria-label="Filter notes by category" className="workspace-input workspace-input-plain min-w-0 type-body">
             <option value="all">All notes ({notes.length})</option>
-            <option value="">Uncategorized ({counts[''] ?? 0})</option>
+            {Boolean(counts['']) && <option value="">Uncategorized ({counts['']})</option>}
             {categories.map(category => <option key={category.id} value={category.id}>{category.name} ({counts[category.id] ?? 0})</option>)}
           </select>
         </div>

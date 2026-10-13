@@ -1,7 +1,8 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Check,
   Copy,
+  Archive,
   FileCode,
   FileText,
   Image as ImageIcon,
@@ -10,8 +11,9 @@ import {
   Upload,
   Video,
   QrCode,
+  Presentation,
 } from 'lucide-react';
-import type { FileItem } from '../types';
+import type { FileItem, FileCategory } from '../types';
 import { ConfirmDialog } from './ConfirmDialog';
 
 interface FilesViewProps {
@@ -23,6 +25,16 @@ interface FilesViewProps {
   isLoading?: boolean;
 }
 
+const FILE_TYPES: { value: FileCategory; label: string; icon: typeof FileText }[] = [
+  { value: 'image', label: 'Images', icon: ImageIcon },
+  { value: 'pdf', label: 'PDFs', icon: FileText },
+  { value: 'video', label: 'Videos', icon: Video },
+  { value: 'archive', label: 'Archives', icon: Archive },
+  { value: 'keynote', label: 'Slides', icon: Presentation },
+  { value: 'code', label: 'Code', icon: FileCode },
+  { value: 'text', label: 'Text & other', icon: FileText },
+];
+
 export const FilesView: React.FC<FilesViewProps> = ({
   transfers,
   onUploadFile,
@@ -32,6 +44,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
   isLoading = false,
 }) => {
   const [selectedExpiry, setSelectedExpiry] = useState('48 hours');
+  const [typeFilter, setTypeFilter] = useState<FileCategory | 'all'>('all');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [fileToDelete, setFileToDelete] = useState<FileItem | null>(null);
@@ -41,6 +54,12 @@ export const FilesView: React.FC<FilesViewProps> = ({
   const [failedUpload, setFailedUpload] = useState<{ file: File; expiry: string } | null>(null);
   const uploadBusy = useRef(false);
   const deletingRef = useRef(false);
+  const fileType = (file: FileItem) => FILE_TYPES.some(type => type.value === file.type) ? file.type : 'text';
+  const typeCounts = Object.fromEntries(FILE_TYPES.map(type => [type.value, transfers.filter(file => fileType(file) === type.value).length]));
+  const visibleFiles = typeFilter === 'all' ? transfers : transfers.filter(file => fileType(file) === typeFilter);
+  useEffect(() => {
+    if (!isLoading && typeFilter !== 'all' && !typeCounts[typeFilter]) setTypeFilter('all');
+  }, [isLoading, typeFilter, typeCounts[typeFilter]]);
 
   const confirmDelete = async () => {
     if (!fileToDelete || deletingRef.current) return;
@@ -62,7 +81,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
     setUploadError(''); setFailedUpload(null);
     if (file.size > 10 * 1024 * 1024) { setUploadError('Choose a file up to 10 MiB. Nothing was uploaded.'); return; }
     uploadBusy.current = true;
-    try { await onUploadFile(file, expiry); }
+    try { await onUploadFile(file, expiry); setTypeFilter('all'); }
     catch (error) {
       setFailedUpload({ file, expiry });
       setUploadError(error instanceof Error ? error.message : 'Upload failed. Your file is ready to retry.');
@@ -91,12 +110,9 @@ export const FilesView: React.FC<FilesViewProps> = ({
     event.target.value = '';
   };
 
-  const getFileIcon = (name: string) => {
-    const ext = name.split('.').pop()?.toLowerCase();
-    if (['png', 'jpg', 'jpeg', 'svg', 'webp'].includes(ext || '')) return <ImageIcon className="w-4 h-4 text-neutral-400" />;
-    if (['mp4', 'mov', 'webm'].includes(ext || '')) return <Video className="w-4 h-4 text-neutral-400" />;
-    if (['zip', 'tar', 'gz'].includes(ext || '')) return <FileCode className="w-4 h-4 text-neutral-400" />;
-    return <FileText className="w-4 h-4 text-neutral-400" />;
+  const getFileIcon = (file: FileItem) => {
+    const Icon = FILE_TYPES.find(type => type.value === fileType(file))?.icon || FileText;
+    return <Icon className="w-4 h-4 text-neutral-400" />;
   };
 
   return (
@@ -152,8 +168,13 @@ export const FilesView: React.FC<FilesViewProps> = ({
         {copyError && <p role="alert" className="type-secondary text-red-600">{copyError}</p>}
         <div className="flex items-center justify-between gap-3">
           <h3 id="recent-files-heading" className="type-section-heading text-neutral-900 dark:text-white">Recent files</h3>
-          {!isLoading && <span className="type-caption">{transfers.length} {transfers.length === 1 ? 'file' : 'files'}</span>}
+          {!isLoading && <span className="type-caption">{typeFilter === 'all' ? transfers.length : `${visibleFiles.length} of ${transfers.length}`} {transfers.length === 1 ? 'file' : 'files'}</span>}
         </div>
+
+        {!isLoading && transfers.length > 0 && <div role="group" aria-label="Filter files by type" className="flex flex-wrap gap-2">
+          <button type="button" aria-pressed={typeFilter === 'all'} onClick={() => setTypeFilter('all')} className={`workspace-button ${typeFilter === 'all' ? 'workspace-button-primary' : 'workspace-button-secondary'}`}>All <span className="opacity-60">{transfers.length}</span></button>
+          {FILE_TYPES.filter(type => typeCounts[type.value] > 0).map(type => <button key={type.value} type="button" aria-pressed={typeFilter === type.value} onClick={() => setTypeFilter(type.value)} className={`workspace-button ${typeFilter === type.value ? 'workspace-button-primary' : 'workspace-button-secondary'}`}><type.icon className="w-3.5 h-3.5" />{type.label} <span className="opacity-60">{typeCounts[type.value]}</span></button>)}
+        </div>}
 
         {isLoading ? (
           <div className="workspace-empty py-12 type-secondary">Loading files…</div>
@@ -165,10 +186,10 @@ export const FilesView: React.FC<FilesViewProps> = ({
           </div>
         ) : (
           <div className="divide-y divide-neutral-100 dark:divide-white/[0.05]">
-            {transfers.map((file) => (
+            {visibleFiles.map((file) => (
               <div key={file.id} className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 group">
                 <div className="flex items-center gap-3.5 min-w-0">
-                  <div className="w-8 h-8 rounded-lg bg-neutral-100 dark:bg-white/5 flex items-center justify-center flex-shrink-0">{getFileIcon(file.name)}</div>
+                  <div className="w-8 h-8 rounded-lg bg-neutral-100 dark:bg-white/5 flex items-center justify-center flex-shrink-0">{getFileIcon(file)}</div>
                   <div className="min-w-0">
                     <p className="type-body font-medium text-neutral-900 dark:text-white truncate">{file.name}</p>
                     <p className="type-caption mt-0.5">{file.size} · {file.expiresIn === 'Permanent' ? 'Permanent' : `Expires in ${file.expiresIn}`} · {file.downloads || 0} downloads</p>

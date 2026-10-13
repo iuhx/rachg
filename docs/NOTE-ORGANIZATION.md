@@ -6,6 +6,10 @@ belongs to one category, or **Uncategorized**. Category names support 1–40
 characters; names are normalized with NFKC and compared case-insensitively. There
 can be up to 50 categories.
 
+The Uncategorized filter appears only when it contains notes. Moving or deleting
+its last note returns the filter to All notes. The note's category selector always
+keeps Uncategorized available as a destination.
+
 Select a note's category above its content to move it, and use **Pin note** to put
 it first in the current list. Pinned notes sort first, then by last body update.
 Search matches title and content. Within a category, select **This category** or
