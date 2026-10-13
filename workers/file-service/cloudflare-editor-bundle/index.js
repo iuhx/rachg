@@ -4708,8 +4708,11 @@ async function deleteMailObject(bucket, key) {
   await bucket.delete(key);
 }
 
+// packages/shared/src/storage.ts
+var FILE_UPLOAD_BYTES = 99e6;
+
 // workers/common/content.ts
-var MAX_FILE_BYTES = 10 * 1024 * 1024;
+var MAX_BUFFERED_FILE_BYTES = 10 * 1024 * 1024;
 var MAX_MAIL_BYTES = 5 * 1024 * 1024;
 var MAX_TEXT_BYTES = 1e6;
 var InputError = class extends Error {
@@ -4759,7 +4762,7 @@ async function readBounded(stream, maximum) {
     reader.releaseLock();
   }
 }
-async function boundedForm(request, maximum = MAX_FILE_BYTES + 512 * 1024) {
+async function boundedForm(request, maximum = MAX_BUFFERED_FILE_BYTES + 512 * 1024) {
   const type = request.headers.get("content-type") || "";
   if (!type.startsWith("multipart/form-data;")) throw new InputError("Expected multipart/form-data", 415);
   const bytes = await readBounded(request.body, maximum);
@@ -4812,6 +4815,72 @@ function mailPlainText(html, maxOutput = 256 * 1024) {
   return chunks.join("").replace(/&(nbsp|amp|lt|gt|quot|apos|#39);/gi, (_2, key) => entities2[key.toLowerCase()]).trim();
 }
 
+// workers/file-service/src/file-streams.ts
+async function storeStream(body, size, store) {
+  const fixed = new FixedLengthStream(size);
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(new InputError("Upload timed out. Please retry.", 408)), 3e5);
+  const pumping = body.pipeTo(fixed.writable, { signal: abort.signal }).catch((error) => {
+    throw error instanceof InputError ? error : new InputError("Upload length did not match the declared file size. Please retry.");
+  });
+  try {
+    await Promise.all([pumping, store(fixed.readable)]);
+  } catch (error) {
+    if (error instanceof TypeError && /FixedLengthStream/.test(error.message)) throw new InputError("Upload length did not match the declared file size. Please retry.");
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    abort.abort();
+    await pumping.catch(() => {
+    });
+  }
+}
+function fileSlice(body, size, offset = 0, length = size) {
+  if (!body) throw new InputError("InfiniCLOUD returned an empty response.", 502);
+  const reader = body.getReader();
+  let position = 0;
+  const sliced = new ReadableStream({
+    async pull(controller) {
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            if (position !== size) throw new InputError("The remote file changed during download. Retry the download.", 502);
+            controller.close();
+            reader.releaseLock();
+            return;
+          }
+          const start = position;
+          position += value.byteLength;
+          if (position > size) throw new InputError("InfiniCLOUD returned an invalid file size.", 502);
+          const part = value.subarray(Math.max(0, offset - start), Math.max(0, Math.min(value.length, offset + length - start)));
+          if (part.length) controller.enqueue(part);
+          if (offset + length < size && position >= offset + length) {
+            controller.close();
+            await reader.cancel();
+            reader.releaseLock();
+            return;
+          }
+          if (part.length) return;
+        }
+      } catch (error) {
+        controller.error(error);
+        await reader.cancel().catch(() => {
+        });
+        reader.releaseLock();
+      }
+    },
+    async cancel(reason) {
+      await reader.cancel(reason);
+      reader.releaseLock();
+    }
+  });
+  const fixed = new FixedLengthStream(length);
+  void sliced.pipeTo(fixed.writable).catch(() => {
+  });
+  return fixed.readable;
+}
+
 // workers/file-service/src/webdav.ts
 var WEBDAV_BASE_URL = "https://higa.teracloud.jp/dav/rachg/";
 var encode = (value) => btoa(String.fromCharCode(...value));
@@ -4839,10 +4908,10 @@ var WebdavClient = class {
     try {
       return await fetch(url, {
         method,
-        headers: { ...headers, Authorization: this.authorization },
+        headers: { ...headers, ...method === "GET" || method === "HEAD" ? { "Accept-Encoding": "identity" } : {}, Authorization: this.authorization },
         body,
         redirect: "manual",
-        signal: AbortSignal.timeout(3e4)
+        signal: AbortSignal.timeout(method === "PUT" || method === "GET" ? 3e5 : 3e4)
       });
     } catch {
       throw new InputError("InfiniCLOUD could not be reached. Check its connection in Settings and retry.", 502);
@@ -4871,8 +4940,7 @@ var WebdavClient = class {
     }
   }
   async put(storageKey, body, mime) {
-    const data = body instanceof ArrayBuffer ? body : await readBounded(body, MAX_FILE_BYTES);
-    const response = await this.request(this.url(storageKey), "PUT", { "Content-Type": mime, "If-None-Match": "*" }, data);
+    const response = await this.request(this.url(storageKey), "PUT", { "Content-Type": mime, "If-None-Match": "*" }, body);
     if (response.status === 412) {
       await response.body?.cancel();
       throw new WebdavConflict();
@@ -4900,7 +4968,7 @@ var WebdavClient = class {
     const length = response.headers.get("content-length");
     const size = length !== null && /^\d+$/.test(length) ? Number(length) : NaN;
     await response.body?.cancel();
-    if (!Number.isSafeInteger(size) || size < 0 || size > MAX_FILE_BYTES) throw new InputError("InfiniCLOUD returned an unsupported file size.", 502);
+    if (!Number.isSafeInteger(size) || size < 0 || size > FILE_UPLOAD_BYTES) throw new InputError("InfiniCLOUD returned an unsupported file size.", 502);
     return this.object(response, size);
   }
   async get(storageKey, range) {
@@ -4910,15 +4978,23 @@ var WebdavClient = class {
       return null;
     }
     if (response.status !== 200 && !(range && response.status === 206)) await this.failure(response);
-    const data = await readBounded(response.body, MAX_FILE_BYTES);
+    const invalid = async (message) => {
+      await response.body?.cancel();
+      throw new InputError(message, 502);
+    };
+    const encoding = response.headers.get("content-encoding");
+    if (encoding && encoding !== "identity") return invalid("InfiniCLOUD returned an unexpected compressed response. Retry the download.");
+    const lengthHeader = response.headers.get("content-length");
+    const length = lengthHeader !== null && /^\d+$/.test(lengthHeader) ? Number(lengthHeader) : NaN;
     if (response.status === 206 && range) {
       const contentRange = response.headers.get("content-range")?.match(/^bytes (\d+)-(\d+)\/(\d+)$/);
-      const size = Number(contentRange?.[3]);
-      if (!contentRange || Number(contentRange[1]) !== range.offset || Number(contentRange[2]) !== range.offset + range.length - 1 || data.byteLength !== range.length || size > MAX_FILE_BYTES || size <= Number(contentRange[2])) throw new InputError("InfiniCLOUD returned an invalid byte range.", 502);
-      return this.object(response, size, new Response(data).body);
+      const size2 = Number(contentRange?.[3]);
+      if (!contentRange || Number(contentRange[1]) !== range.offset || Number(contentRange[2]) !== range.offset + range.length - 1 || lengthHeader !== null && length !== range.length || size2 > FILE_UPLOAD_BYTES || size2 <= Number(contentRange[2])) return invalid("InfiniCLOUD returned an invalid byte range.");
+      return this.object(response, size2, fileSlice(response.body, range.length));
     }
-    if (range && data.byteLength < range.offset + range.length) throw new InputError("The remote file changed during download. Retry the download.", 409);
-    return this.object(response, data.byteLength, new Response(range ? data.slice(range.offset, range.offset + range.length) : data).body);
+    const size = lengthHeader === null ? (await this.head(storageKey))?.size : length;
+    if (size === void 0 || !Number.isSafeInteger(size) || size < 0 || size > FILE_UPLOAD_BYTES || range && size < range.offset + range.length) return invalid("InfiniCLOUD returned an invalid file size.");
+    return this.object(response, size, fileSlice(response.body, size, range?.offset, range?.length));
   }
 };
 async function loadWebdav(env) {
@@ -7955,7 +8031,21 @@ var index_default = {
         let sizeBytes = 0;
         let expiryParam = "48 hours";
         let storageBackend = "r2";
-        if (contentType.includes("multipart/form-data")) {
+        const streaming = url.searchParams.has("size");
+        if (streaming) {
+          const declared = url.searchParams.get("size");
+          if (!/^\d{1,9}$/.test(declared)) throw new InputError("Invalid file size");
+          sizeBytes = Number(declared);
+          if (sizeBytes > FILE_UPLOAD_BYTES) throw new InputError("Files must be 99 MB or smaller", 413);
+          const length = request.headers.get("content-length");
+          if (length !== null && Number(length) !== sizeBytes) throw new InputError("File size does not match the request body");
+          filename = url.searchParams.get("filename") || "uploaded-file";
+          mimeType = url.searchParams.get("mime") || "application/octet-stream";
+          if (mimeType.length > 200 || !/^[\w!#$&^.+-]+\/[\w!#$&^.+-]+(?:;[^\x00-\x1f\x7f]*)?$/.test(mimeType)) throw new InputError("Invalid file type");
+          expiryParam = url.searchParams.get("expiry") || expiryParam;
+          storageBackend = url.searchParams.get("storageBackend") || "r2";
+          fileStream = request.body || new Response(new Uint8Array()).body;
+        } else if (contentType.includes("multipart/form-data")) {
           const formData = await boundedForm(request);
           const formFile = formData.get("file");
           if (!formFile || typeof formFile === "string") {
@@ -7969,7 +8059,7 @@ var index_default = {
           filename = fileObj.name || "uploaded-file";
           mimeType = fileObj.type || "application/octet-stream";
           sizeBytes = fileObj.size;
-          if (sizeBytes > MAX_FILE_BYTES) throw new InputError("Files must be 10 MiB or smaller", 413);
+          if (sizeBytes > MAX_BUFFERED_FILE_BYTES) throw new InputError("Use the current workspace uploader for files over 10 MiB", 413);
           fileStream = fileObj.stream();
           expiryParam = formData.get("expiry") || expiryParam;
           const requestedStorage = formData.get("storageBackend");
@@ -7987,7 +8077,7 @@ var index_default = {
               origin
             );
           }
-          fileStream = await readBounded(request.body, MAX_FILE_BYTES);
+          fileStream = await readBounded(request.body, MAX_BUFFERED_FILE_BYTES);
           sizeBytes = fileStream.byteLength;
         }
         await storage.ready(storageBackend);
@@ -8025,7 +8115,9 @@ var index_default = {
         };
         if (!await insertFileRecord(env.DB, record, maxStorageLimit)) throw new InputError("Storage quota exceeded", 413);
         try {
-          await storage.put(r2Key, fileStream, mimeType, { fileId: id, filename, deleteToken, expiresAt: expiresAt.toString() });
+          const put = (body) => storage.put(r2Key, body, mimeType, { fileId: id, filename, deleteToken, expiresAt: expiresAt.toString() });
+          if (streaming) await storeStream(fileStream, sizeBytes, put);
+          else await put(fileStream);
           const committed = await env.DB.prepare(`UPDATE files SET status = 'active' WHERE id = ? AND status = 'uploading'`).bind(id).run();
           if ((committed.meta?.changes ?? 0) === 0) {
             await storage.delete(r2Key);

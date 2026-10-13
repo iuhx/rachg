@@ -30,6 +30,24 @@ test('locally generated QR pixels decode to exact Unicode text and URLs', () => 
   assert.equal(createQr('\ud800').kind, 'error');
 });
 
+test('file uploads stream the original File with simple CORS metadata and reject files over 99 MB', async t => {
+  const api = components().load('apps/workspace/src/services/fileService.ts');
+  let requests = 0;
+  const file = new File(['hello'], '测试 & example.md', { type: 'text/markdown' });
+  t.mock.method(globalThis, 'fetch', async (url, init) => {
+    requests++;
+    const query = new URL(url).searchParams;
+    assert.equal(query.get('size'), '5'); assert.equal(query.get('filename'), file.name);
+    assert.equal(query.get('storageBackend'), 'webdav'); assert.equal(query.get('expiry'), 'permanent');
+    assert.equal(query.get('mime'), 'text/markdown'); assert.equal(init.body, file);
+    assert.equal(init.headers['Content-Type'], 'text/plain'); assert.equal(init.credentials, 'include');
+    return Response.json({ success: true, file: fileItem('streamed') });
+  });
+  await api.uploadFileService(file, 'permanent', 'webdav');
+  await assert.rejects(api.uploadFileService({ size: 99_000_001 }), /99 MB/);
+  assert.equal(requests, 1);
+});
+
 test('Markdown plain text preserves paragraphs, lists, code whitespace and reference URLs', () => {
   const f = components(); const { markdownToText } = f.load('apps/workspace/src/utils/markdownText.ts');
   const md = '# Title\n\nFirst **bold** &amp; *italic*.\n\n- item\n  - nested\n- [x] done\n\n3. third\n4. fourth\n\n```js\n  const x = "<tag>";\n\n\n  next();\n```\n\n[Guide][ref] and ![Image](https://example.com/a.png)\n\n[ref]: https://example.com/guide\n';
@@ -42,10 +60,12 @@ test('Markdown plain text preserves paragraphs, lists, code whitespace and refer
   assert.match(result, /Guide \(https:\/\/example.com\/guide\)/);
   assert.match(result, /Image \(https:\/\/example.com\/a.png\)/);
   assert.equal(markdownToText('`a < b && c > d`'), 'a < b && c > d');
+  assert.equal(markdownToText('Hello <b>world</b>.'), 'Hello <b>world</b>.');
+  assert.equal(markdownToText('See[^a].\n\n[^a]: [Source](https://example.com)'), 'See[^a].\n\n[^a]: Source (https://example.com)');
   assert.equal(markdownToText('| A | B |\n| - | - |\n| one | two |'), 'A | B\none | two');
-  assert.throws(() => markdownToText('字'.repeat(70000)), /200 KB/);
+  assert.throws(() => markdownToText('字'.repeat(3_333_334)), /10 MB/);
   // A small reference document must not expand into a multi-megabyte response.
-  assert.throws(() => markdownToText('[x][ref] '.repeat(1000) + '\n\n[ref]: https://example.com/' + 'a'.repeat(1000)), /Converted text exceeds/);
+  assert.throws(() => markdownToText('[x][ref] '.repeat(11000) + '\n\n[ref]: https://example.com/' + 'a'.repeat(1000)), /Converted text exceeds/);
 });
 
 test('local text and Markdown-to-QR conversion never upload, including overflow and cancellation', async () => {
@@ -146,8 +166,8 @@ test('workspace uploads appear in Files and survive a delayed initial file listi
 test('oversized files and multiple drops are rejected without uploading', () => {
   let calls = 0; const f = setup({ onUploadFile: async () => { calls++; } });
   button(f.h, 'Upload a file').props.onClick(); f.h.render();
-  input(f.h, 'Choose QR file').props.onChange({ target: { files: [{ name: 'huge.bin', size: 11 * 1024 * 1024 }], value: '' } }); f.h.render();
-  assert.match(label(f.h.tree), /up to 10 MiB/); assert.equal(calls, 0);
+  input(f.h, 'Choose QR file').props.onChange({ target: { files: [{ name: 'huge.bin', size: 99_000_001 }], value: '' } }); f.h.render();
+  assert.match(label(f.h.tree), /up to 99 MB/); assert.equal(calls, 0);
   input(f.h, 'Paste an image or drop a file').props.onDrop({ preventDefault() {}, dataTransfer: { files: [new File(['a'], 'a'), new File(['b'], 'b')] } }); f.h.render();
   assert.match(label(f.h.tree), /one file for each QR/); assert.equal(calls, 0); f.h.unmount();
 });

@@ -22,3 +22,4 @@ function request<T>(input: unknown, signal: AbortSignal, valid: (value: any) => 
 }
 export const readDocument = (file: File, signal: AbortSignal) => request({ file }, signal, (value): value is ImportedDocument => typeof value?.markdown === 'string' && typeof value.name === 'string' && typeof value.warning === 'string');
 export const createWordDocument = (markdown: string, signal: AbortSignal) => request({ markdown }, signal, (value): value is Blob => value instanceof Blob);
+export const createPlainText = (markdown: string, signal: AbortSignal) => request({ markdown, plain: true }, signal, (value): value is string => typeof value === 'string');

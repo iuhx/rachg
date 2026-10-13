@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, Copy, Download, FileText, Save, Upload } from 'lucide-react';
-import { markdownToText } from '../utils/markdownText';
-import { downloadBlob } from '../utils/qr';
+import { markdownToText, MARKDOWN_TEXT_BYTES } from '../utils/markdownText';
+import { downloadBlob, byteLength, TOOL_TEXT_BYTES } from '../utils/qr';
 import { DOCUMENT_ACCEPT, DOCUMENT_FILE_BYTES, documentName, htmlDocument, markdownDocumentHtml, type ImportedDocument } from '../utils/documentFormats';
 import { checkTextSize } from '../utils/richText';
-import { readDocument, createWordDocument } from '../services/documentConversionService';
+import { readDocument, createWordDocument, createPlainText } from '../services/documentConversionService';
 import { MarkdownPreview } from './MarkdownPreview';
 import { NewItemModal } from './NewItemModal';
 import { RichTextInput } from './RichTextInput';
@@ -32,15 +32,36 @@ export const TextConverter: React.FC<Props> = ({ canSave, isActive, onSaveNote, 
   useEffect(() => { active.current = true; return () => { active.current = false; operation.current?.abort(); }; }, []);
   useEffect(() => { if (!isActive) operation.current?.abort(); }, [isActive]);
   const content = source === 'markdown' ? markdown : source === 'rich' ? rich.markdown : imported?.markdown || '';
-  const result = useMemo(() => {
-    try { checkTextSize(content); return { plain: markdownToText(content), html: target === 'document' ? markdownDocumentHtml(content) : '', error: '' }; }
+  const contentBytes = useMemo(() => byteLength(content), [content]);
+  const largePlain = target === 'plain' && contentBytes > TOOL_TEXT_BYTES && contentBytes <= MARKDOWN_TEXT_BYTES;
+  const [converted, setConverted] = useState({ content: '', plain: '', error: '' });
+  useEffect(() => {
+    if (!largePlain || !isActive) return;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      void createPlainText(content, controller.signal).then(plain => {
+        if (!controller.signal.aborted) setConverted({ content, plain, error: '' });
+      }, error => { if (!controller.signal.aborted) setConverted({ content, plain: '', error: error instanceof Error ? error.message : 'Unable to convert this document.' }); });
+    }, 250);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [content, largePlain, isActive]);
+  const converting = largePlain && converted.content !== content;
+  const immediate = useMemo(() => {
+    try {
+      checkTextSize(content, target === 'plain' ? MARKDOWN_TEXT_BYTES : target === 'markdown' ? DOCUMENT_FILE_BYTES : TOOL_TEXT_BYTES);
+      return { plain: target === 'markdown' || largePlain ? '' : markdownToText(content), html: target === 'document' ? markdownDocumentHtml(content) : '', error: '' };
+    }
     catch (error) { return { plain: '', html: '', error: error instanceof Error ? error.message : 'Unable to convert this document.' }; }
-  }, [content, target]);
+  }, [content, target, largePlain]);
+  const result = largePlain ? { plain: converting ? '' : converted.plain, html: '', error: converting ? '' : converted.error } : immediate;
   const output = target === 'plain' ? result.plain : content;
   const error = (source === 'rich' ? rich.error : '') || result.error;
   const key = `${source}:${target}`, snapshot = `${target}\n${output}`;
   const saved = Boolean(output && snapshot === savedSources[key]);
-  const unavailable = !output.trim() || Boolean(error) || Boolean(busy);
+  const unavailable = !output.trim() || Boolean(error) || Boolean(busy) || converting;
+  const outputBytes = useMemo(() => byteLength(output), [output]);
+  const noteTooLarge = outputBytes > 1_000_000;
+  const qrTooLarge = byteLength(target === 'document' ? result.plain : output) > TOOL_TEXT_BYTES;
   const name = source === 'file' && imported ? imported.name : 'converted';
   const changeSource = (next: Source) => { if (busy || next === source) return; setSource(next); setTarget(next === 'markdown' ? 'plain' : 'markdown'); setNotice(''); setOperationError(''); };
   const run = async (kind: 'import' | 'export', task: (signal: AbortSignal) => Promise<void>) => {
@@ -57,7 +78,7 @@ export const TextConverter: React.FC<Props> = ({ canSave, isActive, onSaveNote, 
     if (operation.current) return;
     if (files.length !== 1) { setOperationError('Choose one document at a time. Your existing input is kept.'); return; }
     const file = files[0];
-    if (!file.size || file.size > DOCUMENT_FILE_BYTES) { setOperationError('Choose a non-empty document up to 10 MiB.'); return; }
+    if (!file.size || file.size > DOCUMENT_FILE_BYTES) { setOperationError('Choose a non-empty document up to 30 MB.'); return; }
     void run('import', async signal => {
       const converted = await readDocument(file, signal);
       if (signal.aborted || !active.current) return;
@@ -77,7 +98,7 @@ export const TextConverter: React.FC<Props> = ({ canSave, isActive, onSaveNote, 
     if (!signal.aborted && active.current) { downloadBlob(blob, documentName(name, 'docx')); setNotice('Word document downloaded.'); }
   }); };
   const openSave = () => {
-    if (unavailable || !canSave || saved) return;
+    if (unavailable || !canSave || saved || noteTooLarge) return;
     const title = output.split('\n').find(line => line.trim())?.replace(/^\s{0,3}#{1,6}\s+/, '').trim().slice(0, 180).replace(/[\uD800-\uDBFF]$/, '') || 'Converted note';
     setDraft({ title, content: output, snapshot, key });
   };
@@ -102,7 +123,7 @@ export const TextConverter: React.FC<Props> = ({ canSave, isActive, onSaveNote, 
           <span className="type-label block">{imported ? 'Imported Markdown · editable' : 'Document'}</span>
           {imported ? <textarea aria-label="Imported Markdown" value={imported.markdown} disabled={Boolean(busy)} onChange={event => { setImported({ ...imported, markdown: event.target.value }); setNotice(''); setOperationError(''); }} className="workspace-input workspace-input-mono document-converter-surface block resize-y" /> :
           <div role="group" aria-label="Document upload" className="workspace-panel document-converter-surface border-dashed p-5 text-center flex flex-col items-center justify-center gap-3" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); choose(Array.from(event.dataTransfer.files)); }}>
-            <FileText className="w-6 h-6 mx-auto text-neutral-400" /><p className="type-body">Drop a document here</p><p className="type-caption">DOCX, Markdown, TXT or HTML · Up to 10 MiB</p>
+            <FileText className="w-6 h-6 mx-auto text-neutral-400" /><p className="type-body">Drop a document here</p><p className="type-caption">DOCX, Markdown, TXT or HTML · Up to 30 MB</p>
             <button type="button" disabled={Boolean(busy)} onClick={() => fileInput.current?.click()} className="workspace-button workspace-button-secondary"><Upload className="w-4 h-4" />Choose document</button>
           </div>}
         </div>
@@ -116,16 +137,18 @@ export const TextConverter: React.FC<Props> = ({ canSave, isActive, onSaveNote, 
     {source === 'file' && imported?.warning && <p className="type-caption">{imported.warning}</p>}
     {(error || operationError) && <p role="alert" className="type-secondary text-red-600 dark:text-red-300">{error || operationError}</p>}
     {busy && <p role="status" className="type-secondary">{busy === 'import' ? 'Reading document locally…' : 'Preparing Word document…'} <button type="button" onClick={() => operation.current?.abort()} className="underline underline-offset-2">Cancel</button></p>}
+    {converting && <p role="status" className="type-secondary">Converting locally… You can continue editing.</p>}
     <div className="flex flex-wrap justify-between items-center gap-3">
-      <p className="type-caption">{output.length.toLocaleString()} characters · Local conversion · Up to 200 KB of text</p>
+      <p className="type-caption">{output.length.toLocaleString()} characters · Local conversion · {target === 'plain' ? 'Markdown → TXT: up to 10 MB' : target === 'markdown' ? 'Markdown: up to 30 MB' : 'Word / HTML: up to 200 KB'}</p>
       <div className="flex flex-wrap gap-2">
         <button disabled={unavailable} onClick={() => void copy()} className="workspace-button workspace-button-secondary"><Copy className="w-4 h-4" />{target === 'document' ? 'Copy formatted' : target === 'plain' ? 'Copy text' : 'Copy Markdown'}</button>
         {target === 'document' ? <><button disabled={unavailable} onClick={word} className="workspace-button workspace-button-secondary"><Download className="w-4 h-4" />Download Word</button><button disabled={unavailable} onClick={() => { try { downloadBlob(new Blob([htmlDocument(content)], { type: 'text/html;charset=utf-8' }), documentName(name, 'html')); } catch (error) { setOperationError(error instanceof Error ? error.message : 'Unable to export HTML.'); } }} className="workspace-button workspace-button-secondary">Download HTML</button></>
           : <button disabled={unavailable} onClick={() => downloadBlob(new Blob([output], { type: target === 'plain' ? 'text/plain;charset=utf-8' : 'text/markdown;charset=utf-8' }), documentName(name, target === 'plain' ? 'txt' : 'md'))} className="workspace-button workspace-button-secondary"><Download className="w-4 h-4" />Download {target === 'plain' ? 'TXT' : 'MD'}</button>}
-        <button disabled={unavailable} onClick={() => onToQr(target === 'document' ? result.plain : output)} className="workspace-button workspace-button-secondary">Turn into QR<ArrowRight className="w-4 h-4" /></button>
-        <button disabled={unavailable || !canSave || saved} onClick={openSave} className="workspace-button workspace-button-primary"><Save className="w-4 h-4" />{saved ? 'Saved to Notes' : 'Save to Notes'}</button>
+        <button disabled={unavailable || qrTooLarge} onClick={() => { if (!qrTooLarge) onToQr(target === 'document' ? result.plain : output); }} className="workspace-button workspace-button-secondary">Turn into QR<ArrowRight className="w-4 h-4" /></button>
+        <button disabled={unavailable || !canSave || saved || noteTooLarge} onClick={openSave} className="workspace-button workspace-button-primary"><Save className="w-4 h-4" />{saved ? 'Saved to Notes' : 'Save to Notes'}</button>
       </div>
     </div>
+    {(noteTooLarge || qrTooLarge) && !error && <p className="type-caption">{noteTooLarge ? 'Notes support up to 1 MB per note. ' : ''}{qrTooLarge ? 'QR text sharing supports up to 200 KB. ' : ''}You can copy or download the full result.</p>}
     <p className="type-caption">Headings, lists, links and simple tables are kept. Embedded images and complex page layouts are simplified. Word / HTML results save to Notes as Markdown.</p>
     {!canSave && <p className="type-caption">Sign in to save a note. Conversion, copying and downloads stay available.</p>}
     {(notice || saved) && <p role="status" className="type-secondary">{notice || 'The converted result is saved in Notes.'} {saved && <button className="underline underline-offset-2" onClick={onOpenNotes}>Open Notes</button>}</p>}

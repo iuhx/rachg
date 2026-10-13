@@ -46,12 +46,53 @@ test('HTML and TXT inputs are safe and preserve literal text without fetching im
 test('corrupt, unsupported and oversized document packages fail without a partial result', async () => {
   await assert.rejects(engine.importDocument(new File(['not Word'], 'bad.docx')));
   await assert.rejects(engine.importDocument(new File(['legacy'], 'old.doc')), /Save older/);
-  await assert.rejects(engine.importDocument(new File([new Uint8Array(10*1024*1024+1)], 'large.txt')), /10 MiB/);
+  await assert.rejects(engine.importDocument(new File([new Uint8Array(30_000_001)], 'large.txt')), /30 MB/);
   await assert.rejects(engine.importDocument(new File([new Uint8Array([0,1,2,3])], 'binary.txt')), /binary/);
-  const bomb = zipSync({ '[Content_Types].xml': strToU8('<Types/>'), 'word/document.xml': strToU8('<document/>'), 'word/media/padding.bin': new Uint8Array(21*1024*1024) });
+  const bomb = zipSync({ '[Content_Types].xml': strToU8('<Types/>'), 'word/document.xml': strToU8('<document/>'), 'word/media/padding.bin': new Uint8Array(60_000_001) });
   await assert.rejects(engine.importDocument(new File([bomb], 'oversized.docx')), /too large when unpacked/);
   await assert.rejects(engine.markdownToDocx('字'.repeat(70000)), /200 KB/);
   await assert.rejects(engine.markdownToDocx('```\n' + 'line\n'.repeat(15001) + '```'), /too complex/);
+});
+
+test('30 MB document imports and 10 MB Markdown conversion accept exact byte boundaries', async () => {
+  const text = 'a'.repeat(30_000_000);
+  for (const extension of ['md', 'txt']) {
+    const result = await engine.importDocument(new File([text], `boundary.${extension}`));
+    assert.equal(result.markdown.length, 30_000_000); assert.equal(result.markdown, text);
+  }
+  const { markdownToText } = components().load('apps/workspace/src/utils/markdownText.ts');
+  const boundary = '字'.repeat(3_333_333) + 'a';
+  assert.equal(Buffer.byteLength(boundary), 10_000_000);
+  assert.equal(markdownToText(boundary), boundary);
+  assert.throws(() => markdownToText(boundary + 'a'), /10 MB/);
+  const parts = unzipSync(new Uint8Array(await (await engine.markdownToDocx('# Large package')).arrayBuffer()));
+  parts['word/media/fixture.bin'] = new Uint8Array(11_000_000);
+  const largeDocx = zipSync(parts, { level: 0 });
+  assert.ok(largeDocx.byteLength > 10 * 1024 * 1024);
+  assert.match((await engine.importDocument(new File([largeDocx], 'large.docx'))).markdown, /# Large package/);
+});
+
+test('large conversions disable incompatible save/share actions and ignore stale worker results', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const f = components(), pending = [];
+  f.services.documentConversionService.createPlainText = (content, signal) => new Promise(resolve => pending.push({ content, signal, resolve }));
+  const { TextConverter } = f.load('apps/workspace/src/components/TextConverter.tsx');
+  const h = f.mount(TextConverter, { canSave: true, isActive: true, onSaveNote() { throw Error('No save'); }, onOpenNotes() {}, onToQr() { throw Error('No share'); } });
+  try {
+    const edit = value => { field(h, 'Markdown input').props.onChange({ target: { value } }); h.render(); };
+    edit('a'.repeat(1_100_000)); t.mock.timers.tick(250);
+    assert.equal(button(h, 'Copy text').props.disabled, true);
+    edit('b'.repeat(1_100_000)); t.mock.timers.tick(250);
+    assert.equal(pending[0].signal.aborted, true);
+    pending[0].resolve('stale'); await flush(); h.render();
+    assert.equal(field(h, 'Plain text preview').props.value, '');
+    pending[1].resolve(pending[1].content); await flush(); h.render();
+    assert.equal(field(h, 'Plain text preview').props.value.length, 1_100_000);
+    assert.equal(button(h, 'Copy text').props.disabled, false);
+    assert.equal(button(h, 'Save to Notes').props.disabled, true);
+    assert.equal(button(h, 'Turn into QR').props.disabled, true);
+    edit('# Small'); assert.equal(field(h, 'Plain text preview').props.value, 'Small');
+  } finally { h.unmount(); }
 });
 
 const button = (h, name) => find(h, n => n.type === 'button' && label(n) === name);

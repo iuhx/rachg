@@ -142,7 +142,7 @@ Local Dev URL: `http://localhost:8787`
    - Uploads that would push total usage above 4GB (`4,294,967,296` bytes) are rejected with HTTP 413.
 
 3. **Bounded requests and cleanup**:
-   - Uploads are limited to 10 MiB per file. Actual bytes are checked before multipart parsing; unknown Content-Length does not bypass accounting.
+   - Uploads are limited to 99 MB (99,000,000 bytes) per file. The workspace sends a binary stream with `size`, `filename`, `mime`, `expiry`, and `storageBackend` query parameters. Fixed-length streaming validates actual bytes before activation and keeps R2 quota reservations atomic. Legacy multipart/raw uploads retain a safe 10 MiB buffered limit.
    - The Cron Trigger runs every 15 minutes. A batch handles at most 5 expired/stale uploads and 2 incomplete incoming-mail records, plus expired note shares, within conservative platform request budgets.
    - `expires_at = 0` remains permanent. Expiry cleanup never selects permanent active files or unrelated bucket prefixes.
    - The retired scratchpad has no routes or recurring cleanup code. Its historical tables were removed on 2026-10-13 at the owner's request; its R2 prefix was confirmed empty. The one-time SQL is recorded in `scripts/remove-retired-scratchpad.sql`.

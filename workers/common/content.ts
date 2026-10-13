@@ -1,5 +1,7 @@
 /** Limits are checked while reading, before multipart/JSON/MIME parsing. */
-export const MAX_FILE_BYTES = 10 * 1024 * 1024;
+export { FILE_UPLOAD_BYTES as MAX_FILE_BYTES } from '../../packages/shared/src/storage';
+// Legacy multipart/raw requests are buffered. Larger uploads use the streaming route.
+export const MAX_BUFFERED_FILE_BYTES = 10 * 1024 * 1024;
 export const MAX_MAIL_BYTES = 5 * 1024 * 1024;
 export const MAX_TEXT_BYTES = 1_000_000;
 
@@ -35,7 +37,7 @@ export async function readBounded(stream: ReadableStream<Uint8Array> | null, max
   } finally { if (timer !== undefined) clearTimeout(timer); reader.releaseLock(); }
 }
 
-export async function boundedForm(request: Request, maximum = MAX_FILE_BYTES + 512 * 1024): Promise<FormData> {
+export async function boundedForm(request: Request, maximum = MAX_BUFFERED_FILE_BYTES + 512 * 1024): Promise<FormData> {
   const type = request.headers.get('content-type') || '';
   if (!type.startsWith('multipart/form-data;')) throw new InputError('Expected multipart/form-data', 415);
   const bytes = await readBounded(request.body, maximum);

@@ -35,19 +35,21 @@ The folder test uses a bounded, read-only Depth-0 PROPFIND with a longer deadlin
 - `GET /v1/storage/webdav`: whether both Secrets are configured; no network or DB IO.
 - `POST /v1/storage/webdav`: verify folder access using the bound credentials.
 - Credential-writing methods return 405.
-- `POST /v1/files/upload`: multipart `storageBackend=r2|webdav`, or
+- `POST /v1/files/upload?size=...&filename=...&mime=...&expiry=...&storageBackend=r2|webdav`
+  streams the binary body (99 MB maximum). Legacy uploads up to 10 MiB accept
+  multipart `storageBackend=r2|webdav`, or
   `x-storage-backend` for binary API uploads. Omission uses R2.
 
 ## Storage behavior
 
-- Files are at most 10 MiB. The list labels R2 versus InfiniCLOUD. Existing R2 files
+- Files are at most 99 MB (99,000,000 bytes). The list labels R2 versus InfiniCLOUD. Existing R2 files
   require no migration, and a retry never silently changes storage destination.
 - InfiniCLOUD files use UUID-prefixed filenames directly inside `rachg/`; conditional
   PUT avoids overwriting an existing file. Original filenames remain in D1.
 - File links, QR codes, text pages, downloads and deletion retain workspace Access
   authentication. Existing InfiniCLOUD files are not automatically imported.
 - The R2 4 GiB quota excludes InfiniCLOUD. InfiniCLOUD enforces its account quota.
-- WebDAV downloads are bounded; range reads work when a server ignores Range.
+- WebDAV uploads/downloads stream with bounded memory; range reads work when a server ignores Range.
   Existing R2 downloads retain their streaming path.
 - Expiry cleanup receives the same Worker Secrets and deletes only recorded keys.
   Failed uploads/deletes remain retryable. There are no recursive directory operations.

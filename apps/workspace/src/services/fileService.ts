@@ -1,5 +1,5 @@
 import type { FileItem, UploadResponse, FileListResponse, ApiErrorResponse } from '../types';
-import type { StorageBackend } from '@rachg/shared';
+import { FILE_UPLOAD_BYTES, type StorageBackend } from '@rachg/shared';
 
 import { API_BASE_URL, API_CONNECT_URL } from '../config/api';
 
@@ -36,13 +36,13 @@ export async function fetchActiveFiles(): Promise<FileItem[]> {
 
 export async function uploadFileService(file: File, expiry: string = '48 hours', storageBackend: StorageBackend = 'r2'):
   Promise<{ file: FileItem; isLive: boolean }> {
-  const formData = new FormData();
-  formData.append('file', file); formData.append('expiry', expiry);
-  formData.append('storageBackend', storageBackend);
+  if (file.size > FILE_UPLOAD_BYTES) throw new Error('Files must be 99 MB or smaller.');
+  const params = new URLSearchParams({ size: String(file.size), filename: file.name, expiry, storageBackend, mime: file.type || 'application/octet-stream' });
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}/v1/files/upload`, {
-      method: 'POST', body: formData, credentials: 'include',
+    response = await fetch(`${API_BASE_URL}/v1/files/upload?${params}`, {
+      // A simple content type avoids an Access preflight. Actual MIME is metadata.
+      method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: file, credentials: 'include',
     });
   } catch {
     throw new AuthenticationRequiredError();

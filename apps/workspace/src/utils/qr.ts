@@ -4,7 +4,7 @@ import type { FileItem } from '../types';
 // A conservative UTF-8 budget keeps QR codes within medium error correction capacity.
 export const LOCAL_QR_BYTES = 2200;
 export const TOOL_TEXT_BYTES = 200_000;
-export const FILE_BYTES = 10 * 1024 * 1024;
+export { FILE_UPLOAD_BYTES as FILE_BYTES } from '@rachg/shared';
 export const byteLength = (value: string) => new TextEncoder().encode(value).byteLength;
 export interface QrMatrix { size: number; data: Uint8Array }
 export type QrResult = { kind: 'empty' | 'too-long' } | { kind: 'error'; message: string } | { kind: 'ready'; matrix: QrMatrix };

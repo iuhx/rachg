@@ -1,3 +1,4 @@
+import { FILE_UPLOAD_BYTES } from '@rachg/shared';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Check,
@@ -84,7 +85,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
   const upload = async (file: File, expiry = selectedExpiry, backend = storageBackend) => {
     if (uploadBusy.current || isUploading) return;
     setUploadError(''); setFailedUpload(null);
-    if (file.size > 10 * 1024 * 1024) { setUploadError('Choose a file up to 10 MiB. Nothing was uploaded.'); return; }
+    if (file.size > FILE_UPLOAD_BYTES) { setUploadError('Choose a file up to 99 MB. Nothing was uploaded.'); return; }
     uploadBusy.current = true;
     try { await onUploadFile(file, expiry, backend); setTypeFilter('all'); }
     catch (error) {
@@ -132,7 +133,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h3 id="add-file-heading" className="type-section-heading text-neutral-900 dark:text-white">Add a file</h3>
-            <p className="type-secondary mt-0.5">Up to 10 MiB per file. Choose how long it should stay available.</p>
+            <p className="type-secondary mt-0.5">Up to 99 MB per file. Choose how long it should stay available.</p>
           </div>
           <div className="workspace-field-inline">
             <span className="type-label">Keep for</span>

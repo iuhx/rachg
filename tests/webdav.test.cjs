@@ -25,6 +25,7 @@ function setup(t) {
     }
     if (init.method === 'DELETE') { assert.notEqual(url, root); assert.notEqual(url, root + 'unrelated.txt'); remote.delete(url); return new Response(null, { status: 204 }); }
     const data = remote.get(url); if (!data) return new Response(null, { status: 404 });
+    assert.equal(headers.get('accept-encoding'), 'identity');
     const responseHeaders = { 'Content-Type': 'text/plain', 'Content-Length': String(data.byteLength), ETag: '"fixture-etag"' };
     if (init.method === 'HEAD') return new Response(null, { headers: responseHeaders });
     if (headers.has('range') && !options.ignoreRange) {

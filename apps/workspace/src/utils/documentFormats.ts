@@ -1,7 +1,7 @@
 import { marked } from 'marked';
 import { checkTextSize, richTextToMarkdown } from './richText';
 
-export const DOCUMENT_FILE_BYTES = 10 * 1024 * 1024;
+export const DOCUMENT_FILE_BYTES = 30_000_000;
 export const DOCUMENT_ACCEPT = '.docx,.md,.markdown,.txt,.html,.htm';
 export interface ImportedDocument { markdown: string; name: string; warning: string }
 

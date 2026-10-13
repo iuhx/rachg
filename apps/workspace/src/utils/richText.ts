@@ -18,8 +18,8 @@ const schema: NonNullable<Parameters<typeof sanitize>[1]> = {
   strip: [...blocked],
 };
 
-export function checkTextSize(value: string) {
-  if (value.length > TOOL_TEXT_BYTES || byteLength(value) > TOOL_TEXT_BYTES) throw new Error('Use up to 200 KB at a time. Your existing input has been kept.');
+export function checkTextSize(value: string, maximum = TOOL_TEXT_BYTES) {
+  if (value.length > maximum || byteLength(value) > maximum) throw new Error(`Use up to ${maximum >= 1_000_000 ? `${maximum / 1_000_000} MB` : `${maximum / 1000} KB`} at a time. Your existing input has been kept.`);
 }
 function safeLink(value: unknown, image = false): string | undefined {
   if (typeof value !== 'string' || /[\x00-\x1f\x7f]/.test(value)) return;
@@ -30,8 +30,8 @@ function safeLink(value: unknown, image = false): string | undefined {
 const wrapper = (tagName: string, children: Element['children']): Element => ({ type: 'element', tagName, properties: {}, children });
 
 /** Pure AST parsing: untrusted HTML never enters a browser DOM or fetches resources. */
-export function richTextToMarkdown(html: string): { html: string; markdown: string } {
-  checkTextSize(html);
+export function richTextToMarkdown(html: string, maximum = TOOL_TEXT_BYTES): { html: string; markdown: string } {
+  checkTextSize(html, maximum);
   const tree = fromHtml(html, { fragment: true });
   let nodes = 0;
   const normalize = (node: Node, depth: number): Node[] => {
@@ -64,7 +64,7 @@ export function richTextToMarkdown(html: string): { html: string; markdown: stri
   const clean = sanitize(tree, schema);
   const safeHtml = toHtml(clean);
   const markdown = toMarkdown(toMdast(clean), { extensions: [gfmToMarkdown()], bullet: '-', fences: true, emphasis: '*', strong: '*' }).trimEnd();
-  checkTextSize(safeHtml); checkTextSize(markdown);
+  checkTextSize(safeHtml, maximum); checkTextSize(markdown, maximum);
   return { html: safeHtml, markdown };
 }
 

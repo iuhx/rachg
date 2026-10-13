@@ -19,8 +19,14 @@ the existing long-text confirmation before any upload.
 
 ## Limits and fidelity
 
-- One input file at a time, at most 10 MiB; converted text is limited to 200 KB.
-- DOCX packages are checked before parsing: at most 500 entries and 20 MiB
+- One input file at a time, at most 30 MB; imported Markdown is bounded at 30 MB.
+- Markdown → TXT accepts at most 10 MB of input and output. Above 200 KB, conversion
+  runs in a cancellable browser Worker after a short typing debounce.
+- Rich-text paste and Word/HTML exports retain their 200 KB limit. Notes are at
+  most 1 MB and QR text shares 200 KB; larger results can still be copied/downloaded.
+- MB limits are decimal UTF-8 bytes. Complex documents may reach structural limits
+  before byte limits, and format conversion can expand the source text.
+- DOCX packages are checked before parsing: at most 500 entries and 60 MB
   declared uncompressed size. Corrupt/non-DOCX packages fail without replacing
   the previous input.
 - Embedded images become placeholders; external images become links. No remote
@@ -33,7 +39,8 @@ the existing long-text confirmation before any upload.
 
 ## Implementation and verification
 
-Mammoth imports DOCX and docx creates DOCX. Processing runs in a short-lived
+Mammoth imports DOCX and docx creates DOCX. Markdown → TXT uses micromark
+and MDAST to avoid recursive regular expressions failing on long paragraphs. Processing runs in a short-lived
 module Worker, terminated on completion, cancellation, leaving the tool, or a
 30-second deadline. These dependencies load only when document conversion is
 requested; they do not add work to Notes loading or the backend.

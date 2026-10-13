@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { createRequire } = require('node:module');
-const { generateKeyPairSync, sign } = require('node:crypto');
+const { generateKeyPairSync, sign, createHash } = require('node:crypto');
 const root = path.resolve(__dirname, '..');
 const tempRoot = path.join(root, '.wrangler', 'runtime-tests');
 fs.mkdirSync(tempRoot, { recursive: true });
@@ -14,7 +14,7 @@ const wranglerRequire = createRequire(fs.realpathSync(path.join(root, 'workers/f
 const { Miniflare, convertV4MiniflareOptions } = wranglerRequire('miniflare');
 const { Response: MockResponse, FormData: RuntimeFormData } = wranglerRequire('undici');
 
-test('release Worker runs reliably in workerd with actual D1 and R2 bindings', { timeout: 60_000 }, async t => {
+test('release Worker runs reliably in workerd with actual D1 and R2 bindings', { timeout: 180_000 }, async t => {
   const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const issuer = 'https://access.example.invalid';
   const token = (claims = {}, header = {}) => {
@@ -31,7 +31,7 @@ test('release Worker runs reliably in workerd with actual D1 and R2 bindings', {
   let outgoingMail;
   const webdavRoot = 'https://higa.teracloud.jp/dav/rachg/';
   const webdavFiles = new Map();
-  const mf = new Miniflare(convertV4MiniflareOptions({
+  const runtimeOptions = {
     rootPath: root, host: '127.0.0.1', port: 0, cf: false,
     modules: true, scriptPath: path.join(root, 'workers/file-service/cloudflare-editor-bundle/index.js'),
     compatibilityDate: '2026-09-01', compatibilityFlags: ['nodejs_compat'],
@@ -62,7 +62,8 @@ test('release Worker runs reliably in workerd with actual D1 and R2 bindings', {
     },
     bindings: { ACCESS_TEAM_DOMAIN: issuer, ACCESS_AUDIENCE: 'local-workspace',
       ACCESS_ADMIN_EMAIL: 'admin@example.invalid', MAX_STORAGE_BYTES: '1000', RESEND_API_KEY: 'local-fixture-only', PUBLIC_NOTE_SHARES_ENABLED: 'true', WEBDAV_USERNAME: 'runtime-user', WEBDAV_PASSWORD: 'runtime-password' },
-  }));
+  };
+  const mf = new Miniflare(convertV4MiniflareOptions(runtimeOptions));
   t.after(() => mf.dispose());
   await mf.ready;
   const auth = token();
@@ -329,5 +330,35 @@ test('release Worker runs reliably in workerd with actual D1 and R2 bindings', {
     const deleted = await request(`/v1/projects/${saved.id}`, { ...post, method: 'DELETE', body: JSON.stringify({ revision: 2 }) });
     assert.equal(deleted.status, 200); await deleted.text();
     assert.equal((await db.prepare('SELECT COUNT(*) n FROM workspace_projects').first()).n, 0);
+  });
+
+  await t.test('99 MB streams round trip through R2 and WebDAV; oversized and false lengths never activate', async () => {
+    const largeRuntime = new Miniflare(convertV4MiniflareOptions({ ...runtimeOptions, bindings: { ...runtimeOptions.bindings, MAX_STORAGE_BYTES: '200000000' } }));
+    try {
+      await largeRuntime.ready;
+      const send = (route, options = {}) => largeRuntime.dispatchFetch(`https://workspace.example.invalid${route}`, { ...options, headers: { 'cf-access-jwt-assertion': token(), ...options.headers } });
+      const data = new Uint8Array(99_000_000).fill(73);
+      data[0] = 11; data[data.length - 1] = 99;
+      const expected = createHash('sha256').update(data).digest('hex');
+      for (const backend of ['r2', 'webdav']) {
+        const uploaded = await send(`/v1/files/upload?size=${data.length}&filename=large.bin&storageBackend=${backend}&expiry=permanent`, { method: 'POST', body: data });
+        assert.equal(uploaded.status, 201, await uploaded.clone().text());
+        const { file } = await uploaded.json(); assert.equal(file.sizeBytes, data.length);
+        const download = await send(`/f/${file.id}`, { headers: { 'Accept-Encoding': 'identity' } }); assert.equal(download.status, 200); assert.equal(download.headers.get('content-length'), String(data.length), backend);
+        const hash = createHash('sha256'), reader = download.body.getReader(); let size = 0;
+        while (true) { const part = await reader.read(); if (part.done) break; hash.update(part.value); size += part.value.length; }
+        assert.equal(size, data.length); assert.equal(hash.digest('hex'), expected);
+        const range = await send(`/f/${file.id}`, { headers: { Range: 'bytes=98999990-98999999' } });
+        assert.equal(range.status, 206); assert.deepEqual(new Uint8Array(await range.arrayBuffer()), data.slice(-10));
+        const removed = await send(`/v1/files/${file.id}`, { method: 'DELETE' }); assert.equal(removed.status, 200); await removed.text();
+        const oversized = await send(`/v1/files/upload?size=99000001&storageBackend=${backend}`, { method: 'POST', body: 'x' });
+        assert.equal(oversized.status, 413); await oversized.text();
+        for (const declared of [2, 4]) {
+          const wrong = await send(`/v1/files/upload?size=${declared}&storageBackend=${backend}`, { method: 'POST', body: new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array([1,2,3])); controller.close(); } }), duplex: 'half' });
+          assert.ok(wrong.status >= 400, `false length activated: ${wrong.status}`); await wrong.text();
+        }
+      }
+      const listing = await (await send('/v1/files')).json(); assert.deepEqual(listing.files, []);
+    } finally { await largeRuntime.dispose(); }
   });
 });

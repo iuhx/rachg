@@ -1,5 +1,6 @@
 import type { WebdavSettings } from '@rachg/shared';
 import { InputError, MAX_FILE_BYTES, readBounded } from '../../common/content';
+import { fileSlice } from './file-streams';
 
 export const WEBDAV_BASE_URL = 'https://higa.teracloud.jp/dav/rachg/';
 export interface WebdavEnv { WEBDAV_USERNAME?: string; WEBDAV_PASSWORD?: string }
@@ -24,9 +25,9 @@ export class WebdavClient {
     if (!/^webdav\/[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}--[^/\\\x00-\x1f\x7f]+$/.test(storageKey)) throw new InputError('Invalid WebDAV storage key');
     return WEBDAV_BASE_URL + encodeURIComponent(storageKey.slice('webdav/'.length));
   }
-  private async request(url: string, method: string, headers: Record<string, string> = {}, body?: ArrayBuffer | string) {
-    try { return await fetch(url, { method, headers: { ...headers, Authorization: this.authorization }, body,
-      redirect: 'manual', signal: AbortSignal.timeout(30_000) }); }
+  private async request(url: string, method: string, headers: Record<string, string> = {}, body?: ArrayBuffer | string | ReadableStream) {
+    try { return await fetch(url, { method, headers: { ...headers, ...(method === 'GET' || method === 'HEAD' ? { 'Accept-Encoding': 'identity' } : {}), Authorization: this.authorization }, body,
+      redirect: 'manual', signal: AbortSignal.timeout(method === 'PUT' || method === 'GET' ? 300_000 : 30_000) }); }
     catch { throw new InputError('InfiniCLOUD could not be reached. Check its connection in Settings and retry.', 502); }
   }
   private async failure(response: Response): Promise<never> {
@@ -50,8 +51,7 @@ export class WebdavClient {
     }
   }
   async put(storageKey: string, body: ReadableStream | ArrayBuffer, mime: string) {
-    const data = body instanceof ArrayBuffer ? body : await readBounded(body, MAX_FILE_BYTES);
-    const response = await this.request(this.url(storageKey), 'PUT', { 'Content-Type': mime, 'If-None-Match': '*' }, data);
+    const response = await this.request(this.url(storageKey), 'PUT', { 'Content-Type': mime, 'If-None-Match': '*' }, body);
     if (response.status === 412) { await response.body?.cancel(); throw new WebdavConflict(); }
     if (![200, 201, 204].includes(response.status)) await this.failure(response);
     await response.body?.cancel();
@@ -80,16 +80,20 @@ export class WebdavClient {
     const response = await this.request(this.url(storageKey), 'GET', range ? { Range: `bytes=${range.offset}-${range.offset + range.length - 1}` } : {});
     if (response.status === 404) { await response.body?.cancel(); return null; }
     if (response.status !== 200 && !(range && response.status === 206)) await this.failure(response);
-    const data = await readBounded(response.body, MAX_FILE_BYTES);
+    const invalid = async (message: string): Promise<never> => { await response.body?.cancel(); throw new InputError(message, 502); };
+    const encoding = response.headers.get('content-encoding');
+    if (encoding && encoding !== 'identity') return invalid('InfiniCLOUD returned an unexpected compressed response. Retry the download.');
+    const lengthHeader = response.headers.get('content-length');
+    const length = lengthHeader !== null && /^\d+$/.test(lengthHeader) ? Number(lengthHeader) : NaN;
     if (response.status === 206 && range) {
       const contentRange = response.headers.get('content-range')?.match(/^bytes (\d+)-(\d+)\/(\d+)$/);
       const size = Number(contentRange?.[3]);
-      if (!contentRange || Number(contentRange[1]) !== range.offset || Number(contentRange[2]) !== range.offset + range.length - 1 || data.byteLength !== range.length || size > MAX_FILE_BYTES || size <= Number(contentRange[2])) throw new InputError('InfiniCLOUD returned an invalid byte range.', 502);
-      return this.object(response, size, new Response(data).body!);
+      if (!contentRange || Number(contentRange[1]) !== range.offset || Number(contentRange[2]) !== range.offset + range.length - 1 || (lengthHeader !== null && length !== range.length) || size > MAX_FILE_BYTES || size <= Number(contentRange[2])) return invalid('InfiniCLOUD returned an invalid byte range.');
+      return this.object(response, size, fileSlice(response.body, range.length));
     }
-    if (range && data.byteLength < range.offset + range.length) throw new InputError('The remote file changed during download. Retry the download.', 409);
-    // Some WebDAV services ignore Range. Slice the bounded body before sending 206.
-    return this.object(response, data.byteLength, new Response(range ? data.slice(range.offset, range.offset + range.length) : data).body!);
+    const size = lengthHeader === null ? (await this.head(storageKey))?.size : length;
+    if (size === undefined || !Number.isSafeInteger(size) || size < 0 || size > MAX_FILE_BYTES || (range && size < range.offset + range.length)) return invalid('InfiniCLOUD returned an invalid file size.');
+    return this.object(response, size, fileSlice(response.body, size, range?.offset, range?.length));
   }
 }
 

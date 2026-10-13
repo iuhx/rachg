@@ -109,7 +109,7 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ files, fileRequest, onUplo
 
   const chooseFile = (file: File) => {
     if (uploadBusy.current) return;
-    if (file.size > FILE_BYTES) { reportError(new Error('Choose a file up to 10 MiB. Nothing was uploaded.')); return; }
+    if (file.size > FILE_BYTES) { reportError(new Error('Choose a file up to 99 MB. Nothing was uploaded.')); return; }
     setPendingFile(file); setSelectedId(''); setPageLink(false); setSource('upload'); setNotice(null);
   };
   const upload = async (file: File, retention: string, asPage = false, backend = storageBackend) => {
@@ -177,7 +177,7 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ files, fileRequest, onUplo
                 const file = event.dataTransfer.files[0]; if (file) chooseFile(file);
               }} className={`workspace-panel border-dashed p-6 text-center space-y-3 ${dragging ? 'border-neutral-500 bg-neutral-100 dark:bg-white/10' : ''}`}>
                 <Upload className="w-6 h-6 mx-auto text-neutral-400" />
-                <p className="type-body">Drop a file or paste an image here</p><p className="type-caption">Up to 10 MiB · Saved only when you click upload</p>
+                <p className="type-body">Drop a file or paste an image here</p><p className="type-caption">Up to 99 MB · Saved only when you click upload</p>
                 <input ref={fileInput} type="file" aria-label="Choose QR file" className="hidden" disabled={uploading} onChange={event => { const file = event.target.files?.[0]; if (file) chooseFile(file); event.target.value = ''; }} />
                 <button type="button" disabled={uploading} onClick={() => fileInput.current?.click()} className="workspace-button workspace-button-secondary">Choose file</button>
               </div>

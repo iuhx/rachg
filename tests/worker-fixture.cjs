@@ -6,6 +6,15 @@ const root = path.resolve(__dirname, '..');
 const workerRequire = createRequire(path.join(root, 'workers/file-service/package.json'));
 const ts = workerRequire('typescript');
 
+// Node counterpart for component/unit fixtures. Release tests use workerd's native implementation.
+global.FixedLengthStream ??= class extends TransformStream {
+  constructor(length) {
+    let bytes = 0;
+    super({ transform(chunk, controller) { bytes += chunk.byteLength; if (bytes > length) throw new TypeError('FixedLengthStream overflow'); controller.enqueue(chunk); },
+      flush() { if (bytes !== length) throw new TypeError('FixedLengthStream truncated'); } });
+  }
+};
+
 function fixture() {
   const sqlite = new DatabaseSync(':memory:');
   const objects = new Map(), queries = [], pending = [], cache = new Map();

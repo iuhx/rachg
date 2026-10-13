@@ -63,7 +63,8 @@ import { routeNoteTransfer } from './note-transfer';
 import { categoryId, routeNoteCategories, routeNoteOrganization } from './note-organization';
 import { routeTodos } from './todos';
 import { systemHealth } from './system-health';
-import { boundedForm, boundedJson, InputError, mailPlainText, MAX_FILE_BYTES, MAX_MAIL_BYTES, MAX_TEXT_BYTES, readBounded, utf8Size } from '../../common/content';
+import { boundedForm, boundedJson, InputError, mailPlainText, MAX_FILE_BYTES, MAX_BUFFERED_FILE_BYTES, MAX_MAIL_BYTES, MAX_TEXT_BYTES, readBounded, utf8Size } from '../../common/content';
+import { storeStream } from './file-streams';
 
 export interface Env {
   WEBDAV_USERNAME?: string;
@@ -545,7 +546,21 @@ export default {
         let expiryParam = '48 hours';
         let storageBackend = 'r2';
 
-        if (contentType.includes('multipart/form-data')) {
+        const streaming = url.searchParams.has('size');
+        if (streaming) {
+          const declared = url.searchParams.get('size')!;
+          if (!/^\d{1,9}$/.test(declared)) throw new InputError('Invalid file size');
+          sizeBytes = Number(declared);
+          if (sizeBytes > MAX_FILE_BYTES) throw new InputError('Files must be 99 MB or smaller', 413);
+          const length = request.headers.get('content-length');
+          if (length !== null && Number(length) !== sizeBytes) throw new InputError('File size does not match the request body');
+          filename = url.searchParams.get('filename') || 'uploaded-file';
+          mimeType = url.searchParams.get('mime') || 'application/octet-stream';
+          if (mimeType.length > 200 || !/^[\w!#$&^.+-]+\/[\w!#$&^.+-]+(?:;[^\x00-\x1f\x7f]*)?$/.test(mimeType)) throw new InputError('Invalid file type');
+          expiryParam = url.searchParams.get('expiry') || expiryParam;
+          storageBackend = url.searchParams.get('storageBackend') || 'r2';
+          fileStream = request.body || new Response(new Uint8Array()).body!;
+        } else if (contentType.includes('multipart/form-data')) {
           const formData = await boundedForm(request);
           const formFile = formData.get('file');
           if (!formFile || typeof formFile === 'string') {
@@ -559,7 +574,7 @@ export default {
           filename = fileObj.name || 'uploaded-file';
           mimeType = fileObj.type || 'application/octet-stream';
           sizeBytes = fileObj.size;
-          if (sizeBytes > MAX_FILE_BYTES) throw new InputError('Files must be 10 MiB or smaller', 413);
+          if (sizeBytes > MAX_BUFFERED_FILE_BYTES) throw new InputError('Use the current workspace uploader for files over 10 MiB', 413);
           fileStream = fileObj.stream();
           expiryParam = (formData.get('expiry') as string) || expiryParam;
           const requestedStorage = formData.get('storageBackend');
@@ -579,7 +594,7 @@ export default {
               origin
             );
           }
-          fileStream = await readBounded(request.body, MAX_FILE_BYTES);
+          fileStream = await readBounded(request.body, MAX_BUFFERED_FILE_BYTES);
           sizeBytes = fileStream.byteLength;
         }
 
@@ -625,7 +640,9 @@ export default {
 
         if (!await insertFileRecord(env.DB, record, maxStorageLimit)) throw new InputError('Storage quota exceeded', 413);
         try {
-          await storage.put(r2Key, fileStream, mimeType, { fileId: id, filename, deleteToken, expiresAt: expiresAt.toString() });
+          const put = (body: ReadableStream | ArrayBuffer) => storage.put(r2Key, body, mimeType, { fileId: id, filename, deleteToken, expiresAt: expiresAt.toString() });
+          if (streaming) await storeStream(fileStream as ReadableStream, sizeBytes, put);
+          else await put(fileStream);
           const committed = await env.DB.prepare(`UPDATE files SET status = 'active' WHERE id = ? AND status = 'uploading'`).bind(id).run();
           if ((committed.meta?.changes ?? 0) === 0) {
             await storage.delete(r2Key);

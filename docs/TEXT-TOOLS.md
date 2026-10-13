@@ -39,7 +39,8 @@ with a label. Images and other remote resources are never fetched by the convert
 Relative links lack a reliable clipboard source origin and retain their label only.
 Colors, fonts, complex page layouts and merged-cell presentation are not preserved.
 
-Input, safe editor HTML and converted output are bounded at 200 KB; overly deep/complex
+Rich-text clipboard input, safe editor HTML and its output are bounded at 200 KB.
+Document imports support 30 MB and Markdown → TXT supports 10 MB (see DOCUMENT-CONVERTER.md); overly deep/complex
 trees are rejected. Plain clipboard content is escaped before rich-text processing.
 There is no automatic upload or automatic note creation. Long QR content still uses
 the existing separate text-share review before uploading.
