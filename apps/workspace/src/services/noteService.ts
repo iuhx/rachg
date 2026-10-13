@@ -58,7 +58,7 @@ export async function isPublicNoteSharingReady(): Promise<boolean> {
 }
 
 async function throwNoteApiError(response: Response, fallback: string): Promise<never> {
-  if (response.status === 401) throw new AuthenticationRequiredError();
+  if (response.status === 401 || response.status === 403) throw new AuthenticationRequiredError();
   const body = await response.json().catch(() => null) as ApiErrorResponse | null;
   throw new Error(body?.error || `${fallback} (HTTP ${response.status})`);
 }
@@ -67,9 +67,13 @@ export async function fetchNotes(): Promise<NoteItem[]> {
   const response = await fetch(`${API_BASE_URL}/v1/notes`, {
     headers: { Accept: 'application/json' },
     credentials: 'include',
+    redirect: 'manual',
+    signal: AbortSignal.timeout(15_000),
   });
+  if (response.type === 'opaqueredirect' || response.status === 302 || response.redirected) throw new AuthenticationRequiredError();
   if (!response.ok) await throwNoteApiError(response, 'Unable to load notes');
-  const data = await response.json() as NoteListResponse;
+  const data = await response.json().catch(() => null) as NoteListResponse | null;
+  if (!data) throw new Error('Notes could not be loaded. Reconnect your workspace and try again.');
   if (!data.success || !Array.isArray(data.notes)) throw new Error('Malformed notes response');
   return data.notes;
 }

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Edit3, FileText, Plus, Search, Share2, Trash2, X } from 'lucide-react';
 import type { NoteItem } from '../types';
+import { API_CONNECT_URL } from '../config/api';
 import { MarkdownPreview } from './MarkdownPreview';
 import { ConfirmDialog } from './ConfirmDialog';
 import { NoteShareDialog } from './NoteShareDialog';
@@ -10,6 +11,8 @@ interface NotesViewProps {
   notes: NoteItem[];
   isLoading?: boolean;
   isActive?: boolean;
+  loadError?: string;
+  onRetry?: () => void;
   onNewNote: () => void;
   onUpdateNote: (note: NoteItem) => Promise<void>;
   onDeleteNote: (id: string) => Promise<void>;
@@ -43,6 +46,8 @@ export const NotesView: React.FC<NotesViewProps> = ({
   notes,
   isLoading = false,
   isActive = true,
+  loadError = '',
+  onRetry,
   onNewNote,
   onUpdateNote,
   onDeleteNote,
@@ -262,9 +267,18 @@ export const NotesView: React.FC<NotesViewProps> = ({
         <div className="workspace-panel type-secondary px-4 py-3 text-red-600 dark:text-red-300" role="alert">{errorMessage}</div>
       )}
 
+      {loadError && <div className="workspace-panel p-4 space-y-3" role="alert">
+        <div><h3 className="type-section-heading text-neutral-900 dark:text-white">Unable to load notes</h3><p className="type-secondary mt-1">{loadError}</p></div>
+        <div className="flex flex-wrap gap-2">
+          <a href={API_CONNECT_URL} className="workspace-button workspace-button-primary">Reconnect workspace</a>
+          {onRetry && <button type="button" disabled={isLoading} onClick={onRetry} className="workspace-button workspace-button-secondary">Retry</button>}
+        </div>
+      </div>}
+
       {isLoading ? (
         <div className="workspace-card workspace-empty p-10 sm:p-16 type-secondary">Loading notes…</div>
-      ) : notes.length === 0 ? (
+      ) : notes.length === 0 && loadError ? null
+        : notes.length === 0 ? (
         <div className="workspace-card workspace-empty p-10 sm:p-16">
           <div className="workspace-empty-icon">
             <FileText className="w-6 h-6 stroke-[1.5]" />

@@ -234,6 +234,13 @@ export default {
       // -------------------------------------------------------------
       // Health check & Service status
       // -------------------------------------------------------------
+      if (request.method === 'GET' && url.pathname === '/auth/return') {
+        // Access has established the API-domain cookie before this authenticated
+        // navigation reaches us. Return only to the fixed workspace origin.
+        return new Response(null, { status: 302, headers: {
+          Location: 'https://rachg.com/', 'Cache-Control': 'private, no-store', 'Referrer-Policy': 'no-referrer',
+        } });
+      }
       if (url.pathname === '/v1/projects' || url.pathname.startsWith('/v1/projects/')) {
         const result = await routeProjects(request, env.DB);
         return jsonResponse(result.body, result.status, origin);

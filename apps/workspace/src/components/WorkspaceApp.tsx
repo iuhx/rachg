@@ -48,6 +48,8 @@ export const WorkspaceApp: React.FC = () => {
   const [notes, setNotes] = useState<NoteItem[]>([]);
   const deletedNotes = useRef(new Set<string>());
   const [isNotesLoading, setIsNotesLoading] = useState(true);
+  const [notesLoadError, setNotesLoadError] = useState('');
+  const [notesReloadVersion, setNotesReloadVersion] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const pendingUploads = useRef(0);
   const deletedTransfers = useRef(new Set<string>());
@@ -262,18 +264,27 @@ export const WorkspaceApp: React.FC = () => {
 
   useEffect(() => {
     if (authStatus !== 'authenticated') return;
+    let cancelled = false;
     setIsNotesLoading(true);
+    setNotesLoadError('');
     fetchNotes()
-      .then(loaded => setNotes(current => {
-        // Preserve successful changes made while the initial read was in flight.
-        const localIds = new Set(current.map(note => note.id));
-        return [...current, ...loaded.filter(note => !localIds.has(note.id) && !deletedNotes.current.has(note.id))];
-      }))
-      .catch((error: unknown) => {
-        showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to continue.' : 'Unable to load private notes.');
+      .then(loaded => {
+        if (cancelled) return;
+        setNotes(current => {
+          // Preserve successful changes made while the read was in flight.
+          const localIds = new Set(current.map(note => note.id));
+          return [...current, ...loaded.filter(note => !localIds.has(note.id) && !deletedNotes.current.has(note.id))];
+        });
       })
-      .finally(() => setIsNotesLoading(false));
-  }, [authStatus]);
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setNotesLoadError(error instanceof AuthenticationRequiredError
+          ? 'Reconnect your workspace to load private notes.'
+          : 'Your notes could not be loaded. Retry, or reconnect if you recently signed in.');
+      })
+      .finally(() => { if (!cancelled) setIsNotesLoading(false); });
+    return () => { cancelled = true; };
+  }, [authStatus, notesReloadVersion]);
 
   const handleCreateNote = async (n: Partial<NoteItem>) => {
     try {
@@ -367,6 +378,7 @@ export const WorkspaceApp: React.FC = () => {
           {authStatus === 'unauthenticated' && <p role="status" className="workspace-panel type-secondary p-3 mb-5">Sign in using the account menu to load private files, notes, projects and mail. Local tools remain available.</p>}
           {activeTab === 'home' && (
             <DashboardView
+              notesLoadError={notesLoadError}
               transfers={transfers}
               notes={notes}
               messages={mailMessages}
@@ -395,6 +407,8 @@ export const WorkspaceApp: React.FC = () => {
 
           <div hidden={activeTab !== 'notes'}>
             <NotesView
+              loadError={authStatus === 'unauthenticated' ? 'Sign in to load your private notes.' : notesLoadError}
+              onRetry={() => setNotesReloadVersion(version => version + 1)}
               notes={notes}
               isActive={activeTab === 'notes'}
               isLoading={authStatus === 'loading' || (authStatus === 'authenticated' && isNotesLoading)}

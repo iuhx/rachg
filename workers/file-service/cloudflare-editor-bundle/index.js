@@ -7300,6 +7300,13 @@ var index_default = {
           return jsonResponse({ success: false, error: "Request origin is not allowed", code: "INVALID_ORIGIN", status: 403 }, 403, origin);
         }
       }
+      if (request.method === "GET" && url.pathname === "/auth/return") {
+        return new Response(null, { status: 302, headers: {
+          Location: "https://rachg.com/",
+          "Cache-Control": "private, no-store",
+          "Referrer-Policy": "no-referrer"
+        } });
+      }
       if (url.pathname === "/v1/projects" || url.pathname.startsWith("/v1/projects/")) {
         const result = await routeProjects(request, env.DB);
         return jsonResponse(result.body, result.status, origin);

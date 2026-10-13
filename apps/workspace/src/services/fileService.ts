@@ -1,6 +1,6 @@
 import type { FileItem, UploadResponse, FileListResponse, ApiErrorResponse } from '../types';
 
-import { API_BASE_URL } from '../config/api';
+import { API_BASE_URL, API_CONNECT_URL } from '../config/api';
 
 export class AuthenticationRequiredError extends Error {
   readonly loginUrl: string;
@@ -8,7 +8,7 @@ export class AuthenticationRequiredError extends Error {
   constructor() {
     super('Authentication required. Complete Cloudflare Access sign-in to continue.');
     this.name = 'AuthenticationRequiredError';
-    this.loginUrl = `${API_BASE_URL}/cdn-cgi/access/login?redirect_url=${encodeURIComponent(window.location.href)}`;
+    this.loginUrl = API_CONNECT_URL;
   }
 }
 

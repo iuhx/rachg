@@ -71,6 +71,10 @@ test('release Worker runs reliably in workerd with actual D1 and R2 bindings', {
   });
 
   await t.test('private note CRUD persists Unicode and rejects foreign browser writes', async () => {
+    const reconnect = await request('/auth/return?redirect_url=https://untrusted.invalid', { redirect: 'manual' });
+    assert.equal(reconnect.status, 302);
+    assert.equal(reconnect.headers.get('location'), 'https://rachg.com/');
+    await reconnect.text();
     const create = { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title: '本地验证', content: '# 安全保存\nUnicode ✓' }) };
     const denied = await request('/v1/notes', { ...create, headers: { ...create.headers, Origin: 'https://untrusted.invalid' } });

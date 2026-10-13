@@ -101,6 +101,58 @@ test('a late initial notes response cannot hide a newly created note', async () 
   } finally { f.h.unmount(); }
 });
 
+test('failed note loading stays distinct from an empty notebook and retry restores saved notes', async () => {
+  const f = await workspace(services => {
+    services.noteService.fetchNotes = async () => { throw new services.fileService.AuthenticationRequiredError(); };
+  });
+  try {
+    const props = () => find(f.h, n => n.type?.name === 'NotesView').props;
+    assert.match(props().loadError, /Reconnect/);
+    const { NotesView } = f.load('apps/workspace/src/components/NotesView.tsx');
+    const view = f.mount(NotesView, props());
+    assert.match(label(view.tree), /Unable to load notes/);
+    assert.doesNotMatch(label(view.tree), /No notes yet|Create First Note/);
+    assert.equal(find(view, n => n.type === 'a' && label(n) === 'Reconnect workspace').props.href, 'https://api.rachg.com/auth/return');
+    view.unmount();
+    f.services.noteService.fetchNotes = async () => [note('historical')];
+    props().onRetry(); f.h.render(); await flush(); f.h.render();
+    assert.equal(props().loadError, '');
+    assert.deepEqual(props().notes.map(n => n.id), ['historical']);
+    f.navigate('home');
+    assert.equal(find(f.h, n => n.type?.name === 'DashboardView').props.notesLoadError, '');
+  } finally { f.h.unmount(); }
+});
+
+test('API reconnect requires administrator authentication and always returns to the workspace', async () => {
+  const f = fixture();
+  try {
+    const url = 'https://fixture.invalid/auth/return?redirect_url=https://untrusted.invalid';
+    assert.equal((await f.worker.fetch(new Request(url), f.env, f.ctx)).status, 401);
+    const response = await f.request('/auth/return?redirect_url=https://untrusted.invalid');
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.get('location'), 'https://rachg.com/');
+    assert.match(response.headers.get('cache-control'), /no-store/);
+    assert.equal(f.queries.length, 0);
+  } finally { await f.close(); }
+});
+
+test('note reads expose login redirects as authentication failures, not an empty list', async t => {
+  const f = components();
+  const service = f.load('apps/workspace/src/services/noteService.ts');
+  const { AuthenticationRequiredError } = f.load('apps/workspace/src/services/fileService.ts');
+  const original = global.fetch; t.after(() => { global.fetch = original; });
+  global.fetch = async (_url, options) => {
+    assert.equal(options.redirect, 'manual');
+    assert.equal(options.credentials, 'include');
+    return new Response(null, { status: 302, headers: { Location: 'https://login.example.invalid' } });
+  };
+  await assert.rejects(service.fetchNotes(), AuthenticationRequiredError);
+  global.fetch = async () => new Response('<html>Sign in</html>');
+  await assert.rejects(service.fetchNotes(), /Reconnect/);
+  global.fetch = async () => Response.json({ success: true, notes: [note('historical')] });
+  assert.deepEqual((await service.fetchNotes()).map(n => n.id), ['historical']);
+});
+
 test('initial notes merging keeps newer local content and excludes deleted records', async () => {
   let release;
   const f = await workspace(services => {
