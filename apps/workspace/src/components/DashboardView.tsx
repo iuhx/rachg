@@ -95,7 +95,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           {recentNotes.length === 0 ? <div className="workspace-empty py-9"><FileText className="w-5 h-5 text-neutral-300 mb-3" /><p className="type-secondary">{isLoading ? 'Loading your notes…' : 'Your next idea starts with a note.'}</p></div> :
             <div className="divide-y divide-neutral-100 dark:divide-white/5">{recentNotes.map((note) => <article key={note.id} className="py-3.5 first:pt-1">
               <h3 className="type-body font-medium text-neutral-900 dark:text-white truncate">{note.title}</h3>
-              <p className="type-secondary mt-1 line-clamp-2">{note.excerpt || 'No preview yet.'}</p>
             </article>)}</div>}
         </section>
 
