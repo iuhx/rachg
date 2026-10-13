@@ -114,3 +114,48 @@ test('export client follows all pages and rejects a failed page instead of retur
   assert.equal((await service.fetchNotes()).length, 1001, 'Archive limits must not hide existing notes');
   await assert.rejects(service.fetchNotesForExport(), /1,000/);
 });
+
+test('note reads retry a transient network failure once and recover the complete notebook', async t => {
+  const f = components(), service = f.load('apps/workspace/src/services/noteService.ts');
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const saved = item({ updatedTimestamp: 1 }); let calls = 0;
+  t.mock.method(global, 'fetch', async (_url, options) => {
+    assert.equal(options.cache, 'no-store');
+    assert.equal(options.headers['Content-Type'], undefined);
+    if (++calls === 1) throw new TypeError('Failed to fetch');
+    return Response.json({ success: true, notes: [saved], nextCursor: null });
+  });
+  const pending = service.fetchNotes(); await new Promise(setImmediate);
+  assert.equal(calls, 1); t.mock.timers.tick(500);
+  assert.deepEqual(await pending, [saved]); assert.equal(calls, 2);
+});
+
+test('a retry repeats only the failed page and preserves previous pages without duplicates', async t => {
+  const f = components(), service = f.load('apps/workspace/src/services/noteService.ts');
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const first = item(), second = item(), urls = [];
+  t.mock.method(global, 'fetch', async url => {
+    urls.push(url);
+    if (urls.length === 1) return Response.json({ success: true, notes: [first], nextCursor: 'next-page' });
+    if (urls.length === 2) return Response.json({ error: 'Upstream temporarily unavailable' }, { status: 503 });
+    return Response.json({ success: true, notes: [second], nextCursor: null });
+  });
+  const pending = service.fetchNotesForExport(); await new Promise(setImmediate);
+  t.mock.timers.tick(500);
+  assert.deepEqual(await pending, [first, second]);
+  assert.equal(urls.length, 3); assert.equal(urls[1], urls[2]); assert.match(urls[2], /after=next-page/);
+});
+
+test('persistent read failures stop after two attempts and authentication failures are not retried', async t => {
+  const f = components(), service = f.load('apps/workspace/src/services/noteService.ts');
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let calls = 0;
+  const fetch = t.mock.method(global, 'fetch', async () => { calls++; throw new TypeError('Failed to fetch'); });
+  const rejected = assert.rejects(service.fetchNotes(), /Unable to reach the notes service/);
+  await new Promise(setImmediate); t.mock.timers.tick(500); await rejected;
+  assert.equal(calls, 2);
+  for (const status of [302, 401, 403]) {
+    calls = 0; fetch.mock.mockImplementation(async () => { calls++; return new Response(null, { status }); });
+    await assert.rejects(service.fetchNotes()); assert.equal(calls, 1);
+  }
+});

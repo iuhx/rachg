@@ -153,6 +153,23 @@ test('note reads expose login redirects as authentication failures, not an empty
   assert.deepEqual((await service.fetchNotes()).map(n => n.id), ['historical']);
 });
 
+test('notes loading shows the specific failure and keeps already loaded notes on screen', async () => {
+  let fail = false;
+  const f = await workspace(services => {
+    services.noteService.fetchNotes = async () => {
+      if (fail) throw new Error('Loading notes timed out. Please retry.');
+      return [note('saved-note')];
+    };
+  });
+  try {
+    const props = () => find(f.h, n => n.type?.name === 'NotesView').props;
+    fail = true; props().onRetry(); f.h.render(); await flush(); f.h.render();
+    assert.equal(props().loadError, 'Loading notes timed out. Please retry.');
+    assert.deepEqual(props().notes.map(n => n.id), ['saved-note']);
+    assert.equal(props().isLoading, false);
+  } finally { f.h.unmount(); }
+});
+
 test('initial notes merging keeps newer local content and excludes deleted records', async () => {
   let release;
   const f = await workspace(services => {

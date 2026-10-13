@@ -294,7 +294,7 @@ export const WorkspaceApp: React.FC = () => {
         if (cancelled) return;
         setNotesLoadError(error instanceof AuthenticationRequiredError
           ? 'Reconnect your workspace to load private notes.'
-          : 'Your notes could not be loaded. Retry, or reconnect if you recently signed in.');
+          : error instanceof Error ? error.message : 'Your notes could not be loaded. Please retry.');
       })
       .finally(() => { if (!cancelled) setIsNotesLoading(false); });
     return () => { cancelled = true; };
