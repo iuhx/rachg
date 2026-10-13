@@ -63,40 +63,6 @@ test('schema initialization is shared and warm reads execute no DDL', () => with
   assert.equal(f.queries.filter(sql=>/CREATE/.test(sql)).length,0);
 }));
 
-test('malformed scratchpad input cannot erase saved content', () => withFixture(async f => {
-  const form=new FormData();form.set('content','keep this');
-  assert.equal((await f.request('/v1/scratchpad',{method:'PUT',body:form})).status,200);
-  const response=await f.request('/v1/scratchpad',{method:'PUT',body:'{}',headers:{'content-type':'application/json'}});
-  assert.equal(response.status,415);
-  assert.equal(f.sqlite.prepare('SELECT content FROM scratchpad').get().content,'keep this');
-}));
-
-test('SVG upload is rejected; legacy SVG cannot be served as an active document', () => withFixture(async f => {
-  const form=new FormData();form.set('content','test');form.set('image',new File(['<svg xmlns="http://www.w3.org/2000/svg"/>'],'test.svg',{type:'image/svg+xml'}));
-  assert.equal((await f.request('/v1/scratchpad',{method:'PUT',body:form})).status,400);
-  await f.load('workers/file-service/src/db.ts').updateScratchpadRecord(f.DB,'test','scratchpad/legacy.svg');
-  await f.bucket.put('scratchpad/legacy.svg','<svg/>',{httpMetadata:{contentType:'image/svg+xml'}});
-  assert.equal((await f.request('/v1/scratchpad/image')).status,415);
-}));
-
-test('image replacement failure preserves old reference and defers unreferenced-image cleanup', () => withFixture(async f => {
-  const save=name=>{const form=new FormData();form.set('content',name);form.set('image',new File([name],name+'.png',{type:'image/png'}));return f.request('/v1/scratchpad',{method:'PUT',body:form});};
-  assert.equal((await save('old')).status,200);
-  const old=f.sqlite.prepare('SELECT image_key FROM scratchpad').get().image_key;
-  f.hooks.failSql=sql=>/^UPDATE scratchpad SET/.test(sql);
-  assert.equal((await save('new')).status,500);
-  assert.equal(f.sqlite.prepare('SELECT image_key FROM scratchpad').get().image_key,old);assert.ok(f.objects.has(old));
-  f.hooks.failSql=null;f.sqlite.prepare('UPDATE scratchpad_cleanup SET not_before=0').run();
-  await f.load('workers/file-service/src/cleanup.ts').cleanupStorage(f.DB,f.bucket);
-  assert.equal(f.objects.size,1);assert.ok(f.objects.has(old));
-}));
-
-test('image URL changes with its storage key and responses prohibit active content/caching', () => withFixture(async f => {
-  const save=async name=>{const form=new FormData();form.set('content',name);form.set('image',new File([name],name+'.png',{type:'image/png'}));return (await f.request('/v1/scratchpad',{method:'PUT',body:form})).json();};
-  const first=await save('first'),second=await save('second');assert.notEqual(first.scratchpad.imageUrl,second.scratchpad.imageUrl);
-  const response=await f.request('/v1/scratchpad/image');assert.equal(response.headers.get('cache-control'),'private, no-store');assert.match(response.headers.get('content-security-policy'),/sandbox/);
-}));
-
 test('HTML-only mail conversion remains bounded on unfinished tags', () => withFixture(async f => {
   const {mailPlainText}=f.load('workers/common/content.ts');
   assert.equal(mailPlainText('<p>Hello &amp; goodbye</p><script>hidden</script><div>Visible</div>'),'Hello & goodbye\n\nVisible');

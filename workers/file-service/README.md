@@ -135,9 +135,9 @@ Local Dev URL: `http://localhost:8787`
 
 3. **Bounded requests and cleanup**:
    - Uploads are limited to 10 MiB per file. Actual bytes are checked before multipart parsing; unknown Content-Length does not bypass accounting.
-   - The Cron Trigger runs every 15 minutes. A batch handles at most 8 expired/stale uploads, 3 scratchpad cleanup keys and 2 incomplete incoming-mail records to stay within conservative platform request budgets.
+   - The Cron Trigger runs every 15 minutes. A batch handles at most 5 expired/stale uploads and 2 incomplete incoming-mail records, plus expired note shares, within conservative platform request budgets.
    - `expires_at = 0` remains permanent. Expiry cleanup never selects permanent active files or unrelated bucket prefixes.
-   - Replaced/cleared scratchpad images are queued for deletion after a one-hour grace period and deleted only when no current scratchpad record references them.
+   - The retired scratchpad has no routes or cleanup code. Existing legacy tables and R2 objects are preserved, without a destructive migration.
    - Run `pnpm check` before release. Dashboard-only publication also requires configuring the Cron Trigger; generated JavaScript alone does not apply it.
 
 4. **Downloads**:

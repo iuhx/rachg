@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS notes (
 );
 
 CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes (updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notes_title ON notes (title);
 
 -- Explicitly published snapshots; private notes remain behind Access.
 CREATE TABLE IF NOT EXISTS note_shares (
@@ -38,14 +39,6 @@ CREATE TABLE IF NOT EXISTS note_shares (
   content TEXT NOT NULL,
   created_at INTEGER NOT NULL,
   expires_at INTEGER NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS scratchpad (
-  id TEXT PRIMARY KEY,
-  content TEXT NOT NULL DEFAULT '',
-  image_key TEXT,
-  created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL
 );
 
 -- Private received email index. Raw messages are stored in R2 under mail/.
@@ -77,12 +70,6 @@ CREATE TABLE IF NOT EXISTS sent_mail (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sent_mail_sent_at ON sent_mail (sent_at DESC);
-
--- Deferred deletion protects currently referenced images during failed/concurrent saves.
-CREATE TABLE IF NOT EXISTS scratchpad_cleanup (
-  r2_key TEXT PRIMARY KEY,
-  not_before INTEGER NOT NULL
-);
 
 CREATE TABLE IF NOT EXISTS mail_ingestions (
   id TEXT PRIMARY KEY,

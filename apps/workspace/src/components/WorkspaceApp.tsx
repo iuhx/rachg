@@ -407,6 +407,8 @@ export const WorkspaceApp: React.FC = () => {
 
           <div hidden={activeTab !== 'notes'}>
             <NotesView
+              canImport={authStatus === 'authenticated'}
+              onImportedNote={note => setNotes(current => current.some(item => item.id === note.id) ? current : [note, ...current])}
               loadError={authStatus === 'unauthenticated' ? 'Sign in to load your private notes.' : notesLoadError}
               onRetry={() => setNotesReloadVersion(version => version + 1)}
               notes={notes}

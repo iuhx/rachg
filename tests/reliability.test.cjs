@@ -59,11 +59,6 @@ test('a full cold cleanup batch stays within 50 storage calls', () => withFixtur
   f.env.MAX_STORAGE_BYTES = '10000';
   for (let i = 0; i < 6; i++) await f.upload(10, '1 hour');
   f.sqlite.prepare('UPDATE files SET expires_at=1').run();
-  for (let i = 0; i < 3; i++) {
-    const key = `scratchpad/stale-${i}`;
-    f.sqlite.prepare('INSERT INTO scratchpad_cleanup (r2_key, not_before) VALUES (?,0)').run(key);
-    await f.bucket.put(key, 'image', {});
-  }
   for (let i = 0; i < 2; i++) {
     const key = `mail/stale-${i}`;
     f.sqlite.prepare('INSERT INTO mail_ingestions (id,r2_key,size_bytes,created_at) VALUES (?,?,1,0)').run(`stale-${i}`, key);
@@ -77,8 +72,8 @@ test('a full cold cleanup batch stays within 50 storage calls', () => withFixtur
     f.load('workers/file-service/src/cleanup.ts').cleanupStorage(coldDB, bucket),
     f.load('workers/file-service/src/note-shares.ts').cleanupNoteShares(coldDB),
   ]);
-  assert.deepEqual(result, { deleted: 10, failed: 0 });
-  assert.equal(f.queries.length - start + storageCalls, 50);
+  assert.deepEqual(result, { deleted: 7, failed: 0 });
+  assert.equal(f.queries.length - start + storageCalls, 39);
   assert.equal(f.sqlite.prepare("SELECT COUNT(*) n FROM files WHERE status='active'").get().n, 1);
 }));
 

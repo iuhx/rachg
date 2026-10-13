@@ -149,7 +149,7 @@ test('note reads expose login redirects as authentication failures, not an empty
   await assert.rejects(service.fetchNotes(), AuthenticationRequiredError);
   global.fetch = async () => new Response('<html>Sign in</html>');
   await assert.rejects(service.fetchNotes(), /Reconnect/);
-  global.fetch = async () => Response.json({ success: true, notes: [note('historical')] });
+  global.fetch = async () => Response.json({ success: true, notes: [note('historical')], nextCursor: null });
   assert.deepEqual((await service.fetchNotes()).map(n => n.id), ['historical']);
 });
 

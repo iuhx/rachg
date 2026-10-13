@@ -6,7 +6,6 @@ import type {
   NoteListResponse,
   NoteResponse,
   NoteDeleteResponse,
-  ScratchpadResponse,
   ApiErrorResponse,
   MailItem,
   MailMessage,
@@ -37,9 +36,6 @@ import {
   updateNoteRecord,
   deleteNoteRecord,
   mapRecordToNoteItem,
-  getScratchpadRecord,
-  updateScratchpadRecord,
-  mapRecordToScratchpadItem,
   listMailRecords,
   getMailRecord,
   deleteMailRecord,
@@ -47,11 +43,10 @@ import {
   updateSentMailStatus,
   listSentMailRecords,
   getSentMailRecord,
-  queueScratchpadCleanup,
   type MailRecord,
   type SentMailRecord,
 } from './db';
-import { buildR2Key, uploadToR2, getFromR2, headFromR2, deleteFromR2, buildScratchpadKey, getScratchpadObject, getMailObject, deleteMailObject } from './storage';
+import { buildR2Key, uploadToR2, getFromR2, headFromR2, deleteFromR2, getMailObject, deleteMailObject } from './storage';
 import { checkStorageQuota, getActiveStorageUsage } from './quota';
 import { isAuthenticated, resolveAuth } from './auth';
 import { getFileExpiry, isFileExpired } from './expiry';
@@ -62,6 +57,7 @@ import { cleanupNoteShares, manageNoteShare, publicNoteShare } from './note-shar
 import { publicShareHeaders } from './note-share-page';
 import { formatOutgoingMail } from './mail-format';
 import { routeProjects } from './projects';
+import { routeNoteTransfer } from './note-transfer';
 import { boundedForm, boundedJson, InputError, mailPlainText, MAX_FILE_BYTES, MAX_MAIL_BYTES, MAX_TEXT_BYTES, readBounded, utf8Size } from '../../common/content';
 
 export interface Env {
@@ -269,6 +265,9 @@ export default {
       // -------------------------------------------------------------
       // Routes: private Markdown notes (D1)
       // -------------------------------------------------------------
+      if (url.pathname === '/v1/notes/export' || url.pathname === '/v1/notes/import') {
+        return jsonResponse(await routeNoteTransfer(request, env.DB), 200, origin);
+      }
       const noteDetailMatch = url.pathname.match(/^\/v1\/notes\/([a-zA-Z0-9_-]+)$/);
       const noteShareMatch = url.pathname.match(/^\/v1\/notes\/([a-zA-Z0-9_-]+)\/share$/);
       if (noteShareMatch) {
@@ -413,68 +412,6 @@ export default {
         await deleteMailObject(env.FILES_BUCKET, record.r2_key);
         await deleteMailRecord(env.DB, record.id);
         return jsonResponse<MailDeleteResponse>({ success: true, message: 'Email deleted', id: record.id }, 200, origin);
-      }
-
-      if (request.method === 'GET' && url.pathname === '/v1/scratchpad') {
-        const record = await getScratchpadRecord(env.DB);
-        return jsonResponse<ScratchpadResponse>({ success: true, scratchpad: mapRecordToScratchpadItem(record, baseUrl) }, 200, origin);
-      }
-
-      if (request.method === 'PUT' && url.pathname === '/v1/scratchpad') {
-        const formData = await boundedForm(request);
-        if (typeof formData.get('content') !== 'string') throw new InputError('Scratchpad content is required');
-        const content = String(formData.get('content'));
-        if (utf8Size(content) > 200_000) {
-          return jsonResponse<ApiErrorResponse>({ success: false, error: 'Scratchpad text is too large', code: 'INVALID_SCRATCHPAD', status: 400 }, 400, origin);
-        }
-        const current = await getScratchpadRecord(env.DB);
-        let imageKey = current.image_key;
-        const image = formData?.get('image');
-        const imageFile = image && typeof image !== 'string' ? image as File : null;
-        if (imageFile && imageFile.size > 0) {
-          if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(imageFile.type)) {
-            return jsonResponse<ApiErrorResponse>({ success: false, error: 'Use PNG, JPEG, WebP or GIF images', code: 'INVALID_IMAGE', status: 400 }, 400, origin);
-          }
-          if (imageFile.size > 10 * 1024 * 1024) {
-            return jsonResponse<ApiErrorResponse>({ success: false, error: 'Scratchpad images must be 10MB or smaller', code: 'IMAGE_TOO_LARGE', status: 413 }, 413, origin);
-          }
-          imageKey = buildScratchpadKey(crypto.randomUUID(), imageFile.name || 'pasted-image');
-          await queueScratchpadCleanup(env.DB, imageKey);
-          await uploadToR2(env.FILES_BUCKET, imageKey, imageFile.stream(), imageFile.type, { source: 'scratchpad' });
-        }
-        if (current.image_key && current.image_key !== imageKey) await queueScratchpadCleanup(env.DB, current.image_key);
-        const record = await updateScratchpadRecord(env.DB, content, imageKey);
-        return jsonResponse<ScratchpadResponse>({ success: true, scratchpad: mapRecordToScratchpadItem(record, baseUrl) }, 200, origin);
-      }
-
-      if (request.method === 'DELETE' && url.pathname === '/v1/scratchpad') {
-        const current = await getScratchpadRecord(env.DB);
-        if (current.image_key) await queueScratchpadCleanup(env.DB, current.image_key);
-        const record = await updateScratchpadRecord(env.DB, '', null);
-        return jsonResponse<ScratchpadResponse>({ success: true, scratchpad: mapRecordToScratchpadItem(record, baseUrl) }, 200, origin);
-      }
-
-      if (request.method === 'GET' && url.pathname === '/v1/scratchpad/image') {
-        const record = await getScratchpadRecord(env.DB);
-        if (!record.image_key) {
-          return new Response('Scratchpad image not found.', { status: 404, headers: { 'Access-Control-Allow-Origin': origin, Vary: 'Origin' } });
-        }
-        const image = await getScratchpadObject(env.FILES_BUCKET, record.image_key);
-        if (!image) {
-          return new Response('Scratchpad image not found.', { status: 404, headers: { 'Access-Control-Allow-Origin': origin, Vary: 'Origin' } });
-        }
-        const headers = new Headers();
-        image.writeHttpMetadata(headers);
-        if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(headers.get('Content-Type') || '')) throw new InputError('Replace this legacy attachment with a supported raster image', 415);
-        headers.set('Content-Security-Policy', "sandbox; default-src 'none'");
-        headers.set('Content-Disposition', 'attachment; filename="scratchpad-image"');
-        headers.set('X-Content-Type-Options', 'nosniff');
-        headers.set('etag', image.httpEtag);
-        headers.set('Cache-Control', 'private, no-store');
-        headers.set('Access-Control-Allow-Origin', origin);
-        headers.set('Access-Control-Allow-Credentials', 'true');
-        headers.set('Vary', 'Origin');
-        return new Response(image.body, { status: 200, headers });
       }
 
       if (request.method === 'POST' && url.pathname === '/v1/notes') {

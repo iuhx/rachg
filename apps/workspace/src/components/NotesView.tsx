@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Edit3, FileText, Plus, Search, Share2, Trash2, X } from 'lucide-react';
+import { Check, Download, Edit3, FileText, Plus, Search, Share2, Trash2, Upload, X } from 'lucide-react';
 import type { NoteItem } from '../types';
 import { API_CONNECT_URL } from '../config/api';
 import { MarkdownPreview } from './MarkdownPreview';
 import { ConfirmDialog } from './ConfirmDialog';
 import { NoteShareDialog } from './NoteShareDialog';
+import { NoteTransferDialog } from './NoteTransferDialog';
+import { downloadNoteFile, markdownFilename } from '../utils/noteTransfer';
 import { rememberDraft, recoverDraft, discardSavedDraft, discardDeletedDraft } from './noteDrafts';
 
 interface NotesViewProps {
@@ -13,6 +15,8 @@ interface NotesViewProps {
   isActive?: boolean;
   loadError?: string;
   onRetry?: () => void;
+  canImport?: boolean;
+  onImportedNote?: (note: NoteItem) => void;
   onNewNote: () => void;
   onUpdateNote: (note: NoteItem) => Promise<void>;
   onDeleteNote: (id: string) => Promise<void>;
@@ -48,6 +52,8 @@ export const NotesView: React.FC<NotesViewProps> = ({
   isActive = true,
   loadError = '',
   onRetry,
+  canImport = true,
+  onImportedNote = () => {},
   onNewNote,
   onUpdateNote,
   onDeleteNote,
@@ -62,6 +68,7 @@ export const NotesView: React.FC<NotesViewProps> = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [noteToDelete, setNoteToDelete] = useState<NoteItem | null>(null);
   const [noteToShare, setNoteToShare] = useState<NoteItem | null>(null);
+  const [transferMode, setTransferMode] = useState<'import' | 'export' | null>(null);
   const deletingRef = useRef(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [clock, setClock] = useState(() => Date.now());
@@ -250,6 +257,12 @@ export const NotesView: React.FC<NotesViewProps> = ({
     }
   };
 
+  const exportCurrentNote = () => {
+    if (!activeNote || isDirty || saveState === 'saving' || recovered) return;
+    try { downloadNoteFile(new Blob([activeNote.content], { type: 'text/markdown;charset=utf-8' }), markdownFilename(activeNote.title)); }
+    catch { setErrorMessage('Unable to download this note. Please try again.'); }
+  };
+
   return (
     <div className="workspace-view space-y-8 pb-20">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -257,10 +270,14 @@ export const NotesView: React.FC<NotesViewProps> = ({
           <h2 className="type-page-heading text-neutral-900 dark:text-white">Notes</h2>
           <p className="type-secondary mt-1">Markdown notes, private until you choose to share.</p>
         </div>
+        <div className="flex flex-wrap gap-2">
+        <button onClick={() => setTransferMode('import')} disabled={!canImport || isLoading || Boolean(loadError)} className="workspace-button workspace-button-secondary"><Upload className="w-3.5 h-3.5" />Import</button>
+        <button onClick={() => setTransferMode('export')} disabled={isLoading || Boolean(loadError)} className="workspace-button workspace-button-secondary"><Download className="w-3.5 h-3.5" />Export all</button>
         <button onClick={onNewNote} className="workspace-button workspace-button-primary cursor-pointer shadow-xs">
           <Plus className="w-3.5 h-3.5 stroke-[2]" />
           <span>New Note</span>
         </button>
+        </div>
       </div>
 
       {errorMessage && (
@@ -354,6 +371,7 @@ export const NotesView: React.FC<NotesViewProps> = ({
                       ) : (
                         <button onClick={startEdit} className="workspace-button workspace-button-secondary min-h-8 px-3 py-1 cursor-pointer"><Edit3 className="w-3.5 h-3.5" /><span>Edit</span></button>
                       )}
+                      <button onClick={exportCurrentNote} disabled={isDeleting || isDirty || saveState === 'saving' || recovered} title="Export note as Markdown" aria-label="Export note as Markdown" className="workspace-button workspace-button-secondary min-h-8 px-2"><Download className="w-3.5 h-3.5" /></button>
                       <button onClick={() => setNoteToShare(activeNote)} disabled={isDeleting || isDirty || saveState === 'saving' || recovered} title={isDirty || recovered ? 'Save your changes before sharing' : 'Share a read-only snapshot'} className="workspace-button workspace-button-secondary min-h-8 px-3 py-1 cursor-pointer disabled:opacity-50"><Share2 className="w-3.5 h-3.5" /><span>Share</span></button>
                       <button onClick={() => setNoteToDelete(activeNote)} disabled={isDeleting} title="Delete note" aria-label="Delete note" className="workspace-button workspace-button-secondary min-h-8 px-2 text-red-500 hover:text-red-600 cursor-pointer disabled:opacity-50"><Trash2 className="w-3.5 h-3.5" /></button>
                     </div>
@@ -383,6 +401,7 @@ export const NotesView: React.FC<NotesViewProps> = ({
         </div>
       )}
 
+      {isActive && transferMode && <NoteTransferDialog mode={transferMode} onClose={() => setTransferMode(null)} onImported={onImportedNote} />}
       {isActive && noteToShare && <NoteShareDialog key={noteToShare.id} note={noteToShare} onClose={() => setNoteToShare(null)} />}
       <ConfirmDialog
         isOpen={isActive && noteToDelete !== null}

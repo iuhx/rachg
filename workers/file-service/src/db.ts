@@ -1,5 +1,4 @@
 import type { FileItem, FileCategory, NoteItem } from '@rachg/shared';
-import type { ScratchpadItem } from '@rachg/shared';
 import { isFileExpired } from './expiry';
 import { ensureMailLedger } from '../../common/mail-ledger';
 
@@ -21,14 +20,6 @@ export interface NoteRecord {
   id: string;
   title: string;
   content: string;
-  created_at: number;
-  updated_at: number;
-}
-
-export interface ScratchpadRecord {
-  id: string;
-  content: string;
-  image_key: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -124,16 +115,6 @@ export function mapRecordToNoteItem(record: NoteRecord): NoteItem {
   };
 }
 
-export function mapRecordToScratchpadItem(record: ScratchpadRecord, baseUrl: string): ScratchpadItem {
-  return {
-    id: record.id,
-    content: record.content,
-    imageUrl: record.image_key ? `${baseUrl}/v1/scratchpad/image?v=${encodeURIComponent(record.image_key)}` : undefined,
-    updatedAt: formatNoteTimestamp(record.updated_at),
-    updatedTimestamp: record.updated_at,
-  };
-}
-
 export function mapRecordToFileItem(r: FileRecord, baseUrl: string): FileItem {
   const now = Date.now();
   const msRemaining = r.expires_at - now;
@@ -198,18 +179,6 @@ async function initializeSchema(db: D1Database): Promise<void> {
 
   await db
     .prepare(
-      `CREATE TABLE IF NOT EXISTS scratchpad (
-        id TEXT PRIMARY KEY,
-        content TEXT NOT NULL DEFAULT '',
-        image_key TEXT,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
-      );`
-    )
-    .run();
-
-  await db
-    .prepare(
       `CREATE TABLE IF NOT EXISTS notes (
         id TEXT PRIMARY KEY,
         title TEXT NOT NULL,
@@ -223,6 +192,7 @@ async function initializeSchema(db: D1Database): Promise<void> {
   await db
     .prepare(`CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes (updated_at DESC);`)
     .run();
+  await db.prepare('CREATE INDEX IF NOT EXISTS idx_notes_title ON notes (title)').run();
 
   await db.prepare(`CREATE TABLE IF NOT EXISTS note_shares (
     note_id TEXT PRIMARY KEY REFERENCES notes(id) ON DELETE CASCADE,
@@ -260,9 +230,6 @@ async function initializeSchema(db: D1Database): Promise<void> {
   );`).run();
 
   await db.prepare(`CREATE INDEX IF NOT EXISTS idx_sent_mail_sent_at ON sent_mail (sent_at DESC);`).run();
-  await db.prepare(`CREATE TABLE IF NOT EXISTS scratchpad_cleanup (
-    r2_key TEXT PRIMARY KEY, not_before INTEGER NOT NULL
-  );`).run();
   await ensureMailLedger(db);
 }
 
@@ -459,27 +426,4 @@ export async function deleteNoteRecord(db: D1Database, id: string): Promise<bool
     db.prepare('DELETE FROM notes WHERE id = ?').bind(id),
   ]);
   return (result.meta?.changes ?? 0) > 0;
-}
-
-export async function getScratchpadRecord(db: D1Database): Promise<ScratchpadRecord> {
-  await ensureSchema(db);
-  const existing = await db.prepare(`SELECT * FROM scratchpad WHERE id = 'default' LIMIT 1`).first<ScratchpadRecord>();
-  if (existing) return existing;
-  const now = Date.now();
-  const record: ScratchpadRecord = { id: 'default', content: '', image_key: null, created_at: now, updated_at: now };
-  await db.prepare(`INSERT OR IGNORE INTO scratchpad (id, content, image_key, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`).bind(record.id, record.content, record.image_key, record.created_at, record.updated_at).run();
-  return (await db.prepare(`SELECT * FROM scratchpad WHERE id = 'default'`).first<ScratchpadRecord>())!;
-}
-
-export async function queueScratchpadCleanup(db: D1Database, key: string): Promise<void> {
-  await ensureSchema(db);
-  if (!key.startsWith('scratchpad/')) throw new Error('Invalid scratchpad cleanup key');
-  await db.prepare('INSERT OR IGNORE INTO scratchpad_cleanup (r2_key, not_before) VALUES (?, ?)').bind(key, Date.now() + 3600_000).run();
-}
-
-export async function updateScratchpadRecord(db: D1Database, content: string, imageKey: string | null): Promise<ScratchpadRecord> {
-  const current = await getScratchpadRecord(db);
-  const updatedAt = Date.now();
-  await db.prepare(`UPDATE scratchpad SET content = ?, image_key = ?, updated_at = ? WHERE id = 'default'`).bind(content, imageKey, updatedAt).run();
-  return { ...current, content, image_key: imageKey, updated_at: updatedAt };
 }

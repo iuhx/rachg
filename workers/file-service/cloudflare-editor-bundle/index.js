@@ -4423,15 +4423,6 @@ function mapRecordToNoteItem(record) {
     updatedTimestamp: record.updated_at
   };
 }
-function mapRecordToScratchpadItem(record, baseUrl) {
-  return {
-    id: record.id,
-    content: record.content,
-    imageUrl: record.image_key ? `${baseUrl}/v1/scratchpad/image?v=${encodeURIComponent(record.image_key)}` : void 0,
-    updatedAt: formatNoteTimestamp(record.updated_at),
-    updatedTimestamp: record.updated_at
-  };
-}
 function mapRecordToFileItem(r, baseUrl) {
   const now = Date.now();
   const msRemaining = r.expires_at - now;
@@ -4482,15 +4473,6 @@ async function initializeSchema(db) {
   await db.prepare(`CREATE INDEX IF NOT EXISTS idx_files_status_expires ON files (status, expires_at);`).run();
   await db.prepare(`CREATE INDEX IF NOT EXISTS idx_files_created ON files (created_at DESC);`).run();
   await db.prepare(
-    `CREATE TABLE IF NOT EXISTS scratchpad (
-        id TEXT PRIMARY KEY,
-        content TEXT NOT NULL DEFAULT '',
-        image_key TEXT,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
-      );`
-  ).run();
-  await db.prepare(
     `CREATE TABLE IF NOT EXISTS notes (
         id TEXT PRIMARY KEY,
         title TEXT NOT NULL,
@@ -4500,6 +4482,7 @@ async function initializeSchema(db) {
       );`
   ).run();
   await db.prepare(`CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes (updated_at DESC);`).run();
+  await db.prepare("CREATE INDEX IF NOT EXISTS idx_notes_title ON notes (title)").run();
   await db.prepare(`CREATE TABLE IF NOT EXISTS note_shares (
     note_id TEXT PRIMARY KEY REFERENCES notes(id) ON DELETE CASCADE,
     token TEXT NOT NULL UNIQUE,
@@ -4532,9 +4515,6 @@ async function initializeSchema(db) {
     references_header TEXT
   );`).run();
   await db.prepare(`CREATE INDEX IF NOT EXISTS idx_sent_mail_sent_at ON sent_mail (sent_at DESC);`).run();
-  await db.prepare(`CREATE TABLE IF NOT EXISTS scratchpad_cleanup (
-    r2_key TEXT PRIMARY KEY, not_before INTEGER NOT NULL
-  );`).run();
   await ensureMailLedger(db);
 }
 async function listMailRecords(db) {
@@ -4663,38 +4643,13 @@ async function deleteNoteRecord(db, id) {
   ]);
   return (result.meta?.changes ?? 0) > 0;
 }
-async function getScratchpadRecord(db) {
-  await ensureSchema(db);
-  const existing = await db.prepare(`SELECT * FROM scratchpad WHERE id = 'default' LIMIT 1`).first();
-  if (existing) return existing;
-  const now = Date.now();
-  const record = { id: "default", content: "", image_key: null, created_at: now, updated_at: now };
-  await db.prepare(`INSERT OR IGNORE INTO scratchpad (id, content, image_key, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`).bind(record.id, record.content, record.image_key, record.created_at, record.updated_at).run();
-  return await db.prepare(`SELECT * FROM scratchpad WHERE id = 'default'`).first();
-}
-async function queueScratchpadCleanup(db, key) {
-  await ensureSchema(db);
-  if (!key.startsWith("scratchpad/")) throw new Error("Invalid scratchpad cleanup key");
-  await db.prepare("INSERT OR IGNORE INTO scratchpad_cleanup (r2_key, not_before) VALUES (?, ?)").bind(key, Date.now() + 36e5).run();
-}
-async function updateScratchpadRecord(db, content, imageKey) {
-  const current = await getScratchpadRecord(db);
-  const updatedAt = Date.now();
-  await db.prepare(`UPDATE scratchpad SET content = ?, image_key = ?, updated_at = ? WHERE id = 'default'`).bind(content, imageKey, updatedAt).run();
-  return { ...current, content, image_key: imageKey, updated_at: updatedAt };
-}
 
 // workers/file-service/src/storage.ts
 var TRANSFERS_PREFIX = "transfers/";
-var SCRATCHPAD_PREFIX = "scratchpad/";
 var MAIL_PREFIX = "mail/";
 function buildR2Key(id, filename) {
   const cleanFilename = filename.replace(/[/\\?%*:|"<>]/g, "_").trim();
   return `${TRANSFERS_PREFIX}${id}/${cleanFilename}`;
-}
-function buildScratchpadKey(id, filename) {
-  const cleanFilename = filename.replace(/[/\\?%*:|"<>]/g, "_").trim() || "image";
-  return `${SCRATCHPAD_PREFIX}${id}/${cleanFilename}`;
 }
 async function uploadToR2(bucket, key, body, mimeType, customMetadata = {}) {
   const obj = await bucket.put(key, body, {
@@ -4720,14 +4675,6 @@ async function deleteFromR2(bucket, key) {
   if (!key.startsWith(TRANSFERS_PREFIX)) {
     throw new Error("Access denied: key is outside transfers/ prefix");
   }
-  await bucket.delete(key);
-}
-async function getScratchpadObject(bucket, key) {
-  if (!key.startsWith(SCRATCHPAD_PREFIX)) throw new Error("Access denied: key is outside scratchpad/ prefix");
-  return bucket.get(key);
-}
-async function deleteScratchpadObject(bucket, key) {
-  if (!key.startsWith(SCRATCHPAD_PREFIX)) throw new Error("Access denied: key is outside scratchpad/ prefix");
   await bucket.delete(key);
 }
 async function getMailObject(bucket, key) {
@@ -4873,21 +4820,6 @@ async function cleanupStorage(db, bucket) {
       if (!claim.meta?.changes) continue;
       await deleteFromR2(bucket, record.r2_key);
       await db.prepare(`UPDATE files SET status = 'purged' WHERE id = ?`).bind(record.id).run();
-      deleted++;
-    } catch {
-      failed++;
-    }
-  }
-  const images = await db.prepare("SELECT r2_key FROM scratchpad_cleanup WHERE not_before <= ? ORDER BY not_before LIMIT 3").bind(now).all();
-  for (const record of images.results) {
-    try {
-      const referenced = await db.prepare("SELECT id FROM scratchpad WHERE image_key = ?").bind(record.r2_key).first();
-      if (referenced) {
-        await db.prepare("UPDATE scratchpad_cleanup SET not_before = ? WHERE r2_key = ?").bind(now + 36e5, record.r2_key).run();
-        continue;
-      }
-      await deleteScratchpadObject(bucket, record.r2_key);
-      await db.prepare("DELETE FROM scratchpad_cleanup WHERE r2_key = ?").bind(record.r2_key).run();
       deleted++;
     } catch {
       failed++;
@@ -7169,6 +7101,35 @@ async function routeProjects(request, db) {
   throw new InputError("This project changed elsewhere. Your edits are kept. Close this form, refresh Projects and reopen the latest version before saving or deleting.", 409);
 }
 
+// workers/file-service/src/note-transfer.ts
+async function routeNoteTransfer(request, db) {
+  const url = new URL(request.url);
+  if (url.pathname.endsWith("/export")) {
+    if (request.method !== "GET") throw new InputError("Method not allowed", 405);
+    const after = url.searchParams.get("after") || "";
+    if (after && !/^[A-Za-z0-9_-]{1,120}$/.test(after)) throw new InputError("Invalid export cursor");
+    await ensureSchema(db);
+    const result = await db.prepare("SELECT * FROM notes WHERE id > ? ORDER BY id ASC LIMIT 11").bind(after).all();
+    const records = result.results.slice(0, 10);
+    return { success: true, notes: records.map(mapRecordToNoteItem), nextCursor: result.results.length > 10 ? records[9].id : null };
+  }
+  if (request.method !== "POST") throw new InputError("Method not allowed", 405);
+  const payload = await boundedJson(request);
+  if (!payload || typeof payload.id !== "string" || !/^import-[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(payload.id) || typeof payload.title !== "string" || !payload.title.trim() || payload.title.trim().length > 200 || typeof payload.content !== "string" || utf8Size(payload.content) > MAX_TEXT_BYTES) {
+    throw new InputError("A valid import ID, title (up to 200 characters) and note (up to 1 MB) are required.");
+  }
+  await ensureSchema(db);
+  const title = payload.title.trim(), content = payload.content, now = Date.now();
+  const inserted = await db.prepare(`INSERT INTO notes (id, title, content, created_at, updated_at)
+    SELECT ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM notes WHERE title = ? AND content = ?)
+    ON CONFLICT(id) DO NOTHING`).bind(payload.id, title, content, now, now, title, content).run();
+  const byId = await db.prepare("SELECT * FROM notes WHERE id = ?").bind(payload.id).first();
+  if (byId && (byId.title !== title || byId.content !== content)) throw new InputError("This imported note was changed after saving. It has not been overwritten.", 409);
+  const record = byId || await db.prepare("SELECT * FROM notes WHERE title = ? AND content = ? LIMIT 1").bind(title, content).first();
+  if (!record) throw new InputError("The note changed during import. Retry this item.", 409);
+  return { success: true, note: mapRecordToNoteItem(record), imported: (inserted.meta?.changes ?? 0) > 0 };
+}
+
 // workers/file-service/src/index.ts
 function getAllowedOrigin(request, env) {
   const requestOrigin = request.headers.get("Origin");
@@ -7331,6 +7292,9 @@ var index_default = {
           origin
         );
       }
+      if (url.pathname === "/v1/notes/export" || url.pathname === "/v1/notes/import") {
+        return jsonResponse(await routeNoteTransfer(request, env.DB), 200, origin);
+      }
       const noteDetailMatch = url.pathname.match(/^\/v1\/notes\/([a-zA-Z0-9_-]+)$/);
       const noteShareMatch = url.pathname.match(/^\/v1\/notes\/([a-zA-Z0-9_-]+)\/share$/);
       if (noteShareMatch) {
@@ -7466,64 +7430,6 @@ var index_default = {
         await deleteMailObject(env.FILES_BUCKET, record.r2_key);
         await deleteMailRecord(env.DB, record.id);
         return jsonResponse({ success: true, message: "Email deleted", id: record.id }, 200, origin);
-      }
-      if (request.method === "GET" && url.pathname === "/v1/scratchpad") {
-        const record = await getScratchpadRecord(env.DB);
-        return jsonResponse({ success: true, scratchpad: mapRecordToScratchpadItem(record, baseUrl) }, 200, origin);
-      }
-      if (request.method === "PUT" && url.pathname === "/v1/scratchpad") {
-        const formData = await boundedForm(request);
-        if (typeof formData.get("content") !== "string") throw new InputError("Scratchpad content is required");
-        const content = String(formData.get("content"));
-        if (utf8Size(content) > 2e5) {
-          return jsonResponse({ success: false, error: "Scratchpad text is too large", code: "INVALID_SCRATCHPAD", status: 400 }, 400, origin);
-        }
-        const current = await getScratchpadRecord(env.DB);
-        let imageKey = current.image_key;
-        const image = formData?.get("image");
-        const imageFile = image && typeof image !== "string" ? image : null;
-        if (imageFile && imageFile.size > 0) {
-          if (!["image/png", "image/jpeg", "image/webp", "image/gif"].includes(imageFile.type)) {
-            return jsonResponse({ success: false, error: "Use PNG, JPEG, WebP or GIF images", code: "INVALID_IMAGE", status: 400 }, 400, origin);
-          }
-          if (imageFile.size > 10 * 1024 * 1024) {
-            return jsonResponse({ success: false, error: "Scratchpad images must be 10MB or smaller", code: "IMAGE_TOO_LARGE", status: 413 }, 413, origin);
-          }
-          imageKey = buildScratchpadKey(crypto.randomUUID(), imageFile.name || "pasted-image");
-          await queueScratchpadCleanup(env.DB, imageKey);
-          await uploadToR2(env.FILES_BUCKET, imageKey, imageFile.stream(), imageFile.type, { source: "scratchpad" });
-        }
-        if (current.image_key && current.image_key !== imageKey) await queueScratchpadCleanup(env.DB, current.image_key);
-        const record = await updateScratchpadRecord(env.DB, content, imageKey);
-        return jsonResponse({ success: true, scratchpad: mapRecordToScratchpadItem(record, baseUrl) }, 200, origin);
-      }
-      if (request.method === "DELETE" && url.pathname === "/v1/scratchpad") {
-        const current = await getScratchpadRecord(env.DB);
-        if (current.image_key) await queueScratchpadCleanup(env.DB, current.image_key);
-        const record = await updateScratchpadRecord(env.DB, "", null);
-        return jsonResponse({ success: true, scratchpad: mapRecordToScratchpadItem(record, baseUrl) }, 200, origin);
-      }
-      if (request.method === "GET" && url.pathname === "/v1/scratchpad/image") {
-        const record = await getScratchpadRecord(env.DB);
-        if (!record.image_key) {
-          return new Response("Scratchpad image not found.", { status: 404, headers: { "Access-Control-Allow-Origin": origin, Vary: "Origin" } });
-        }
-        const image = await getScratchpadObject(env.FILES_BUCKET, record.image_key);
-        if (!image) {
-          return new Response("Scratchpad image not found.", { status: 404, headers: { "Access-Control-Allow-Origin": origin, Vary: "Origin" } });
-        }
-        const headers = new Headers();
-        image.writeHttpMetadata(headers);
-        if (!["image/png", "image/jpeg", "image/webp", "image/gif"].includes(headers.get("Content-Type") || "")) throw new InputError("Replace this legacy attachment with a supported raster image", 415);
-        headers.set("Content-Security-Policy", "sandbox; default-src 'none'");
-        headers.set("Content-Disposition", 'attachment; filename="scratchpad-image"');
-        headers.set("X-Content-Type-Options", "nosniff");
-        headers.set("etag", image.httpEtag);
-        headers.set("Cache-Control", "private, no-store");
-        headers.set("Access-Control-Allow-Origin", origin);
-        headers.set("Access-Control-Allow-Credentials", "true");
-        headers.set("Vary", "Origin");
-        return new Response(image.body, { status: 200, headers });
       }
       if (request.method === "POST" && url.pathname === "/v1/notes") {
         const payload = await parseNotePayload(request);

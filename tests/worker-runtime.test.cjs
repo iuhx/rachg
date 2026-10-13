@@ -97,6 +97,19 @@ test('release Worker runs reliably in workerd with actual D1 and R2 bindings', {
     await missing.text();
   });
 
+  await t.test('note import/export works with real D1 and scratchpad routes are retired', async () => {
+    const value = { id: `import-${crypto.randomUUID()}`, title: 'Import runtime check', content: '# Saved\nUnicode 中文' };
+    const options = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(value) };
+    const first = await request('/v1/notes/import', options); assert.equal(first.status, 200);
+    assert.equal((await first.json()).imported, true);
+    const repeated = await request('/v1/notes/import', options); assert.equal((await repeated.json()).imported, false);
+    const exported = await (await request('/v1/notes/export')).json();
+    assert.equal(exported.notes.find(note => note.id === value.id).content, value.content);
+    assert.equal(exported.nextCursor, null);
+    const retired = await request('/v1/scratchpad'); assert.equal(retired.status, 404); await retired.text();
+    await (await request(`/v1/notes/${value.id}`, { method: 'DELETE' })).text();
+  });
+
   await t.test('public note snapshots work in real D1 without opening private routes', async () => {
     const json = (method, body) => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const anon = path => mf.dispatchFetch(`https://workspace.example.invalid${path}`);

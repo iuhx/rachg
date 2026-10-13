@@ -1,12 +1,12 @@
 import type {
   ApiErrorResponse,
   NoteItem,
-  NoteListResponse,
   NoteResponse,
 } from '../types';
 import { AuthenticationRequiredError } from './fileService';
 
 import { API_BASE_URL } from '../config/api';
+import { NOTE_ARCHIVE_BYTES, NOTE_ARCHIVE_COUNT, type ImportNote } from '../utils/noteTransfer';
 
 export interface NoteShare {
   token: string;
@@ -64,18 +64,45 @@ async function throwNoteApiError(response: Response, fallback: string): Promise<
 }
 
 export async function fetchNotes(): Promise<NoteItem[]> {
-  const response = await fetch(`${API_BASE_URL}/v1/notes`, {
-    headers: { Accept: 'application/json' },
-    credentials: 'include',
-    redirect: 'manual',
-    signal: AbortSignal.timeout(15_000),
+  // Imported notes must not disappear on reload once the notebook exceeds 200.
+  const notes = await readAllNotes(false);
+  return notes.sort((a, b) => b.updatedTimestamp - a.updatedTimestamp);
+}
+
+export function fetchNotesForExport(): Promise<NoteItem[]> {
+  return readAllNotes(true);
+}
+
+async function readAllNotes(enforceArchiveLimits: boolean): Promise<NoteItem[]> {
+  const notes: NoteItem[] = [];
+  let after = '', totalBytes = 0;
+  do {
+    const response = await fetch(`${API_BASE_URL}/v1/notes/export${after ? `?after=${encodeURIComponent(after)}` : ''}`, {
+      credentials: 'include', redirect: 'manual', headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(30_000),
+    });
+    if (response.type === 'opaqueredirect' || response.status === 302 || response.redirected) throw new AuthenticationRequiredError();
+    if (!response.ok) await throwNoteApiError(response, 'Unable to export notes');
+    const data = await response.json().catch(() => null);
+    if (!data) throw new Error('Notes could not be loaded. Reconnect your workspace and try again.');
+    if (!data?.success || !Array.isArray(data.notes) || (data.nextCursor !== null && (typeof data.nextCursor !== 'string' || data.nextCursor <= after))) throw new Error('Invalid note export response. No partial backup was downloaded.');
+    totalBytes += new TextEncoder().encode(JSON.stringify(data.notes)).byteLength;
+    notes.push(...data.notes);
+    if (enforceArchiveLimits && (notes.length > NOTE_ARCHIVE_COUNT || totalBytes > NOTE_ARCHIVE_BYTES)) throw new Error('The backup exceeds 1,000 notes or 20 MB. Export large notes individually instead.');
+    after = data.nextCursor || '';
+  } while (after);
+  return notes;
+}
+
+export async function importNote(note: ImportNote): Promise<{ note: NoteItem; imported: boolean }> {
+  const response = await fetch(`${API_BASE_URL}/v1/notes/import`, {
+    method: 'POST', credentials: 'include', redirect: 'manual', signal: AbortSignal.timeout(30_000),
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(note),
   });
   if (response.type === 'opaqueredirect' || response.status === 302 || response.redirected) throw new AuthenticationRequiredError();
-  if (!response.ok) await throwNoteApiError(response, 'Unable to load notes');
-  const data = await response.json().catch(() => null) as NoteListResponse | null;
-  if (!data) throw new Error('Notes could not be loaded. Reconnect your workspace and try again.');
-  if (!data.success || !Array.isArray(data.notes)) throw new Error('Malformed notes response');
-  return data.notes;
+  if (!response.ok) await throwNoteApiError(response, 'Unable to import this note');
+  const data = await response.json().catch(() => null);
+  if (!data?.success || !data.note || typeof data.note.id !== 'string' || data.note.title !== note.title || data.note.content !== note.content || typeof data.imported !== 'boolean') throw new Error('Unable to confirm this import. Retry safely to check its status.');
+  return data;
 }
 
 export async function createNote(title: string, content: string): Promise<NoteItem> {
