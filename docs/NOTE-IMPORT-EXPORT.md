@@ -50,13 +50,17 @@ that cannot be used as filenames are preserved exactly in the JSON backup.
 
 The old frontend service, shared types, API routes, R2 helpers, table initialization
 and scheduled image cleanup have been removed. Authenticated requests to its old
-routes now return 404; anonymous requests still require Access. Existing
-`scratchpad` / `scratchpad_cleanup` tables and `scratchpad/` R2 objects remain
-untouched for archival recovery. They are not created in new installations and
-are not exposed by the new Notes import/export endpoints.
+routes now return 404; anonymous requests still require Access.
+
+At the owner's request, the historical `scratchpad` and `scratchpad_cleanup`
+tables were permanently removed on 2026-10-13. The `scratchpad/` R2 prefix was
+checked and contained no objects. Active Notes, Files and Mail data were unchanged.
+The one-time SQL is recorded in
+`workers/file-service/scripts/remove-retired-scratchpad.sql`; ordinary deployments
+do not recreate these tables or run this cleanup.
 
 ## Checks
 
 `pnpm check` covers paginated export beyond 200 notes, Unicode/Markdown round trips,
 ZIP extraction, duplicate/concurrent/retried imports, saved-edit protection,
-authentication, limits, partial UI progress, and legacy-data preservation.
+authentication, limits, partial UI progress, and retired-route isolation.
