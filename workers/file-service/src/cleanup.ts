@@ -24,8 +24,9 @@ export async function cleanupStorage(db: D1Database, bucket: R2Bucket): Promise<
       deleted++;
     } catch { failed++; }
   }
-  // At most 48 storage calls including 13 schema calls on a cold start:
+  // At most 49 storage calls including 14 schema calls on a cold start:
   // 3 candidate queries + 5*3 file calls + 3*3 image calls + 2*4 mail calls.
+  // The scheduled note-share cleanup adds one call, keeping the total at 50.
   const images = await db.prepare('SELECT r2_key FROM scratchpad_cleanup WHERE not_before <= ? ORDER BY not_before LIMIT 3').bind(now).all<{ r2_key: string }>();
   for (const record of images.results) {
     try {

@@ -10,6 +10,8 @@
     "test:retention": "node scripts/test-file-retention.cjs"
   },
   "dependencies": {
+    "entities": "^8.1.0",
+    "marked": "^18.1.1",
     "@rachg/shared": "workspace:*",
     "postal-mime": "^3.0.1"
   },

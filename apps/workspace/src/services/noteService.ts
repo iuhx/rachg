@@ -8,6 +8,55 @@ import { AuthenticationRequiredError } from './fileService';
 
 const API_BASE_URL = 'https://files.rachg.com';
 
+export interface NoteShare {
+  token: string;
+  url: string;
+  title: string;
+  content: string;
+  createdTimestamp: number;
+  expiresTimestamp: number;
+}
+
+async function shareRequest(id: string, method: string, payload?: unknown): Promise<{ share: NoteShare | null; enabled?: boolean }> {
+  const response = await fetch(`${API_BASE_URL}/v1/notes/${encodeURIComponent(id)}/share`, {
+    method, credentials: 'include', headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    ...(payload === undefined ? {} : { body: JSON.stringify(payload) }),
+  });
+  if (response.status === 404) throw new Error('Note sharing is not available yet. The server needs to be updated.');
+  if (!response.ok) await throwNoteApiError(response, 'Unable to manage note sharing');
+  const data = await response.json().catch(() => null);
+  if (!data?.success || !('share' in data)) throw new Error('Invalid note sharing response. Please sign in again.');
+  if (data.share !== null) {
+    const share = data.share;
+    if (typeof share.token !== 'string' || !/^[a-f0-9]{64}$/.test(share.token) ||
+        share.url !== `${API_BASE_URL}/s/${share.token}` || typeof share.title !== 'string' || typeof share.content !== 'string' ||
+        !Number.isSafeInteger(share.createdTimestamp) || !Number.isSafeInteger(share.expiresTimestamp) ||
+        share.expiresTimestamp <= share.createdTimestamp || share.expiresTimestamp > 8_640_000_000_000_000) {
+      throw new Error('Invalid note sharing response. Reload before sharing.');
+    }
+  }
+  return data;
+}
+
+export const getNoteShare = (id: string) => shareRequest(id, 'GET');
+export const revokeNoteShare = (id: string, token: string) => shareRequest(id, 'DELETE', { token });
+export async function createNoteShare(note: NoteItem): Promise<NoteShare> {
+  const { share } = await shareRequest(note.id, 'POST', { title: note.title, content: note.content, updatedTimestamp: note.updatedTimestamp });
+  if (!share) throw new Error('No share link was returned. Reopen Share to check its status.');
+  return share;
+}
+
+/** Test the public path without using the administrator's Access cookie. */
+export async function isPublicNoteSharingReady(): Promise<boolean> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/s/status`, {
+      credentials: 'omit', redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(8000),
+    });
+    const data = response.ok ? await response.json() : null;
+    return data?.service === 'rachg-note-share' && data.ready === true;
+  } catch { return false; }
+}
+
 async function throwNoteApiError(response: Response, fallback: string): Promise<never> {
   if (response.status === 401) throw new AuthenticationRequiredError();
   const body = await response.json().catch(() => null) as ApiErrorResponse | null;

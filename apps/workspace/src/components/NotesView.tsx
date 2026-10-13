@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Edit3, FileText, Plus, Search, Trash2, X } from 'lucide-react';
+import { Check, Edit3, FileText, Plus, Search, Share2, Trash2, X } from 'lucide-react';
 import type { NoteItem } from '../types';
 import { MarkdownPreview } from './MarkdownPreview';
 import { ConfirmDialog } from './ConfirmDialog';
+import { NoteShareDialog } from './NoteShareDialog';
 import { rememberDraft, recoverDraft, discardSavedDraft, discardDeletedDraft } from './noteDrafts';
 
 interface NotesViewProps {
@@ -55,6 +56,7 @@ export const NotesView: React.FC<NotesViewProps> = ({
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [isDeleting, setIsDeleting] = useState(false);
   const [noteToDelete, setNoteToDelete] = useState<NoteItem | null>(null);
+  const [noteToShare, setNoteToShare] = useState<NoteItem | null>(null);
   const deletingRef = useRef(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [clock, setClock] = useState(() => Date.now());
@@ -248,7 +250,7 @@ export const NotesView: React.FC<NotesViewProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="type-page-heading text-neutral-900 dark:text-white">Notes</h2>
-          <p className="type-secondary mt-1">Private Markdown notes, kept in your workspace.</p>
+          <p className="type-secondary mt-1">Markdown notes, private until you choose to share.</p>
         </div>
         <button onClick={onNewNote} className="workspace-button workspace-button-primary cursor-pointer shadow-xs">
           <Plus className="w-3.5 h-3.5 stroke-[2]" />
@@ -324,7 +326,7 @@ export const NotesView: React.FC<NotesViewProps> = ({
                       <span>{formatRelativeTime(activeNote.updatedTimestamp, clock)}</span>
                       {isEditing && <><span>·</span><span className={saveState === 'error' ? 'text-red-500' : saveState === 'saved' ? 'text-emerald-600 dark:text-emerald-400' : ''}>{saveStateLabel(saveState)}</span></>}
                     </div>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
                       {isEditing ? (
                         <>
                           <div className="flex items-center gap-0.5 workspace-panel p-0.5">
@@ -338,6 +340,7 @@ export const NotesView: React.FC<NotesViewProps> = ({
                       ) : (
                         <button onClick={startEdit} className="workspace-button workspace-button-secondary min-h-8 px-3 py-1 cursor-pointer"><Edit3 className="w-3.5 h-3.5" /><span>Edit</span></button>
                       )}
+                      <button onClick={() => setNoteToShare(activeNote)} disabled={isDeleting || isDirty || saveState === 'saving' || recovered} title={isDirty || recovered ? 'Save your changes before sharing' : 'Share a read-only snapshot'} className="workspace-button workspace-button-secondary min-h-8 px-3 py-1 cursor-pointer disabled:opacity-50"><Share2 className="w-3.5 h-3.5" /><span>Share</span></button>
                       <button onClick={() => setNoteToDelete(activeNote)} disabled={isDeleting} title="Delete note" aria-label="Delete note" className="workspace-button workspace-button-secondary min-h-8 px-2 text-red-500 hover:text-red-600 cursor-pointer disabled:opacity-50"><Trash2 className="w-3.5 h-3.5" /></button>
                     </div>
                   </div>
@@ -366,10 +369,11 @@ export const NotesView: React.FC<NotesViewProps> = ({
         </div>
       )}
 
+      {isActive && noteToShare && <NoteShareDialog key={noteToShare.id} note={noteToShare} onClose={() => setNoteToShare(null)} />}
       <ConfirmDialog
         isOpen={isActive && noteToDelete !== null}
         title="Delete note?"
-        description={noteToDelete ? `“${noteToDelete.title}” will be permanently removed from your private workspace.` : 'This note will be permanently removed from your private workspace.'}
+        description={noteToDelete ? `“${noteToDelete.title}” will be permanently removed and its share link revoked. Previously saved copies cannot be recalled.` : 'This note will be permanently removed and its share link revoked.'}
         confirmLabel="Delete note"
         isConfirming={isDeleting}
         onConfirm={() => void removeNote()}

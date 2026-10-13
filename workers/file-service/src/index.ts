@@ -58,11 +58,14 @@ import { getFileExpiry, isFileExpired } from './expiry';
 import { cleanupStorage } from './cleanup';
 import { parseByteRange } from './download';
 import { textShareResponse } from './text-share';
+import { cleanupNoteShares, manageNoteShare, publicNoteShare } from './note-shares';
+import { publicShareHeaders } from './note-share-page';
 import { formatOutgoingMail } from './mail-format';
 import { routeProjects } from './projects';
 import { boundedForm, boundedJson, InputError, mailPlainText, MAX_FILE_BYTES, MAX_MAIL_BYTES, MAX_TEXT_BYTES, readBounded, utf8Size } from '../../common/content';
 
 export interface Env {
+  PUBLIC_NOTE_SHARES_ENABLED?: string;
   DB: D1Database;
   FILES_BUCKET: R2Bucket;
   MAX_STORAGE_BYTES?: string; // Default 4GB (4294967296)
@@ -205,6 +208,14 @@ export default {
     }
 
     try {
+      // Access may bypass ONLY /s/*. All other routes retain administrator auth.
+      if (url.pathname.startsWith('/s/')) {
+        try {
+          return await publicNoteShare(request, env.DB, env.PUBLIC_NOTE_SHARES_ENABLED === 'true', origin);
+        } catch {
+          return new Response('This note link is temporarily unavailable.', { status: 503, headers: publicShareHeaders() });
+        }
+      }
       const auth = await resolveAuth(request, env);
       if (!isAuthenticated(auth)) {
         return jsonResponse<ApiErrorResponse>(
@@ -252,6 +263,11 @@ export default {
       // Routes: private Markdown notes (D1)
       // -------------------------------------------------------------
       const noteDetailMatch = url.pathname.match(/^\/v1\/notes\/([a-zA-Z0-9_-]+)$/);
+      const noteShareMatch = url.pathname.match(/^\/v1\/notes\/([a-zA-Z0-9_-]+)\/share$/);
+      if (noteShareMatch) {
+        const result = await manageNoteShare(request, env.DB, noteShareMatch[1], baseUrl, env.PUBLIC_NOTE_SHARES_ENABLED === 'true');
+        return jsonResponse(result, request.method === 'POST' ? 201 : 200, origin);
+      }
       const mailDetailMatch = url.pathname.match(/^\/v1\/mail\/([a-zA-Z0-9_-]+)$/);
 
       // Text shares reuse a normal file and its permissions, expiry, quota and deletion.
@@ -855,5 +871,6 @@ export default {
   },
   async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil(cleanupStorage(env.DB, env.FILES_BUCKET));
+    ctx.waitUntil(cleanupNoteShares(env.DB));
   },
 };

@@ -224,6 +224,15 @@ async function initializeSchema(db: D1Database): Promise<void> {
     .prepare(`CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes (updated_at DESC);`)
     .run();
 
+  await db.prepare(`CREATE TABLE IF NOT EXISTS note_shares (
+    note_id TEXT PRIMARY KEY REFERENCES notes(id) ON DELETE CASCADE,
+    token TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+  );`).run();
+
   await db.prepare(`CREATE TABLE IF NOT EXISTS mail (
     id TEXT PRIMARY KEY,
     from_address TEXT NOT NULL,
@@ -445,7 +454,10 @@ export async function updateNoteRecord(
 
 export async function deleteNoteRecord(db: D1Database, id: string): Promise<boolean> {
   await ensureSchema(db);
-  const result = await db.prepare(`DELETE FROM notes WHERE id = ?`).bind(id).run();
+  const [, result] = await db.batch([
+    db.prepare('DELETE FROM note_shares WHERE note_id = ?').bind(id),
+    db.prepare('DELETE FROM notes WHERE id = ?').bind(id),
+  ]);
   return (result.meta?.changes ?? 0) > 0;
 }
 

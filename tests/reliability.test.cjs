@@ -73,9 +73,12 @@ test('a full cold cleanup batch stays within 50 storage calls', () => withFixtur
   let storageCalls = 0;
   const bucket = { ...f.bucket, async delete(key) { storageCalls++; return f.bucket.delete(key); } };
   const coldDB = { ...f.DB };
-  const result = await f.load('workers/file-service/src/cleanup.ts').cleanupStorage(coldDB, bucket);
+  const [result] = await Promise.all([
+    f.load('workers/file-service/src/cleanup.ts').cleanupStorage(coldDB, bucket),
+    f.load('workers/file-service/src/note-shares.ts').cleanupNoteShares(coldDB),
+  ]);
   assert.deepEqual(result, { deleted: 10, failed: 0 });
-  assert.equal(f.queries.length - start + storageCalls, 48);
+  assert.equal(f.queries.length - start + storageCalls, 50);
   assert.equal(f.sqlite.prepare("SELECT COUNT(*) n FROM files WHERE status='active'").get().n, 1);
 }));
 

@@ -30,6 +30,16 @@ CREATE TABLE IF NOT EXISTS notes (
 
 CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes (updated_at DESC);
 
+-- Explicitly published snapshots; private notes remain behind Access.
+CREATE TABLE IF NOT EXISTS note_shares (
+  note_id TEXT PRIMARY KEY REFERENCES notes(id) ON DELETE CASCADE,
+  token TEXT NOT NULL UNIQUE,
+  title TEXT NOT NULL,
+  content TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS scratchpad (
   id TEXT PRIMARY KEY,
   content TEXT NOT NULL DEFAULT '',

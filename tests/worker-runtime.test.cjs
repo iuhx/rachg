@@ -44,7 +44,7 @@ test('release Worker runs reliably in workerd with actual D1 and R2 bindings', {
       return MockResponse.json(jwks);
     },
     bindings: { ACCESS_TEAM_DOMAIN: issuer, ACCESS_AUDIENCE: 'local-workspace',
-      ACCESS_ADMIN_EMAIL: 'admin@example.invalid', MAX_STORAGE_BYTES: '1000', RESEND_API_KEY: 'local-fixture-only' },
+      ACCESS_ADMIN_EMAIL: 'admin@example.invalid', MAX_STORAGE_BYTES: '1000', RESEND_API_KEY: 'local-fixture-only', PUBLIC_NOTE_SHARES_ENABLED: 'true' },
   }));
   t.after(() => mf.dispose());
   await mf.ready;
@@ -91,6 +91,36 @@ test('release Worker runs reliably in workerd with actual D1 and R2 bindings', {
     const missing = await request(`/v1/notes/${note.id}`);
     assert.equal(missing.status, 404);
     await missing.text();
+  });
+
+  await t.test('public note snapshots work in real D1 without opening private routes', async () => {
+    const json = (method, body) => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const anon = path => mf.dispatchFetch(`https://workspace.example.invalid${path}`);
+    const created = await request('/v1/notes', json('POST', { title: 'Public snapshot', content: '# Shared heading\n<script>unsafe()</script>' }));
+    const { note } = await created.json();
+    const route = `/v1/notes/${note.id}/share`;
+    assert.equal((await anon('/s/status')).status, 200);
+    for (const path of ['/v1/notes', route, '/v1/mail', '/v1/files', '/f/private', '/t/private']) {
+      const response = await anon(path); assert.equal(response.status, 401); await response.text();
+    }
+    const shared = await request(route, json('POST', note)); assert.equal(shared.status, 201);
+    const { share } = await shared.json();
+    const page = await anon(`/s/${share.token}`); assert.equal(page.status, 200);
+    const html = await page.text(); assert.match(html, /<h1>Shared heading<\/h1>/); assert.doesNotMatch(html, /<script/);
+    assert.match(page.headers.get('cache-control'), /no-store/);
+    const repeated = await request(route, json('POST', note)); assert.equal(repeated.status, 409); await repeated.text();
+    await (await request(`/v1/notes/${note.id}`, json('PUT', { title: 'Private edit', content: 'Keep private' }))).text();
+    assert.equal(await (await anon(`/s/${share.token}`)).text(), html);
+    await (await request(route, json('DELETE', { token: share.token }))).text();
+    const revoked = await anon(`/s/${share.token}`); assert.equal(revoked.status, 404); await revoked.text();
+    const updated = (await (await request(`/v1/notes/${note.id}`)).json()).note;
+    const renewed = (await (await request(route, json('POST', updated))).json()).share;
+    await db.prepare('UPDATE note_shares SET expires_at = ? WHERE note_id = ?').bind(Date.now(), note.id).run();
+    const expired = await anon(`/s/${renewed.token}`); assert.equal(expired.status, 404); await expired.text();
+    const final = (await (await request(route, json('POST', updated))).json()).share;
+    await (await request(`/v1/notes/${note.id}`, { method: 'DELETE' })).text();
+    const deleted = await anon(`/s/${final.token}`); assert.equal(deleted.status, 404); await deleted.text();
+    assert.equal((await db.prepare('SELECT COUNT(*) n FROM note_shares').first()).n, 0);
   });
 
   await t.test('multipart upload, R2 ranges, HEAD, expiry and exact-key deletion agree', async () => {

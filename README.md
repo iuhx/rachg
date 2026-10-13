@@ -35,7 +35,9 @@ expiry and deletion workflow. Existing files are reused without uploading again.
 
 Text and Markdown conversion stay in the browser. Long text is uploaded only after
 an explicit review and confirmation, then served as an escaped text page by the file
-Worker. Share links retain Cloudflare Access protection; they are not public links.
+Worker. File and text-share links retain Cloudflare Access protection. Notes can
+optionally publish revocable seven-day snapshots through a dedicated public path;
+see [Note sharing](docs/NOTE-SHARING.md) for the required deployment configuration.
 
 See [Tools usage and release notes](docs/TOOLS.md) for workflows and limits.
 
