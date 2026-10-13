@@ -159,3 +159,45 @@ test('persistent read failures stop after two attempts and authentication failur
     await assert.rejects(service.fetchNotes()); assert.equal(calls, 1);
   }
 });
+
+test('a slow successful note read gets the original 30-second allowance', async t => {
+  const f = components(), service = f.load('apps/workspace/src/services/noteService.ts');
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const budgets = [];
+  t.mock.method(AbortSignal, 'timeout', ms => {
+    budgets.push(ms); const controller = new AbortController();
+    setTimeout(() => controller.abort(new DOMException('Timed out', 'TimeoutError')), ms);
+    return controller.signal;
+  });
+  const saved = item({ updatedTimestamp: 1 }); let calls = 0;
+  t.mock.method(global, 'fetch', (_url, { signal }) => {
+    calls++;
+    return new Promise((resolve, reject) => {
+      signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+      setTimeout(() => resolve(Response.json({ success: true, notes: [saved], nextCursor: null })), 20_000);
+    });
+  });
+  const pending = service.fetchNotes(); t.mock.timers.tick(20_000);
+  assert.deepEqual(await pending, [saved]); assert.equal(calls, 1); assert.deepEqual(budgets, [30_000]);
+});
+
+test('note retries share one deadline and do not restart another timeout window', async t => {
+  const f = components(), service = f.load('apps/workspace/src/services/noteService.ts');
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const budgets = [];
+  t.mock.method(AbortSignal, 'timeout', ms => {
+    budgets.push(ms); const controller = new AbortController();
+    setTimeout(() => controller.abort(new DOMException('Timed out', 'TimeoutError')), ms);
+    return controller.signal;
+  });
+  let calls = 0;
+  t.mock.method(global, 'fetch', (_url, { signal }) => new Promise((_, reject) => {
+    if (++calls === 1) setTimeout(() => reject(new TypeError('Connection reset')), 5000);
+    else signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+  }));
+  const rejected = assert.rejects(service.fetchNotes(), /Loading notes timed out/);
+  t.mock.timers.tick(5000); await new Promise(setImmediate);
+  t.mock.timers.tick(500); await new Promise(setImmediate);
+  assert.deepEqual(budgets, [30_000, 24_500]);
+  t.mock.timers.tick(24_500); await rejected; assert.equal(calls, 2);
+});

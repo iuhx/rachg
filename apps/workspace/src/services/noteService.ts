@@ -76,18 +76,21 @@ export function fetchNotesForExport(): Promise<NoteItem[]> {
 
 /** Retry only this read, never a note creation, update, import or deletion. */
 async function readNotesPage(after: string): Promise<Response> {
+  const deadline = Date.now() + 30_000;
   for (let attempt = 0; ; attempt++) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) throw new Error('Loading notes timed out. Please retry.');
     let response: Response;
     try {
       response = await fetch(`${API_BASE_URL}/v1/notes/export${after ? `?after=${encodeURIComponent(after)}` : ''}`, {
         credentials: 'include', redirect: 'manual', cache: 'no-store',
-        headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(15_000),
+        headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(remaining),
       });
     } catch (error) {
-      if (attempt === 0) { await new Promise(resolve => setTimeout(resolve, 500)); continue; }
       if (error instanceof Error && ['TimeoutError', 'AbortError'].includes(error.name)) {
         throw new Error('Loading notes timed out. Please retry.');
       }
+      if (attempt === 0) { await new Promise(resolve => setTimeout(resolve, 500)); continue; }
       throw new Error('Unable to reach the notes service. Retry, or reconnect your workspace if this continues.');
     }
     if (attempt === 0 && [408, 500, 502, 503, 504].includes(response.status)) {

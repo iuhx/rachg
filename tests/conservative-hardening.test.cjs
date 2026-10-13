@@ -63,6 +63,27 @@ test('schema initialization is shared and warm reads execute no DDL', () => with
   assert.equal(f.queries.filter(sql=>/CREATE/.test(sql)).length,0);
 }));
 
+test('a cold note read needs at most four D1 round trips and preserves existing notes', () => withFixture(async f => {
+  f.sqlite.exec("CREATE TABLE notes(id TEXT PRIMARY KEY,title TEXT NOT NULL,content TEXT NOT NULL,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL); INSERT INTO notes VALUES('legacy','Existing note','Keep this body',1,2)");
+  let roundTrips = 0; const originals = new WeakMap();
+  const wrap = statement => {
+    const proxy = new Proxy(statement, { get(target, property) {
+      if (property === 'bind') return (...values) => wrap(target.bind(...values));
+      if (['run', 'all', 'first'].includes(property)) return (...args) => { roundTrips++; return target[property](...args); };
+      return target[property];
+    } });
+    originals.set(proxy, statement); return proxy;
+  };
+  const db = { prepare: sql => wrap(f.DB.prepare(sql)), batch: statements => {
+    roundTrips++; return f.DB.batch(statements.map(statement => originals.get(statement)));
+  } };
+  const { listNotes } = f.load('workers/file-service/src/db.ts');
+  const notes = await listNotes(db);
+  assert.equal(notes[0].content, 'Keep this body');
+  assert.ok(roundTrips <= 4, `Cold read used ${roundTrips} remote round trips`);
+  roundTrips = 0; await listNotes(db); assert.equal(roundTrips, 1);
+}));
+
 test('HTML-only mail conversion remains bounded on unfinished tags', () => withFixture(async f => {
   const {mailPlainText}=f.load('workers/common/content.ts');
   assert.equal(mailPlainText('<p>Hello &amp; goodbye</p><script>hidden</script><div>Visible</div>'),'Hello & goodbye\n\nVisible');

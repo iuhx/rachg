@@ -34,6 +34,13 @@ pending or recovered draft first. **Export all** downloads either:
 Both the Notes list and all-note export read authenticated pages of 10 notes until
 complete, so imports beyond 200 notes remain visible after reloading. A failed page
 produces no partial download. Smaller pages bound Worker memory usage for large notes.
+Each page has a shared 30-second request deadline, including one retry for a
+transient connection or server failure. A timeout does not start another timeout
+window, and authentication failures are not retried. Saved notes remain visible
+when a refresh fails. Cold Worker initialization batches its 14 core schema
+statements into one D1 round trip; the separate mail-ledger setup and note query
+bring the cold read to four trips instead of seventeen. Existing schemas and
+note contents are preserved, and failed initialization remains retryable.
 Transfers support up to 1,000 notes and 20 MB of input/JSON backup data, and 1,000,000 UTF-8
 bytes per note. Encoded import requests must fit the existing 2 MiB request limit.
 The Markdown ZIP includes both Markdown and JSON copies and may be larger.

@@ -9,7 +9,7 @@ export async function cleanupStorage(db: D1Database, bucket: R2Bucket, credentia
   const storage = new StoredFiles({ FILES_BUCKET: bucket, ...credentials });
   const now = Date.now();
   let deleted = 0, failed = 0;
-  // At most 41 storage calls on a cold start (16 schema calls, 2 queries,
+  // At most 28 storage calls on a cold start (3 schema calls, 2 queries,
   // 5*3 transfer calls, 2*4 mail calls); note-share cleanup adds one more.
   // WebDAV uses Worker Secrets and requires no settings/schema reads.
   const files = await db.prepare(`SELECT id, r2_key FROM files

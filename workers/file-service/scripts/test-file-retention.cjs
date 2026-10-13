@@ -29,14 +29,23 @@ function loadModule(name) {
 const sqlite = new DatabaseSync(':memory:');
 const DB = {
   prepare(sql) {
-    const statement = sqlite.prepare(sql);
     let parameters = [];
     return {
       bind(...values) { parameters = values; return this; },
-      async run() { const result = statement.run(...parameters); return { meta: { changes: result.changes } }; },
-      async first() { return statement.get(...parameters) || null; },
-      async all() { return { results: statement.all(...parameters) }; },
+      // Like D1, defer SQL compilation until execution so a batch can create
+      // a table before the following statement creates its index.
+      async run() { const result = sqlite.prepare(sql).run(...parameters); return { meta: { changes: result.changes } }; },
+      async first() { return sqlite.prepare(sql).get(...parameters) || null; },
+      async all() { return { results: sqlite.prepare(sql).all(...parameters) }; },
     };
+  },
+  async batch(statements) {
+    sqlite.exec('BEGIN');
+    try {
+      const results = [];
+      for (const statement of statements) results.push(await statement.run());
+      sqlite.exec('COMMIT'); return results;
+    } catch (error) { sqlite.exec('ROLLBACK'); throw error; }
   },
 };
 const objects = new Map();

@@ -4464,8 +4464,8 @@ function ensureSchema(db) {
   return pending;
 }
 async function initializeSchema(db) {
-  await db.prepare(
-    `CREATE TABLE IF NOT EXISTS files (
+  await db.batch([
+    db.prepare(`CREATE TABLE IF NOT EXISTS files (
         id TEXT PRIMARY KEY,
         filename TEXT NOT NULL,
         size_bytes INTEGER NOT NULL,
@@ -4477,40 +4477,37 @@ async function initializeSchema(db) {
         delete_token TEXT NOT NULL,
         owner_id TEXT,
         status TEXT DEFAULT 'active'
-      );`
-  ).run();
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_files_status_expires ON files (status, expires_at);`).run();
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_files_created ON files (created_at DESC);`).run();
-  await db.prepare(
-    `CREATE TABLE IF NOT EXISTS notes (
+      );`),
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_files_status_expires ON files (status, expires_at);`),
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_files_created ON files (created_at DESC);`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS notes (
         id TEXT PRIMARY KEY,
         title TEXT NOT NULL,
         content TEXT NOT NULL,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
-      );`
-  ).run();
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes (updated_at DESC);`).run();
-  await db.prepare("CREATE INDEX IF NOT EXISTS idx_notes_title ON notes (title)").run();
-  await db.prepare(`CREATE TABLE IF NOT EXISTS note_categories (
+      );`),
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes (updated_at DESC);`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_notes_title ON notes (title)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS note_categories (
     id TEXT PRIMARY KEY, name TEXT NOT NULL, name_key TEXT NOT NULL UNIQUE,
     revision INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
-  )`).run();
-  await db.prepare(`CREATE TABLE IF NOT EXISTS note_organization (
+  )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS note_organization (
     note_id TEXT PRIMARY KEY REFERENCES notes(id) ON DELETE CASCADE,
     category_id TEXT REFERENCES note_categories(id) ON DELETE SET NULL,
     pinned INTEGER NOT NULL DEFAULT 0 CHECK (pinned IN (0, 1)), revision INTEGER NOT NULL DEFAULT 1
-  )`).run();
-  await db.prepare("CREATE INDEX IF NOT EXISTS idx_note_organization_category ON note_organization (category_id)").run();
-  await db.prepare(`CREATE TABLE IF NOT EXISTS note_shares (
+  )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS idx_note_organization_category ON note_organization (category_id)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS note_shares (
     note_id TEXT PRIMARY KEY REFERENCES notes(id) ON DELETE CASCADE,
     token TEXT NOT NULL UNIQUE,
     title TEXT NOT NULL,
     content TEXT NOT NULL,
     created_at INTEGER NOT NULL,
     expires_at INTEGER NOT NULL
-  );`).run();
-  await db.prepare(`CREATE TABLE IF NOT EXISTS mail (
+  );`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS mail (
     id TEXT PRIMARY KEY,
     from_address TEXT NOT NULL,
     to_address TEXT NOT NULL,
@@ -4519,9 +4516,9 @@ async function initializeSchema(db) {
     preview TEXT NOT NULL DEFAULT '',
     r2_key TEXT NOT NULL,
     message_id TEXT
-  );`).run();
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_mail_received ON mail (received_at DESC);`).run();
-  await db.prepare(`CREATE TABLE IF NOT EXISTS sent_mail (
+  );`),
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_mail_received ON mail (received_at DESC);`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS sent_mail (
     id TEXT PRIMARY KEY,
     resend_id TEXT,
     to_address TEXT NOT NULL,
@@ -4532,8 +4529,9 @@ async function initializeSchema(db) {
     status TEXT NOT NULL DEFAULT 'sending',
     in_reply_to TEXT,
     references_header TEXT
-  );`).run();
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_sent_mail_sent_at ON sent_mail (sent_at DESC);`).run();
+  );`),
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_sent_mail_sent_at ON sent_mail (sent_at DESC);`)
+  ]);
   await ensureMailLedger(db);
 }
 async function listMailRecords(db) {
