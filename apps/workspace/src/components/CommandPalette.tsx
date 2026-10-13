@@ -63,11 +63,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
   const navActions = [
     { label: 'Overview', tab: 'home' as NavTab, icon: LayoutDashboard },
-    { label: 'Files', tab: 'files' as NavTab, icon: Paperclip },
+    { label: 'Projects', tab: 'projects' as NavTab, icon: FolderDot },
     { label: 'Notes', tab: 'notes' as NavTab, icon: FileText },
+    { label: 'Files', tab: 'files' as NavTab, icon: Paperclip },
     { label: 'Mail', tab: 'mail' as NavTab, icon: Mail },
     { label: 'Tools · QR, Markdown & images', tab: 'tools' as NavTab, icon: Wrench },
-    { label: 'Projects', tab: 'projects' as NavTab, icon: FolderDot },
     { label: 'Settings', tab: 'settings' as NavTab, icon: Settings },
   ];
 

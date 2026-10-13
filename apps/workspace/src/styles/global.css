@@ -433,6 +433,7 @@ a {
 
   .workspace-sidebar nav {
     display: flex;
+    flex-direction: row;
     flex: 1;
     justify-content: space-around;
     gap: 0.25rem;

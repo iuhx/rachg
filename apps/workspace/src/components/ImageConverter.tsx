@@ -20,6 +20,7 @@ export const ImageConverter: React.FC = () => {
   const operation = useRef<AbortController | null>(null);
   const [notice, setNotice] = useState('');
   const [dragging, setDragging] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
   const mounted = useRef(true);
   const update = (next: Item[] | ((current: Item[]) => Item[])) => {
     const value = typeof next === 'function' ? next(itemsRef.current) : next;
@@ -93,15 +94,16 @@ export const ImageConverter: React.FC = () => {
   return <section className="space-y-5" aria-label="Image converter">
     <div className="workspace-card p-5 sm:p-6 space-y-5">
       <div><h3 className="type-section-heading">A new format. The same image.</h3><p className="type-secondary mt-1">Batch conversion on your device. No uploads or sign-in needed.</p></div>
-      <label className={`workspace-panel border-dashed p-6 flex flex-col items-center text-center gap-2 ${busy ? 'opacity-60' : 'cursor-pointer'} ${dragging ? 'border-neutral-500 bg-neutral-100 dark:bg-white/10' : ''}`}
+      <div className={`workspace-panel border-dashed p-6 flex flex-col items-center text-center gap-2 ${busy ? 'opacity-60' : ''} ${dragging ? 'border-neutral-500 bg-neutral-100 dark:bg-white/10' : ''}`}
         onDragOver={event => { event.preventDefault(); if (!operation.current) setDragging(true); }} onDragLeave={() => setDragging(false)}
         onDrop={event => { event.preventDefault(); setDragging(false); add(Array.from(event.dataTransfer.files)); }}
         onPaste={event => { if (event.clipboardData.files.length) { event.preventDefault(); add(Array.from(event.clipboardData.files)); } }}>
         <ImageIcon className="w-6 h-6 text-neutral-400" /><span className="type-body font-medium">Drop images here or choose files</span>
         <span className="type-caption">PNG, JPEG, WebP, BMP, AVIF · Apple HEIC / HEIF</span>
-        <input type="file" multiple disabled={Boolean(busy)} accept=".png,.jpg,.jpeg,.webp,.bmp,.avif,.heic,.heif,image/png,image/jpeg,image/webp,image/bmp,image/avif,image/heic,image/heif" aria-label="Choose images to convert" className="block w-full max-w-sm text-xs mt-2" onChange={event => { add(Array.from(event.target.files || [])); event.target.value = ''; }} />
+        <input ref={fileInput} type="file" multiple disabled={Boolean(busy)} accept=".png,.jpg,.jpeg,.webp,.bmp,.avif,.heic,.heif,image/png,image/jpeg,image/webp,image/bmp,image/avif,image/heic,image/heif" aria-label="Choose images to convert" className="hidden" onChange={event => { add(Array.from(event.target.files || [])); event.target.value = ''; }} />
+        <button type="button" disabled={Boolean(busy)} onClick={() => fileInput.current?.click()} className="workspace-button workspace-button-secondary mt-2 mb-1">Choose images</button>
         <span className="type-caption">Up to 20 images · 25 MiB each · 100 MiB per batch · 24 megapixels per image</span>
-      </label>
+      </div>
       <fieldset disabled={Boolean(busy)} className="flex flex-wrap items-end gap-5">
         <label className="type-label space-y-2">Convert to<select aria-label="Output image format" className="workspace-input block mt-2 min-w-36" value={format} onChange={event => setFormat(event.target.value as ImageFormat)}>{IMAGE_FORMATS.map(value => <option key={value} value={value}>{value.toUpperCase()}</option>)}</select></label>
         <label className={`type-label flex-1 min-w-40 max-w-xs ${format === 'png' || format === 'bmp' ? 'opacity-50' : ''}`}>Quality · {quality}%<input type="range" min="1" max="100" step="1" aria-label="Image quality" value={quality} disabled={format === 'png' || format === 'bmp'} onChange={event => setQuality(Number(event.target.value))} className="block w-full mt-4 mb-3 accent-neutral-700 dark:accent-neutral-300" /></label>

@@ -19,12 +19,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activeTab,
   onTabChange,
 }) => {
-  const navItems: { id: NavTab; label: string; icon: React.FC<{ className?: string }> }[] = [
+  const navItems: { id: NavTab; label: string; icon: React.FC<{ className?: string }>; group?: string }[] = [
     { id: 'home', label: 'Overview', icon: LayoutDashboard },
-    { id: 'files', label: 'Files', icon: Paperclip },
+    { id: 'projects', label: 'Projects', icon: FolderDot, group: 'Workspace' },
     { id: 'notes', label: 'Notes', icon: FileText },
-    { id: 'projects', label: 'Projects', icon: FolderDot },
-    { id: 'mail', label: 'Mail', icon: Mail },
+    { id: 'files', label: 'Files', icon: Paperclip },
+    { id: 'mail', label: 'Mail', icon: Mail, group: 'Utilities' },
     { id: 'tools', label: 'Tools', icon: Wrench },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
@@ -44,28 +44,31 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </button>
 
         {/* Navigation list */}
-        <nav aria-label="Workspace navigation" className="mt-7 space-y-1">
+        <nav aria-label="Workspace navigation" className="mt-7 flex flex-col gap-1">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
             return (
+              <React.Fragment key={item.id}>
+              {item.group && <p className="hidden md:block px-3 pt-4 pb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-neutral-500">{item.group}</p>}
               <button
-                key={item.id}
                 onClick={() => onTabChange(item.id)}
                 aria-label={item.label}
-                className={`type-body w-full flex items-center gap-3 px-3 py-2 rounded-xl transition-colors cursor-pointer ${
+                aria-current={isActive ? 'page' : undefined}
+                className={`type-body w-full min-h-10 flex items-center gap-3 px-3 py-2 rounded-lg border transition-colors cursor-pointer ${
                   isActive
-                    ? 'bg-[#1d1f24] text-white font-medium shadow-xs border border-white/[0.07]'
-                    : 'text-neutral-400 hover:text-neutral-200 hover:bg-white/[0.03]'
+                    ? 'bg-[#1d1f24] text-white font-medium shadow-xs border-white/[0.07]'
+                    : 'border-transparent text-neutral-400 hover:text-neutral-200 hover:bg-white/[0.03]'
                 }`}
               >
                 <Icon
-                  className={`w-4 h-4 stroke-[1.7] ${
+                  className={`w-4 h-4 shrink-0 stroke-[1.7] ${
                     isActive ? 'text-white' : 'text-neutral-400'
                   }`}
                 />
                 <span>{item.label}</span>
               </button>
+              </React.Fragment>
             );
           })}
         </nav>
