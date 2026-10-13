@@ -35,6 +35,11 @@ test('release Worker runs reliably in workerd with actual D1 and R2 bindings', {
     compatibilityDate: '2026-09-01', compatibilityFlags: ['nodejs_compat'],
     d1Databases: ['DB'], r2Buckets: ['FILES_BUCKET'], d1Persist: false, r2Persist: false,
     outboundService: async request => {
+      if (request.url === 'https://rdap.verisign.com/com/v1/domain/rachg.com') {
+        assert.equal(request.headers.has('cf-access-jwt-assertion'), false);
+        assert.equal(request.headers.has('authorization'), false);
+        return MockResponse.json({ ldhName: 'RACHG.COM', events: [{ eventAction: 'expiration', eventDate: '2027-09-03T13:27:43Z' }] });
+      }
       if (request.url === 'https://api.resend.com/emails') {
         assert.equal(request.method, 'POST');
         outgoingMail = await request.json();
@@ -44,7 +49,8 @@ test('release Worker runs reliably in workerd with actual D1 and R2 bindings', {
       return MockResponse.json(jwks);
     },
     bindings: { ACCESS_TEAM_DOMAIN: issuer, ACCESS_AUDIENCE: 'local-workspace',
-      ACCESS_ADMIN_EMAIL: 'admin@example.invalid', MAX_STORAGE_BYTES: '1000', RESEND_API_KEY: 'local-fixture-only', PUBLIC_NOTE_SHARES_ENABLED: 'true' },
+      ACCESS_ADMIN_EMAIL: 'admin@example.invalid', MAX_STORAGE_BYTES: '1000', RESEND_API_KEY: 'local-fixture-only', PUBLIC_NOTE_SHARES_ENABLED: 'true',
+      CF_VERSION_METADATA: { id: 'runtime-version', timestamp: '2026-10-13T10:00:00Z' } },
   }));
   t.after(() => mf.dispose());
   await mf.ready;
@@ -72,6 +78,16 @@ test('release Worker runs reliably in workerd with actual D1 and R2 bindings', {
     const response = await request('/health');
     assert.equal(response.status, 200);
     assert.equal((await response.json()).schema, 'ready');
+  });
+
+  await t.test('private system health reads live D1 and R2 and returns only safe registry/version metadata', async () => {
+    const anonymous = await mf.dispatchFetch('https://workspace.example.invalid/v1/system-health');
+    assert.equal(anonymous.status, 401); await anonymous.text();
+    const response = await request('/v1/system-health'); assert.equal(response.status, 200);
+    const result = await response.json(); assert.equal(result.worker.status, 'reachable'); assert.equal(result.worker.versionId, 'runtime-version');
+    assert.equal(result.storage.status, 'available'); assert.equal(result.storage.availableBytes, 1000); assert.equal(result.storage.quotaScope, 'files');
+    assert.equal(result.domain.expiresAt, Date.parse('2027-09-03T13:27:43Z'));
+    assert.equal((await bucket.list()).objects.length, 0);
   });
 
   await t.test('note categories migrate legacy notes and preserve bodies through transactional moves, imports and deletion', async () => {

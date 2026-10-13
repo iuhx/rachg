@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { DailyPlanner } from './DailyPlanner';
-import { ArrowUpRight, Clock3, FileText, FolderDot, Inbox, Paperclip, Send } from 'lucide-react';
-import type { FileItem, NoteItem, NavTab, MailItem, SentMailItem, Project } from '../types';
+import { SystemHealthCard } from './SystemHealthCard';
+import { ArrowUpRight, Clock3, FileText, Inbox, Paperclip, Send } from 'lucide-react';
+import type { FileItem, NoteItem, NavTab, MailItem, SentMailItem } from '../types';
 
 interface DashboardViewProps {
   transfers: FileItem[];
@@ -10,16 +11,12 @@ interface DashboardViewProps {
   sentMessages: SentMailItem[];
   isLoading?: boolean;
   notesLoadError?: string;
-  projects?: Project[];
-  isProjectsLoading?: boolean;
-  projectsLoadError?: string;
   canCreate: boolean;
   onNavigate: (tab: NavTab) => void;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
   transfers, notes, messages, sentMessages, isLoading = false, notesLoadError = '', canCreate, onNavigate,
-  projects = [], isProjectsLoading = false, projectsLoadError = '',
 }) => {
   // No date is generated during static rendering: the greeting stays correct after
   // midnight and on cached deployments without a server/client hydration mismatch.
@@ -33,14 +30,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     document.addEventListener?.('visibilitychange', visible);
     return () => { window.clearInterval(timer); window.removeEventListener('focus', refresh); document.removeEventListener?.('visibilitychange', visible); };
   }, []);
-  const projectCounts = [
-    { label: 'In progress', count: projects.filter(project => project.status === 'In Progress').length },
-    { label: 'Planning', count: projects.filter(project => project.status === 'Planning').length },
-    { label: 'Completed', count: projects.filter(project => project.status === 'Completed').length },
-  ];
-  const activeProjects = projects.filter(project => project.status === 'In Progress' || project.status === 'Planning')
-    .sort((a, b) => Number(b.status === 'In Progress') - Number(a.status === 'In Progress') || b.updatedTimestamp - a.updatedTimestamp)
-    .slice(0, 3);
   const activity = [
     ...notes.map((note) => ({ id: `note-${note.id}`, title: note.title, detail: 'Note updated', timestamp: note.updatedTimestamp, tab: 'notes' as NavTab })),
     ...messages.map((mail) => ({ id: `mail-${mail.id}`, title: mail.subject || '(No subject)', detail: `From ${mail.from}`, timestamp: mail.receivedAt, tab: 'mail' as NavTab })),
@@ -65,28 +54,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       <DailyPlanner now={now} canManage={canCreate} />
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <section className="workspace-card min-w-0 p-5 sm:p-6" aria-labelledby="project-overview-heading">
-          <div className="flex items-center justify-between mb-4">
-            <h2 id="project-overview-heading" className="type-section-heading text-neutral-900 dark:text-white">Project overview</h2>
-            <button onClick={() => onNavigate('projects')} aria-label="Open all projects" className="workspace-button workspace-button-secondary min-h-8 px-2 cursor-pointer"><ArrowUpRight className="w-3.5 h-3.5" /></button>
-          </div>
-          {isProjectsLoading ? <div className="workspace-empty py-9 type-secondary">Loading projects…</div>
-            : projectsLoadError ? <div className="workspace-empty py-9"><FolderDot className="w-5 h-5 text-neutral-300 mb-3" /><p className="type-secondary" role="status">Projects could not be loaded. Open Projects to reconnect or retry.</p></div>
-            : !canCreate ? <div className="workspace-empty py-9"><FolderDot className="w-5 h-5 text-neutral-300 mb-3" /><p className="type-secondary">Sign in to see your projects.</p></div>
-            : <>
-              <dl className="grid grid-cols-3 gap-2 mb-4">
-                {projectCounts.map(item => <div key={item.label} className="rounded-lg bg-neutral-50 dark:bg-white/5 px-3 py-2.5">
-                  <dt className="type-caption">{item.label}</dt><dd className="text-xl font-medium tabular-nums text-neutral-900 dark:text-white mt-1">{item.count}</dd>
-                </div>)}
-              </dl>
-              {activeProjects.length ? <ul className="divide-y divide-neutral-100 dark:divide-white/5">{activeProjects.map(project => <li key={project.id}>
-                <button onClick={() => onNavigate('projects')} className="w-full flex items-center justify-between gap-3 py-3 text-left rounded-lg hover:bg-neutral-50 dark:hover:bg-white/5">
-                  <span className="type-body min-w-0 truncate font-medium text-neutral-900 dark:text-white">{project.name}</span>
-                  <span className={`type-caption shrink-0 rounded-full px-2 py-1 ${project.status === 'In Progress' ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-300' : 'bg-neutral-100 text-neutral-500 dark:bg-white/5 dark:text-neutral-400'}`}>{project.status}</span>
-                </button>
-              </li>)}</ul> : <p className="type-secondary py-4">{projects.length ? 'No active projects. Completed and archived projects are kept in Projects.' : 'A place for your next idea. Create a project to start tracking its progress.'}</p>}
-            </>}
-        </section>
+        <SystemHealthCard canCheck={canCreate} />
 
         <section className="workspace-card min-w-0 p-5 sm:p-6" aria-labelledby="activity-heading">
           <div className="flex items-center justify-between mb-4"><h2 id="activity-heading" className="type-section-heading text-neutral-900 dark:text-white">Recent activity</h2><Clock3 className="w-4 h-4 text-neutral-400" /></div>

@@ -117,7 +117,7 @@ export const WorkspaceApp: React.FC = () => {
   }, [authStatus]);
   useEffect(() => {
     if (activeTab === 'projects') setProjectsVisited(true);
-    if (activeTab === 'home' || activeTab === 'projects') void loadProjects();
+    if (activeTab === 'projects') void loadProjects();
   }, [activeTab, loadProjects]);
   const mutateProject = async (operation: () => Promise<void>) => {
     if (authStatus !== 'authenticated') throw new Error('Sign in to manage projects.');
@@ -382,9 +382,6 @@ export const WorkspaceApp: React.FC = () => {
           {activeTab === 'home' && (
             <DashboardView
               notesLoadError={notesLoadError}
-              projects={projects}
-              projectsLoadError={projectsError}
-              isProjectsLoading={authStatus === 'loading' || isProjectsLoading}
               transfers={transfers}
               notes={notes}
               messages={mailMessages}

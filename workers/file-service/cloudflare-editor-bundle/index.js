@@ -7321,6 +7321,65 @@ async function routeTodos(request, db) {
   throw new InputError("This task changed in another tab. Refresh the day before trying again.", 409);
 }
 
+// workers/file-service/src/system-health.ts
+var RDAP_URL = "https://rdap.verisign.com/com/v1/domain/rachg.com";
+var DAY = 864e5;
+var domainCache;
+var retryAt = 0;
+var domainPending;
+async function domainExpiry() {
+  if (domainCache && Date.now() < retryAt) return domainCache;
+  if (domainPending) return domainPending;
+  domainPending = (async () => {
+    try {
+      const response = await fetch(RDAP_URL, { headers: { Accept: "application/rdap+json, application/json" }, redirect: "manual", signal: AbortSignal.timeout(5e3) });
+      if (!response.ok) throw new Error("Registry unavailable");
+      const data = JSON.parse(new TextDecoder().decode(await readBounded(response.body, 128e3)));
+      const expiration = data.events?.find((event) => event.eventAction === "expiration")?.eventDate;
+      const expiresAt = typeof expiration === "string" ? Date.parse(expiration) : NaN;
+      if (data.ldhName?.toLowerCase() !== "rachg.com" || !Number.isFinite(expiresAt) || expiresAt <= 0) throw new Error("Registry expiry missing");
+      domainCache = { name: "rachg.com", expiresAt, checkedAt: Date.now(), status: "current" };
+      retryAt = Date.now() + DAY;
+    } catch {
+      const recent = domainCache?.checkedAt && Date.now() - domainCache.checkedAt < 7 * DAY;
+      domainCache = recent ? { ...domainCache, status: "stale" } : { name: "rachg.com", expiresAt: null, checkedAt: null, status: "unavailable" };
+      retryAt = Date.now() + 5 * 6e4;
+    }
+    return domainCache;
+  })();
+  try {
+    return await domainPending;
+  } finally {
+    domainPending = void 0;
+  }
+}
+async function systemHealth(request, env) {
+  if (request.method !== "GET") throw new InputError("Method not allowed", 405);
+  const [usage, bucket, domain] = await Promise.allSettled([
+    getActiveStorageUsage(env.DB),
+    // A missing object still proves that the R2 binding accepts reads. Never writes.
+    env.FILES_BUCKET.head("__workspace_health_probe__"),
+    domainExpiry()
+  ]);
+  const usedBytes = usage.status === "fulfilled" && Number.isSafeInteger(usage.value) && usage.value >= 0 ? usage.value : null;
+  const configuredLimit = Number(env.MAX_STORAGE_BYTES ?? 4 * 1024 ** 3);
+  const limitBytes = Number.isSafeInteger(configuredLimit) && configuredLimit > 0 ? configuredLimit : null;
+  const versionCreatedAt = Date.parse(env.CF_VERSION_METADATA?.timestamp ?? "");
+  return {
+    service: "rachg-system-health",
+    checkedAt: Date.now(),
+    worker: { status: "reachable", versionId: env.CF_VERSION_METADATA?.id || null, versionCreatedAt: Number.isFinite(versionCreatedAt) ? versionCreatedAt : null },
+    storage: {
+      status: bucket.status === "fulfilled" && usedBytes !== null && limitBytes !== null ? "available" : "unavailable",
+      usedBytes,
+      limitBytes,
+      availableBytes: usedBytes !== null && limitBytes !== null ? Math.max(0, limitBytes - usedBytes) : null,
+      quotaScope: "files"
+    },
+    domain: domain.status === "fulfilled" ? domain.value : { name: "rachg.com", expiresAt: null, checkedAt: null, status: "unavailable" }
+  };
+}
+
 // workers/file-service/src/index.ts
 function getAllowedOrigin(request, env) {
   const requestOrigin = request.headers.get("Origin");
@@ -7452,6 +7511,7 @@ var index_default = {
           return jsonResponse({ success: false, error: "Request origin is not allowed", code: "INVALID_ORIGIN", status: 403 }, 403, origin);
         }
       }
+      if (url.pathname === "/v1/system-health") return jsonResponse(await systemHealth(request, env), 200, origin);
       if (request.method === "GET" && url.pathname === "/auth/return") {
         return new Response(null, { status: 302, headers: {
           Location: "https://rachg.com/",

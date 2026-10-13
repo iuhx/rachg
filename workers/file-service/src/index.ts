@@ -60,9 +60,11 @@ import { routeProjects } from './projects';
 import { routeNoteTransfer } from './note-transfer';
 import { categoryId, routeNoteCategories, routeNoteOrganization } from './note-organization';
 import { routeTodos } from './todos';
+import { systemHealth } from './system-health';
 import { boundedForm, boundedJson, InputError, mailPlainText, MAX_FILE_BYTES, MAX_MAIL_BYTES, MAX_TEXT_BYTES, readBounded, utf8Size } from '../../common/content';
 
 export interface Env {
+  CF_VERSION_METADATA?: { id: string; timestamp: string };
   PUBLIC_NOTE_SHARES_ENABLED?: string;
   DB: D1Database;
   FILES_BUCKET: R2Bucket;
@@ -233,6 +235,7 @@ export default {
       // -------------------------------------------------------------
       // Health check & Service status
       // -------------------------------------------------------------
+      if (url.pathname === '/v1/system-health') return jsonResponse(await systemHealth(request, env), 200, origin);
       if (request.method === 'GET' && url.pathname === '/auth/return') {
         // Access has established the API-domain cookie before this authenticated
         // navigation reaches us. Return only to the fixed workspace origin.

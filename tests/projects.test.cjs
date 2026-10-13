@@ -139,6 +139,6 @@ test('workspace project saves update shared data and returning to the tab refres
   navigate('projects'); await flush(); h.render(); assert.equal(props().projects[0].id, saved.id);
   await props().onSave(saved.id, input({ name: 'Changed' }), 1); h.render(); assert.equal(props().projects[0].name, 'Changed');
   assert.equal(find(h, n => n.type?.name === 'CommandPalette').props.projects[0].name, 'Changed');
-  navigate('files'); navigate('projects'); await flush(); h.render(); assert.equal(loads, 3);
+  navigate('files'); navigate('projects'); await flush(); h.render(); assert.equal(loads, 2);
   await props().onDelete(saved); h.render(); assert.equal(props().projects.length, 0); h.unmount();
 });
