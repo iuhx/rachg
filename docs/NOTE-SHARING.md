@@ -17,8 +17,10 @@ avoid sharing passwords, access tokens or sensitive personal information.
 
 ## Deployment
 
-The frontend alone cannot enable this feature. By default the Worker flag
-`PUBLIC_NOTE_SHARES_ENABLED` is `false`; no existing note is automatically published.
+The frontend alone cannot enable this feature. Production enables the Worker flag
+`PUBLIC_NOTE_SHARES_ENABLED` after configuring Access for `files.rachg.com/s/*` only;
+no existing note is automatically published. Set this flag to `false` in deployments
+where public note sharing should be unavailable.
 The dialog checks the public endpoint without a login cookie and disables creation
 when it cannot verify that the endpoint is publicly accessible.
 

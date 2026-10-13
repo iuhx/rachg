@@ -28,8 +28,8 @@
 
   // Service configuration & Limits
   "vars": {
-    // Opt in only after configuring Access for the /s/* path. See docs/NOTE-SHARING.md.
-    "PUBLIC_NOTE_SHARES_ENABLED": "false",
+    // Access bypass is restricted to files.rachg.com/s/*. See docs/NOTE-SHARING.md.
+    "PUBLIC_NOTE_SHARES_ENABLED": "true",
     "MAX_STORAGE_BYTES": "4294967296", // 4GB max total active storage cap
     "DEFAULT_EXPIRATION_HOURS": "48",
     "ALLOWED_ORIGINS": "https://rachg.com",
