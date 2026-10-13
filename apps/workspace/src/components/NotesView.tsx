@@ -442,9 +442,9 @@ export const NotesView: React.FC<NotesViewProps> = ({
                       ) : (
                         <button onClick={startEdit} className="workspace-button workspace-button-secondary min-h-8 px-3 py-1 cursor-pointer"><Edit3 className="w-3.5 h-3.5" /><span>Edit</span></button>
                       )}
-                      <button onClick={exportCurrentNote} disabled={isDeleting || isDirty || saveState === 'saving' || recovered} title="Export note as Markdown" aria-label="Export note as Markdown" className="workspace-button workspace-button-secondary min-h-8 px-2"><Download className="w-3.5 h-3.5" /></button>
+                      <button onClick={exportCurrentNote} disabled={isDeleting || isDirty || saveState === 'saving' || recovered} title="Download note as Markdown" aria-label="Download note as Markdown" className="workspace-button workspace-button-secondary min-h-8 px-3 py-1 cursor-pointer disabled:opacity-50"><Download className="w-3.5 h-3.5" /><span>Download</span></button>
                       <button onClick={() => setNoteToShare(activeNote)} disabled={isDeleting || isDirty || saveState === 'saving' || recovered} title={isDirty || recovered ? 'Save your changes before sharing' : 'Share a read-only snapshot'} className="workspace-button workspace-button-secondary min-h-8 px-3 py-1 cursor-pointer disabled:opacity-50"><Share2 className="w-3.5 h-3.5" /><span>Share</span></button>
-                      <button onClick={() => setNoteToDelete(activeNote)} disabled={isDeleting} title="Delete note" aria-label="Delete note" className="workspace-button workspace-button-secondary min-h-8 px-2 text-red-500 hover:text-red-600 cursor-pointer disabled:opacity-50"><Trash2 className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => setNoteToDelete(activeNote)} disabled={isDeleting} title="Delete note" aria-label="Delete note" className="workspace-button workspace-button-secondary min-h-8 px-3 py-1 text-red-500 hover:text-red-600 cursor-pointer disabled:opacity-50"><Trash2 className="w-3.5 h-3.5" /><span>Delete</span></button>
                     </div>
                   </div>
 

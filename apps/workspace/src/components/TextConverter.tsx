@@ -89,25 +89,31 @@ export const TextConverter: React.FC<Props> = ({ canSave, isActive, onSaveNote, 
       </div>
       <label className="workspace-field-inline type-label">Convert to<select aria-label="Conversion output" value={target} disabled={Boolean(busy)} className="workspace-select" onChange={event => { setTarget(event.target.value as Target); setNotice(''); setOperationError(''); }}><option value="markdown">Markdown</option><option value="plain">Plain text</option><option value="document">Word / HTML</option></select></label>
     </div>
+    <input ref={fileInput} type="file" accept={DOCUMENT_ACCEPT} aria-label="Choose document to convert" hidden disabled={Boolean(busy)} onChange={event => { const files = Array.from(event.target.files || []); event.target.value = ''; if (files.length) choose(files); }} />
+    {source === 'file' && imported && <div className="workspace-panel flex flex-wrap items-center justify-between gap-3 p-3" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); choose(Array.from(event.dataTransfer.files)); }}>
+      <span className="type-secondary min-w-0 break-all">{imported.name}</span>
+      <button type="button" disabled={Boolean(busy)} onClick={() => fileInput.current?.click()} className="workspace-button workspace-button-secondary"><Upload className="w-4 h-4" />Choose document</button>
+    </div>}
     <div className="grid md:grid-cols-2 gap-5 min-w-0">
       <div className="min-w-0">
-        <label hidden={source !== 'markdown'} className="type-label space-y-2"><span className="block">Markdown</span><textarea aria-label="Markdown input" value={markdown} disabled={Boolean(busy)} onChange={event => { setMarkdown(event.target.value); setNotice(''); setOperationError(''); }} placeholder={'# Hello\n\n- A useful idea\n- [A link](https://example.com)'} className="workspace-input workspace-input-mono tool-markdown-input block resize-y" /></label>
+        <label hidden={source !== 'markdown'} className="document-converter-field type-label"><span className="block">Markdown</span><textarea aria-label="Markdown input" value={markdown} disabled={Boolean(busy)} onChange={event => { setMarkdown(event.target.value); setNotice(''); setOperationError(''); }} placeholder={'# Hello\n\n- A useful idea\n- [A link](https://example.com)'} className="workspace-input workspace-input-mono document-converter-surface block resize-y" /></label>
         <fieldset hidden={source !== 'rich'} disabled={Boolean(busy)}><RichTextInput disabled={Boolean(busy)} onResult={(value, failure) => { setRich({ markdown: value, error: failure }); setNotice(''); setOperationError(''); }} /></fieldset>
-        <div hidden={source !== 'file'} className="space-y-3">
-          <div className="workspace-panel border-dashed p-5 text-center space-y-3" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); choose(Array.from(event.dataTransfer.files)); }}>
+        <div hidden={source !== 'file'} className="document-converter-field">
+          <span className="type-label block">{imported ? 'Imported Markdown · editable' : 'Document'}</span>
+          {imported ? <textarea aria-label="Imported Markdown" value={imported.markdown} disabled={Boolean(busy)} onChange={event => { setImported({ ...imported, markdown: event.target.value }); setNotice(''); setOperationError(''); }} className="workspace-input workspace-input-mono document-converter-surface block resize-y" /> :
+          <div role="group" aria-label="Document upload" className="workspace-panel document-converter-surface border-dashed p-5 text-center flex flex-col items-center justify-center gap-3" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); choose(Array.from(event.dataTransfer.files)); }}>
             <FileText className="w-6 h-6 mx-auto text-neutral-400" /><p className="type-body">Drop a document here</p><p className="type-caption">DOCX, Markdown, TXT or HTML · Up to 10 MiB</p>
-            <input ref={fileInput} type="file" accept={DOCUMENT_ACCEPT} aria-label="Choose document to convert" hidden disabled={Boolean(busy)} onChange={event => { const files = Array.from(event.target.files || []); event.target.value = ''; if (files.length) choose(files); }} />
             <button type="button" disabled={Boolean(busy)} onClick={() => fileInput.current?.click()} className="workspace-button workspace-button-secondary"><Upload className="w-4 h-4" />Choose document</button>
-          </div>
-          {imported && <><p className="type-caption break-all">{imported.name}</p><label className="type-label space-y-2"><span className="block">Imported Markdown · editable</span><textarea aria-label="Imported Markdown" value={imported.markdown} disabled={Boolean(busy)} onChange={event => { setImported({ ...imported, markdown: event.target.value }); setNotice(''); setOperationError(''); }} className="workspace-input workspace-input-mono tool-markdown-input block resize-y" /></label>{imported.warning && <p className="type-caption">{imported.warning}</p>}</>}
+          </div>}
         </div>
       </div>
-      <div className="min-w-0 space-y-2">
+      <div className="document-converter-field">
         <span className="type-label block">{target === 'plain' ? 'Plain text' : target === 'markdown' ? 'Markdown' : 'Formatted preview'}</span>
-        {target === 'document' ? <div aria-label="Document preview" className="workspace-panel tool-markdown-input p-4 type-body overflow-auto">{content && !error ? <MarkdownPreview content={content} /> : <p className="type-secondary">Your formatted document appears here…</p>}</div>
-          : <textarea aria-label={target === 'plain' ? 'Plain text preview' : 'Markdown preview'} value={error ? '' : output} readOnly placeholder="Your converted text appears here…" className={`workspace-input tool-markdown-input block resize-y ${target === 'markdown' ? 'workspace-input-mono' : ''}`} />}
+        {target === 'document' ? <div aria-label="Document preview" className="workspace-panel document-converter-surface p-4 type-body overflow-auto">{content && !error ? <MarkdownPreview content={content} /> : <p className="type-secondary">Your formatted document appears here…</p>}</div>
+          : <textarea aria-label={target === 'plain' ? 'Plain text preview' : 'Markdown preview'} value={error ? '' : output} readOnly placeholder="Your converted text appears here…" className={`workspace-input document-converter-surface block resize-y ${target === 'markdown' ? 'workspace-input-mono' : ''}`} />}
       </div>
     </div>
+    {source === 'file' && imported?.warning && <p className="type-caption">{imported.warning}</p>}
     {(error || operationError) && <p role="alert" className="type-secondary text-red-600 dark:text-red-300">{error || operationError}</p>}
     {busy && <p role="status" className="type-secondary">{busy === 'import' ? 'Reading document locally…' : 'Preparing Word document…'} <button type="button" onClick={() => operation.current?.abort()} className="underline underline-offset-2">Cancel</button></p>}
     <div className="flex flex-wrap justify-between items-center gap-3">

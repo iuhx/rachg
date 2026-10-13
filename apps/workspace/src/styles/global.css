@@ -331,6 +331,9 @@ a {
 
 .tool-qr-input { min-height: 13rem; }
 .tool-markdown-input { min-height: 22rem; }
+.document-converter-field { min-width: 0; height: 100%; gap: 0.5rem; }
+.document-converter-field:not([hidden]) { display: flex; flex-direction: column; }
+.document-converter-surface { flex: 1; min-height: 22rem; max-height: 32rem; }
 .rich-text-input { max-height: 30rem; overflow-wrap: anywhere; }
 .rich-text-input :is(p, ul, ol, pre, blockquote, table) { margin-block: 0.65rem; }
 .rich-text-input :is(h1, h2, h3, h4, h5, h6) { font-weight: 600; margin-block: 0.9rem 0.4rem; }
