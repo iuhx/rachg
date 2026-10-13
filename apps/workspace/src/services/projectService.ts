@@ -1,7 +1,8 @@
 import { PROJECT_STATUSES, type Project, type ProjectInput, type ProjectListResponse, type ProjectResponse } from '@rachg/shared';
 import { AuthenticationRequiredError } from './fileService';
+import { API_BASE_URL } from '../config/api';
 
-const API = 'https://files.rachg.com/v1/projects';
+const API = `${API_BASE_URL}/v1/projects`;
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(`${API}${path}`, { ...options, credentials: 'include', signal: AbortSignal.timeout(15_000),
     headers: { Accept: 'application/json', ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...options.headers } });

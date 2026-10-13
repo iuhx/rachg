@@ -18,7 +18,7 @@ avoid sharing passwords, access tokens or sensitive personal information.
 ## Deployment
 
 The frontend alone cannot enable this feature. Production enables the Worker flag
-`PUBLIC_NOTE_SHARES_ENABLED` after configuring Access for `files.rachg.com/s/*` only;
+`PUBLIC_NOTE_SHARES_ENABLED` after configuring Access for `api.rachg.com/s/*` only;
 no existing note is automatically published. Set this flag to `false` in deployments
 where public note sharing should be unavailable.
 The dialog checks the public endpoint without a login cookie and disables creation
@@ -29,15 +29,15 @@ when it cannot verify that the endpoint is publicly accessible.
    there is no destructive migration. The Dashboard bundle is regenerated at
    `workers/file-service/cloudflare-editor-bundle/index.js` by `pnpm build:all`.
 2. In Cloudflare Access, keep the existing administrator-only application for
-   `files.rachg.com`. Add a more-specific self-hosted application for
-   **`files.rachg.com/s/*` only**, with a Bypass policy for Everyone. Do not bypass
+   `api.rachg.com`. Add a more-specific self-hosted application for
+   **`api.rachg.com/s/*` only**, with a Bypass policy for Everyone. Do not bypass
    the whole hostname, `/v1/*`, `/f/*`, `/t/*`, the mail routes, or the main site.
    Check that any broader Access application or Worker route does not override this.
 3. Set `PUBLIC_NOTE_SHARES_ENABLED=true` on the file-service Worker. This can be
    done in the dashboard; if deploying with Wrangler, update the explicit variable
    in `wrangler.jsonc` or supply a deployment override so a later deploy preserves
    the intended setting. No note becomes public until its owner creates a link.
-4. Without an Access cookie, verify `GET https://files.rachg.com/s/status` returns
+4. Without an Access cookie, verify `GET https://api.rachg.com/s/status` returns
    `{"service":"rachg-note-share","ready":true}`. Verify the main site, `/v1/notes`,
    `/v1/mail`, `/v1/files`, `/f/...` and `/t/...` still require the administrator.
 5. Create a disposable note and share it. Check in a signed-out browser that the

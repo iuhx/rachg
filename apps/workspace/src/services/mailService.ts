@@ -1,7 +1,7 @@
 import type { ApiErrorResponse, MailItem, MailListResponse, MailMessage, MailResponse, MailSendRequest, MailSendResponse, SentMailItem, SentMailListResponse, SentMailMessage, SentMailResponse } from '../types';
 import { AuthenticationRequiredError } from './fileService';
 
-const API_BASE_URL = 'https://files.rachg.com';
+import { API_BASE_URL } from '../config/api';
 
 async function throwMailError(response: Response, fallback: string): Promise<never> {
   if (response.status === 401 || response.redirected || response.url.includes('/cdn-cgi/access/login')) {

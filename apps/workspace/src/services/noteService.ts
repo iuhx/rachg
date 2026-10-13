@@ -6,7 +6,7 @@ import type {
 } from '../types';
 import { AuthenticationRequiredError } from './fileService';
 
-const API_BASE_URL = 'https://files.rachg.com';
+import { API_BASE_URL } from '../config/api';
 
 export interface NoteShare {
   token: string;

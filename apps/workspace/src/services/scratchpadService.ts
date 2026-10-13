@@ -1,7 +1,7 @@
 import type { ApiErrorResponse, ScratchpadItem, ScratchpadResponse } from '../types';
 import { AuthenticationRequiredError } from './fileService';
 
-const API_BASE_URL = 'https://files.rachg.com';
+import { API_BASE_URL } from '../config/api';
 
 async function throwScratchpadError(response: Response, fallback: string): Promise<never> {
   if (response.status === 401 || response.redirected || response.url.includes('/cdn-cgi/access/login')) {

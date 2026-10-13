@@ -100,7 +100,7 @@ test('stale versions, concurrent creation, oversized Unicode and deleted notes c
 
 const flush = async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); };
 const uiNote = { id: 'note-1', title: 'Saved title', content: 'Saved body', excerpt: 'Saved body', updatedTimestamp: 1, updatedAt: 'now' };
-const uiShare = { token: 'a'.repeat(64), url: `https://files.rachg.com/s/${'a'.repeat(64)}`, title: uiNote.title, content: uiNote.content, createdTimestamp: Date.now(), expiresTimestamp: Date.now() + 7 * 86400_000 };
+const uiShare = { token: 'a'.repeat(64), url: `https://api.rachg.com/s/${'a'.repeat(64)}`, title: uiNote.title, content: uiNote.content, createdTimestamp: Date.now(), expiresTimestamp: Date.now() + 7 * 86400_000 };
 const button = (h, text) => find(h, n => n.type === 'button' && label(n) === text);
 
 test('Share opens a review and remains disabled while note edits are unsaved', async () => {
@@ -141,7 +141,7 @@ test('public readiness check never sends administrator credentials or follows a 
   const f = components(); const api = f.load('apps/workspace/src/services/noteService.ts');
   const originalFetch = global.fetch; t.after(() => { global.fetch = originalFetch; });
   global.fetch = async (url, options) => {
-    assert.equal(url, 'https://files.rachg.com/s/status'); assert.equal(options.credentials, 'omit'); assert.equal(options.redirect, 'error');
+    assert.equal(url, 'https://api.rachg.com/s/status'); assert.equal(options.credentials, 'omit'); assert.equal(options.redirect, 'error');
     return Response.json({ service: 'rachg-note-share', ready: true });
   };
   assert.equal(await api.isPublicNoteSharingReady(), true);

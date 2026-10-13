@@ -1,4 +1,5 @@
 import React, { useRef, useState } from 'react';
+import { API_BASE_URL, API_HOSTNAME } from '../config/api';
 import {
   Cloud,
   RefreshCw,
@@ -32,18 +33,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setPingError(null); setPingLatency(null);
     const start = performance.now();
     try {
-      const apiBaseUrl = 'https://files.rachg.com';
-      const response = await fetch(`${apiBaseUrl}/health`, { method: 'GET', credentials: 'include', signal: AbortSignal.timeout(10_000) });
-      if (response.redirected || response.status === 401 || response.status === 403) throw new Error('Sign in to the file service to check its status.');
+      const response = await fetch(`${API_BASE_URL}/health`, { method: 'GET', credentials: 'include', signal: AbortSignal.timeout(10_000) });
+      if (response.redirected || response.status === 401 || response.status === 403) throw new Error('Sign in to the workspace API to check its status.');
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('The server did not return a health response.');
       const health = await response.json();
-      if (!health || health.service !== 'rachg-file-service' || health.status !== 'healthy' || health.schema !== 'ready') throw new Error('The file service did not report ready.');
+      if (!health || health.service !== 'rachg-file-service' || health.status !== 'healthy' || health.schema !== 'ready') throw new Error('The workspace API did not report ready.');
       const duration = Math.round(performance.now() - start);
       setPingLatency(duration);
     } catch (error) {
       setPingLatency(null);
-      setPingError(error instanceof Error ? error.message : 'Unable to reach the file service.');
+      setPingError(error instanceof Error ? error.message : 'Unable to reach the workspace API.');
     } finally {
       pingBusy.current = false;
       setTestingPing(false);
@@ -137,7 +137,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <Radio className="w-4 h-4 text-neutral-400" />
               <div>
                 <span className="font-medium text-neutral-900 dark:text-white">
-                  File Service Worker
+                  Workspace API Worker
                 </span>
                 <span className="type-mono text-neutral-400 ml-2">
                   rachg-file-service
@@ -145,7 +145,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </div>
             </div>
             <span className="type-mono text-neutral-400">
-              files.rachg.com
+              {API_HOSTNAME}
             </span>
           </div>
         </div>

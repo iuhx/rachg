@@ -3,6 +3,7 @@
   "name": "rachg-file-service",
   "account_id": "183126450d0d9188448b6265c97e595f",
   "keep_vars": true,
+  "routes": [{ "pattern": "api.rachg.com", "custom_domain": true }],
   "triggers": { "crons": ["*/15 * * * *"] },
   "main": "src/index.ts",
   "build": { "command": "npm --prefix ../../packages/shared run build" },
@@ -28,7 +29,7 @@
 
   // Service configuration & Limits
   "vars": {
-    // Access bypass is restricted to files.rachg.com/s/*. See docs/NOTE-SHARING.md.
+    // Access bypass is restricted to api.rachg.com/s/*. See docs/NOTE-SHARING.md.
     "PUBLIC_NOTE_SHARES_ENABLED": "true",
     "MAX_STORAGE_BYTES": "4294967296", // 4GB max total active storage cap
     "DEFAULT_EXPIRATION_HOURS": "48",

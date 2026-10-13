@@ -31,7 +31,7 @@ Independent temporary file transfer micro-service powered by Cloudflare Workers,
 
 ## 📡 API Specification (v1)
 
-Base URL in Production: `https://files.rachg.com` (or worker hostname)  
+Base URL in Production: `https://api.rachg.com` (or worker hostname)
 Local Dev URL: `http://localhost:8787`
 
 ### 1. Health & Quota Status
@@ -69,13 +69,13 @@ Local Dev URL: `http://localhost:8787`
     "updatedAt": "14:22",
     "expiresIn": "2d 4h",
     "expiresTimestamp": 1790151720000,
-    "shareUrl": "https://files.rachg.com/f/7h3k9a",
+    "shareUrl": "https://api.rachg.com/f/7h3k9a",
     "type": "archive",
     "downloads": 0,
     "status": "active",
     "deleteToken": "k8s92n4m1..."
   },
-  "shareUrl": "https://files.rachg.com/f/7h3k9a",
+  "shareUrl": "https://api.rachg.com/f/7h3k9a",
   "deleteToken": "k8s92n4m1..."
 }
 ```

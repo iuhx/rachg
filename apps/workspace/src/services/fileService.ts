@@ -1,6 +1,6 @@
 import type { FileItem, UploadResponse, FileListResponse, ApiErrorResponse } from '../types';
 
-const API_BASE_URL = 'https://files.rachg.com';
+import { API_BASE_URL } from '../config/api';
 
 export class AuthenticationRequiredError extends Error {
   readonly loginUrl: string;

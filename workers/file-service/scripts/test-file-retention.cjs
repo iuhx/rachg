@@ -61,7 +61,7 @@ const { cleanupStorage } = loadModule('cleanup');
 const env = { DB, FILES_BUCKET, MAX_STORAGE_BYTES: '1024' };
 const tasks = [];
 const ctx = { waitUntil(task) { tasks.push(task); } };
-const request = (route, options = {}) => worker.fetch(new Request(`https://files.rachg.com${route}`, {
+const request = (route, options = {}) => worker.fetch(new Request(`https://api.rachg.com${route}`, {
   ...options, headers: { 'test-auth': 'yes', ...options.headers },
 }), env, ctx);
 async function upload(expiry, name) {
@@ -80,7 +80,7 @@ async function upload(expiry, name) {
   assert.equal(isFileExpired(0, now + 1000 * 365 * 86400000), false);
   assert.equal(isFileExpired(now, now), true);
 
-  const anonymous = await worker.fetch(new Request('https://files.rachg.com/v1/files/upload', { method: 'POST' }), env, ctx);
+  const anonymous = await worker.fetch(new Request('https://api.rachg.com/v1/files/upload', { method: 'POST' }), env, ctx);
   assert.equal(anonymous.status, 401);
 
   const response = await upload('permanent', 'kept.txt');
