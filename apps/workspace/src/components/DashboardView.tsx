@@ -53,8 +53,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
       <DailyPlanner now={now} canManage={canCreate} />
 
-      <div className="grid gap-5 lg:grid-cols-2">
-        <section className="workspace-card p-5 sm:p-6" aria-labelledby="recent-notes-heading">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <section className="workspace-card min-w-0 p-5 sm:p-6" aria-labelledby="recent-notes-heading">
           <div className="flex items-center justify-between mb-4">
             <h2 id="recent-notes-heading" className="type-section-heading text-neutral-900 dark:text-white">Recent notes</h2>
             <button onClick={() => onNavigate('notes')} aria-label="Open all notes" className="workspace-button workspace-button-secondary min-h-8 px-2 cursor-pointer"><ArrowUpRight className="w-3.5 h-3.5" /></button>
@@ -65,7 +65,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </article>)}</div>}
         </section>
 
-        <section className="workspace-card p-5 sm:p-6" aria-labelledby="activity-heading">
+        <section className="workspace-card min-w-0 p-5 sm:p-6" aria-labelledby="activity-heading">
           <div className="flex items-center justify-between mb-4"><h2 id="activity-heading" className="type-section-heading text-neutral-900 dark:text-white">Recent activity</h2><Clock3 className="w-4 h-4 text-neutral-400" /></div>
           {activity.length === 0 ? <div className="workspace-empty py-9"><Inbox className="w-5 h-5 text-neutral-300 mb-3" /><p className="type-secondary">{isLoading ? 'Loading recent activity…' : 'New notes and messages will appear here.'}</p></div> :
             <ol className="space-y-3">{activity.map((item) => <li key={item.id} className="flex items-start gap-3">
