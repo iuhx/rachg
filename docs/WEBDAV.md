@@ -1,7 +1,10 @@
 # InfiniCLOUD storage
 
 Files, Tools uploads and the global upload dialog can save to R2 or InfiniCLOUD.
-R2 remains the default. Credentials now come only from the `rachg-file-service`
+Selecting permanent retention defaults to InfiniCLOUD when configured; timed
+uploads default to R2. Users can still choose either destination manually.
+Changing retention restores its default, while retries keep their original
+destination. Credentials now come only from the `rachg-file-service`
 Worker's Cloudflare Secret bindings:
 
 - `WEBDAV_USERNAME`: InfiniCLOUD Connection ID.

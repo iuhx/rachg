@@ -1,5 +1,17 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { StorageBackend } from '@rachg/shared';
+
+export function useUploadSettings(webdavAvailable: boolean) {
+  const [expiry, setExpiry] = useState('48 hours');
+  const [storageOverride, setStorageBackend] = useState<StorageBackend | null>(null);
+  const storageBackend: StorageBackend = storageOverride ?? (expiry === 'permanent' && webdavAvailable ? 'webdav' : 'r2');
+  const changeExpiry = (next: string) => {
+    if (next === expiry) return;
+    setExpiry(next);
+    setStorageBackend(null);
+  };
+  return { expiry, setExpiry: changeExpiry, storageBackend, setStorageBackend };
+}
 
 export function StoragePicker({ value, onChange, webdavAvailable = false, disabled = false }: {
   value: StorageBackend; onChange: (value: StorageBackend) => void; webdavAvailable?: boolean; disabled?: boolean;

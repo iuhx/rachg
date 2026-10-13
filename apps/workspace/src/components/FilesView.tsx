@@ -16,7 +16,7 @@ import {
 import type { FileItem, FileCategory } from '../types';
 import type { StorageBackend } from '@rachg/shared';
 import { ConfirmDialog } from './ConfirmDialog';
-import { StoragePicker } from './StoragePicker';
+import { StoragePicker, useUploadSettings } from './StoragePicker';
 
 interface FilesViewProps {
   transfers: FileItem[];
@@ -47,8 +47,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
   isLoading = false,
   webdavAvailable = false,
 }) => {
-  const [selectedExpiry, setSelectedExpiry] = useState('48 hours');
-  const [storageBackend, setStorageBackend] = useState<StorageBackend>('r2');
+  const { expiry: selectedExpiry, setExpiry: setSelectedExpiry, storageBackend, setStorageBackend } = useUploadSettings(webdavAvailable);
   const [typeFilter, setTypeFilter] = useState<FileCategory | 'all'>('all');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);

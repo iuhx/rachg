@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Copy, Download, FileText, Image as ImageIcon, QrCode, Upload } from 'lucide-react';
 import type { FileItem, NoteItem } from '../types';
 import type { StorageBackend } from '@rachg/shared';
-import { StoragePicker } from './StoragePicker';
+import { StoragePicker, useUploadSettings } from './StoragePicker';
 import { byteLength, createQr, downloadBlob, FILE_BYTES, LOCAL_QR_BYTES, qrPng, textShareUrl, TOOL_TEXT_BYTES, usableFile, type QrMatrix } from '../utils/qr';
 
 export interface FileQrRequest { fileId: string; sequence: number }
@@ -43,8 +43,7 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ files, fileRequest, onUplo
   const [selectedId, setSelectedId] = useState('');
   const [pageLink, setPageLink] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
-  const [expiry, setExpiry] = useState('48 hours');
-  const [storageBackend, setStorageBackend] = useState<StorageBackend>('r2');
+  const { expiry, setExpiry, storageBackend, setStorageBackend } = useUploadSettings(webdavAvailable);
   const [filter, setFilter] = useState('');
   const [uploading, setUploading] = useState(false);
   const uploadBusy = useRef(false);
