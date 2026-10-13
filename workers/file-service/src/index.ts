@@ -58,6 +58,7 @@ import { publicShareHeaders } from './note-share-page';
 import { formatOutgoingMail } from './mail-format';
 import { routeProjects } from './projects';
 import { routeNoteTransfer } from './note-transfer';
+import { categoryId, routeNoteCategories, routeNoteOrganization } from './note-organization';
 import { routeTodos } from './todos';
 import { boundedForm, boundedJson, InputError, mailPlainText, MAX_FILE_BYTES, MAX_MAIL_BYTES, MAX_TEXT_BYTES, readBounded, utf8Size } from '../../common/content';
 
@@ -169,6 +170,7 @@ async function parseMailSendPayload(request: Request): Promise<MailSendRequest |
 interface NotePayload {
   title: string;
   content: string;
+  categoryId: string | null;
 }
 
 async function parseNotePayload(request: Request): Promise<NotePayload | null> {
@@ -180,7 +182,7 @@ async function parseNotePayload(request: Request): Promise<NotePayload | null> {
   const title = candidate.title.trim();
   const content = candidate.content;
   if (!title || title.length > 200 || utf8Size(content) > MAX_TEXT_BYTES) return null;
-  return { title, content };
+  return { title, content, categoryId: request.method === 'POST' ? categoryId(candidate.categoryId) : null };
 }
 
 export default {
@@ -269,6 +271,10 @@ export default {
       // -------------------------------------------------------------
       // Routes: private Markdown notes (D1)
       // -------------------------------------------------------------
+      const categoryMatch = url.pathname.match(/^\/v1\/note-categories(?:\/([a-zA-Z0-9_-]+))?$/);
+      if (categoryMatch) return jsonResponse(await routeNoteCategories(request, env.DB, categoryMatch[1]), 200, origin);
+      const organizationMatch = url.pathname.match(/^\/v1\/notes\/([a-zA-Z0-9_-]+)\/organization$/);
+      if (organizationMatch) return jsonResponse(await routeNoteOrganization(request, env.DB, organizationMatch[1]), 200, origin);
       if (url.pathname === '/v1/notes/export' || url.pathname === '/v1/notes/import') {
         return jsonResponse(await routeNoteTransfer(request, env.DB), 200, origin);
       }
@@ -436,9 +442,10 @@ export default {
           created_at: now,
           updated_at: now,
         };
-        await insertNoteRecord(env.DB, record);
+        if (!await insertNoteRecord(env.DB, record, payload.categoryId)) throw new InputError('The category no longer exists. Choose another category.', 409);
+        const savedRecord = await getNoteRecordById(env.DB, record.id);
         return jsonResponse<NoteResponse>(
-          { success: true, note: mapRecordToNoteItem(record) },
+          { success: true, note: mapRecordToNoteItem(savedRecord!) },
           201,
           origin
         );

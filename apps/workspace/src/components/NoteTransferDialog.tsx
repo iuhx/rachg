@@ -45,7 +45,7 @@ export function NoteTransferDialog({ mode, onClose, onImported }: Props) {
       for (const item of items) {
         if (stop.current) break;
         if (item.status !== 'pending') continue;
-        const result = await importNote({ id: item.id, title: item.title, content: item.content });
+        const result = await importNote({ id: item.id, title: item.title, content: item.content, categoryName: item.categoryName, pinned: item.pinned });
         onImported(result.note);
         if (active.current) setItems(current => current.map(candidate => candidate.id === item.id ? { ...candidate, status: result.imported ? 'saved' : 'skipped' } : candidate));
       }
@@ -85,21 +85,21 @@ export function NoteTransferDialog({ mode, onClose, onImported }: Props) {
         <p className="type-secondary">Choose Markdown, TXT or a JSON backup. Review locally, then import as new private notes. Exact title-and-content matches are skipped; existing notes are never overwritten.</p>
         <input ref={inputRef} type="file" multiple hidden accept=".md,.markdown,.txt,.json" aria-label="Choose notes to import" disabled={busy} onChange={event => { const files = Array.from(event.target.files || []); event.target.value = ''; void choose(files); }} />
         <button type="button" disabled={busy} onClick={() => inputRef.current?.click()} className="workspace-button workspace-button-secondary"><Upload className="w-3.5 h-3.5" />{items.length ? 'Choose different files' : 'Choose files'}</button>
-        <p className="type-caption">Up to 1,000 notes / 20 MB per import; 1 MB per note. For exported ZIPs, extract and select notes.json to restore exact titles.</p>
+        <p className="type-caption">Up to 1,000 notes / 20 MB per import; 1 MB per note. JSON restores categories and pins. For exported ZIPs, extract and select notes.json. Existing notes keep their current organization.</p>
         {busy && !items.length && <p className="type-secondary" role="status">Reading files…</p>}
         {items.length > 0 && <>
           <p className="type-secondary" role="status">{items.length} notes · {completed} processed · {items.filter(item => item.status === 'skipped').length} already present</p>
           <div className="grid gap-3 sm:grid-cols-[0.8fr_1.2fr]">
             <div className="workspace-panel max-h-64 overflow-y-auto p-2 space-y-1">{items.map((item, index) => <button key={item.id} type="button" onClick={() => setSelected(index)} className={`block w-full text-left rounded-lg p-2 ${selected === index ? 'bg-neutral-100 dark:bg-white/10' : ''}`}><span className="type-body block truncate">{item.title}</span><span className="type-caption">{item.status === 'saved' ? 'Imported' : item.status === 'skipped' ? 'Already present' : `${item.content.length.toLocaleString()} characters`}</span></button>)}</div>
-            <article tabIndex={0} aria-label="Import preview" className="workspace-panel max-h-64 overflow-auto p-3 type-body"><h3 className="type-section-heading mb-3 break-words">{items[selected]?.title}</h3><MarkdownPreview content={items[selected]?.content || ''} /></article>
+            <article tabIndex={0} aria-label="Import preview" className="workspace-panel max-h-64 overflow-auto p-3 type-body"><h3 className="type-section-heading mb-3 break-words">{items[selected]?.title}</h3><p className="type-caption mb-3">{items[selected]?.categoryName || 'Uncategorized'}{items[selected]?.pinned ? ' · Pinned' : ''}</p><MarkdownPreview content={items[selected]?.content || ''} /></article>
           </div>
           <div className="flex flex-wrap gap-2"><button type="button" disabled={busy || !remaining} onClick={() => void runImport()} className="workspace-button workspace-button-primary">{busy ? 'Importing…' : completed ? `Import remaining (${remaining})` : `Import ${items.length} notes`}</button>{busy && <button type="button" onClick={() => { stop.current = true; setNotice('Stopping after the current note…'); }} className="workspace-button workspace-button-secondary">Stop after current note</button>}</div>
         </>}
       </> : <>
         <p className="type-secondary">Download all saved notes. Unsaved edits and public share links are not included. Files are downloaded to this device.</p>
         <div className="space-y-3">
-          <button type="button" disabled={busy} onClick={() => void runExport('json')} className="workspace-panel w-full p-4 text-left"><span className="type-body flex items-center gap-2 font-medium"><Download className="w-4 h-4" />JSON backup</span><span className="type-secondary block mt-1">Keep exact titles and content. Import this file to restore notes.</span></button>
-          <button type="button" disabled={busy} onClick={() => void runExport('zip')} className="workspace-panel w-full p-4 text-left"><span className="type-body flex items-center gap-2 font-medium"><Download className="w-4 h-4" />Markdown ZIP</span><span className="type-secondary block mt-1">Individual Markdown files plus notes.json for restoring exact titles.</span></button>
+          <button type="button" disabled={busy} onClick={() => void runExport('json')} className="workspace-panel w-full p-4 text-left"><span className="type-body flex items-center gap-2 font-medium"><Download className="w-4 h-4" />JSON backup</span><span className="type-secondary block mt-1">Keep titles, content, categories and pins. Import this file to restore notes.</span></button>
+          <button type="button" disabled={busy} onClick={() => void runExport('zip')} className="workspace-panel w-full p-4 text-left"><span className="type-body flex items-center gap-2 font-medium"><Download className="w-4 h-4" />Markdown ZIP</span><span className="type-secondary block mt-1">Individual Markdown files plus notes.json for restoring titles, categories and pins.</span></button>
         </div>
         {busy && <p className="type-secondary" role="status">Preparing your download…</p>}
       </>}

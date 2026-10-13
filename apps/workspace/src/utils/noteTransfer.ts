@@ -2,15 +2,18 @@ import type { NoteItem } from '../types';
 
 export const NOTE_ARCHIVE_BYTES = 20 * 1024 * 1024;
 export const NOTE_ARCHIVE_COUNT = 1000;
-export interface ImportNote { id: string; title: string; content: string }
+export interface ImportNote { id: string; title: string; content: string; categoryName?: string | null; pinned?: boolean }
 const bytes = (text: string) => new TextEncoder().encode(text).byteLength;
 
-function validate(value: unknown): { title: string; content: string } {
+function validate(value: unknown): Omit<ImportNote, 'id'> {
   if (!value || typeof value !== 'object') throw new Error('Each note must contain a title and content.');
   const item = value as Record<string, unknown>;
   if (typeof item.title !== 'string' || !item.title.trim() || item.title.trim().length > 200 || typeof item.content !== 'string') throw new Error('Each note needs a title of 1–200 characters and text content.');
   if (bytes(item.content) > 1_000_000) throw new Error(`“${item.title.slice(0, 60)}” exceeds the 1 MB note limit.`);
-  return { title: item.title.trim(), content: item.content };
+  const name = typeof item.categoryName === 'string' ? item.categoryName.normalize('NFKC').trim() : null;
+  if (item.categoryName != null && (!name || name.length > 40 || /[\x00-\x1f\x7f]/.test(name))) throw new Error('Category names must be 1–40 characters without control characters.');
+  if (item.pinned !== undefined && typeof item.pinned !== 'boolean') throw new Error('Invalid note pin state.');
+  return { title: item.title.trim(), content: item.content, categoryName: name, pinned: item.pinned === true };
 }
 
 /** Parse locally. Backup IDs and timestamps never overwrite existing notes. */
@@ -26,7 +29,7 @@ export async function parseNoteFiles(files: File[]): Promise<ImportNote[]> {
       let parsed;
       try { parsed = JSON.parse(text); } catch { throw new Error(`“${file.name}” is not valid JSON.`); }
       if (Array.isArray(parsed)) values = parsed;
-      else if (parsed?.format === 'rachg-notes' && parsed.version === 1 && Array.isArray(parsed.notes)) values = parsed.notes;
+      else if (parsed?.format === 'rachg-notes' && [1, 2].includes(parsed.version) && Array.isArray(parsed.notes)) values = parsed.notes;
       else throw new Error('This JSON is not a supported rachg notes backup.');
     } else values = [{ title: file.name.replace(/\.(md|markdown|txt)$/i, ''), content: text }];
     if (notes.length + values.length > NOTE_ARCHIVE_COUNT) throw new Error('Import up to 1,000 notes at a time.');
@@ -57,7 +60,7 @@ export function downloadNoteFile(blob: Blob, filename: string): void {
 
 export function noteBackup(notes: NoteItem[]): string {
   if (notes.length > NOTE_ARCHIVE_COUNT) throw new Error('A backup can contain up to 1,000 notes.');
-  const result = JSON.stringify({ format: 'rachg-notes', version: 1, exportedAt: new Date().toISOString(), notes: notes.map(note => ({ ...validate(note), updatedTimestamp: note.updatedTimestamp })) }, null, 2);
+  const result = JSON.stringify({ format: 'rachg-notes', version: 2, exportedAt: new Date().toISOString(), notes: notes.map(note => ({ ...validate(note), updatedTimestamp: note.updatedTimestamp })) }, null, 2);
   if (bytes(result) > NOTE_ARCHIVE_BYTES) throw new Error('The backup exceeds 20 MB. Export large notes individually instead.');
   return result;
 }

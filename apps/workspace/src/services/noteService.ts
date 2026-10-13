@@ -1,6 +1,7 @@
 import type {
   ApiErrorResponse,
   NoteItem,
+  NoteCategory,
   NoteResponse,
 } from '../types';
 import { AuthenticationRequiredError } from './fileService';
@@ -105,12 +106,12 @@ export async function importNote(note: ImportNote): Promise<{ note: NoteItem; im
   return data;
 }
 
-export async function createNote(title: string, content: string): Promise<NoteItem> {
+export async function createNote(title: string, content: string, categoryId: string | null = null): Promise<NoteItem> {
   const response = await fetch(`${API_BASE_URL}/v1/notes`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ title, content }),
+    body: JSON.stringify({ title, content, categoryId }),
   });
   if (!response.ok) await throwNoteApiError(response, 'Unable to create note');
   const data = await response.json() as NoteResponse;
@@ -137,4 +138,36 @@ export async function deleteNote(id: string): Promise<void> {
     credentials: 'include',
   });
   if (!response.ok) await throwNoteApiError(response, 'Unable to delete note');
+}
+
+async function organizationRequest(path: string, method = 'GET', body?: unknown) {
+  const response = await fetch(`${API_BASE_URL}/v1/${path}`, {
+    method, credentials: 'include', redirect: 'manual', signal: AbortSignal.timeout(30_000),
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+  if (response.type === 'opaqueredirect' || response.status === 302 || response.redirected) throw new AuthenticationRequiredError();
+  if (!response.ok) await throwNoteApiError(response, 'Unable to update note organization');
+  const data = await response.json().catch(() => null);
+  if (!data?.success) throw new Error('Unable to load note organization. Reconnect and try again.');
+  return data;
+}
+export async function fetchNoteCategories(): Promise<NoteCategory[]> {
+  const data = await organizationRequest('note-categories');
+  if (!Array.isArray(data.categories)) throw new Error('Invalid category response.');
+  return data.categories;
+}
+export async function saveNoteCategory(category: { id: string; name: string; revision?: number }): Promise<NoteCategory[]> {
+  const editing = category.revision !== undefined;
+  return (await organizationRequest(`note-categories${editing ? `/${encodeURIComponent(category.id)}` : ''}`, editing ? 'PUT' : 'POST', category)).categories;
+}
+export async function deleteNoteCategory(category: NoteCategory): Promise<NoteCategory[]> {
+  return (await organizationRequest(`note-categories/${encodeURIComponent(category.id)}`, 'DELETE', { revision: category.revision })).categories;
+}
+export async function organizeNote(note: NoteItem, categoryId: string | null, pinned: boolean): Promise<NoteItem> {
+  const data = await organizationRequest(`notes/${encodeURIComponent(note.id)}/organization`, 'PUT', {
+    categoryId, pinned, revision: note.organizationRevision ?? 0,
+  });
+  if (data.note?.id !== note.id || !Number.isSafeInteger(data.note.organizationRevision)) throw new Error('Unable to confirm organization. Refresh and try again.');
+  return data.note;
 }

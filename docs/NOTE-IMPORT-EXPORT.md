@@ -2,14 +2,19 @@
 
 In Notes, **Import** accepts one or more `.md`, `.markdown`, `.txt`, or `.json`
 files. Markdown and TXT use the filename as the title and keep the complete file
-as content. JSON accepts a rachg version-1 backup or an array of objects with
+as content. JSON accepts a rachg version-1/version-2 backup or an array of objects with
 `title` and `content` fields, including older local recovery backups.
 
 Files are parsed and previewed in the browser before any write. Confirm Import to
 create new private notes. The server skips exact title-and-content duplicates,
 including notes outside the currently displayed list. A matching title with
 different content creates a separate note. Existing notes are never overwritten;
-backup IDs, timestamps and sharing permissions are not restored.
+backup IDs, timestamps and sharing permissions are not restored. Version-2 backups
+also preserve category names and pin states. Categories match by normalized,
+case-insensitive name, and missing categories are created (up to 50 total).
+Exact duplicates and retries keep the existing note's current category and pin.
+An import requiring a new category at the limit stops without creating that note;
+completed notes remain saved. Empty categories are not included in note backups.
 
 Import progress is recorded after each confirmed response. An interrupted batch
 can continue with **Import remaining**. Stable random IDs make retries safe when a
@@ -19,11 +24,12 @@ current note** pauses the batch; it does not roll back already imported notes.
 The download icon beside Edit/Share exports that saved note as Markdown. Save any
 pending or recovered draft first. **Export all** downloads either:
 
-- **JSON backup**: exact titles/content with an export timestamp and informational
+- **JSON backup**: exact titles/content, categories and pins with an export timestamp and informational
   modification times. This is the recommended restore format.
 - **Markdown ZIP**: one Markdown file per note and `notes.json`. Filenames are
   sanitized and numbered to avoid collisions. Extract and import `notes.json` to
-  preserve exact titles. Import the JSON or the Markdown files, not both.
+  preserve exact titles, categories and pins. Individual Markdown/TXT files import
+  as unpinned, Uncategorized notes. Import the JSON or the Markdown files, not both.
 
 Both the Notes list and all-note export read authenticated pages of 10 notes until
 complete, so imports beyond 200 notes remain visible after reloading. A failed page
@@ -37,7 +43,7 @@ that cannot be used as filenames are preserved exactly in the JSON backup.
 ## API and security
 
 - `GET /v1/notes/export?after=<last-id>` returns `notes` and `nextCursor` (or null).
-- `POST /v1/notes/import` accepts `{id,title,content}` where the ID is a newly
+- `POST /v1/notes/import` accepts `{id,title,content,categoryName?,pinned?}` where the ID is a newly
   generated `import-<UUIDv4>`, and returns `{success,note,imported}`.
 - Both endpoints retain administrator Access authentication; writes retain Origin
   validation and bounded JSON parsing. These endpoints do not create public shares.

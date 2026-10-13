@@ -21,6 +21,7 @@ import {
   AuthenticationRequiredError,
 } from '../services/fileService';
 import { createNote, deleteNote, fetchNotes, updateNote as updateNoteService } from '../services/noteService';
+import { mergeNoteOrganization } from '../utils/noteOrganization';
 import { getAccessIdentity, startAccessLogout } from '../services/accessService';
 import { deleteMailMessage, fetchMail, fetchMailMessage, fetchSentMail, fetchSentMailMessage, sendMail } from '../services/mailService';
 import { fetchProjects, saveProject, deleteProject } from '../services/projectService';
@@ -76,6 +77,7 @@ export const WorkspaceApp: React.FC = () => {
   // Command palette & modal
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [newModalType, setNewModalType] = useState<'note' | 'transfer' | null>(null);
+  const [newNoteCategoryId, setNewNoteCategoryId] = useState<string | null>(null);
 
   // Toast feedback
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -137,7 +139,7 @@ export const WorkspaceApp: React.FC = () => {
   });
   const openNewItem = (type: 'project' | 'note' | 'transfer') => {
     if (type === 'project') { setProjectCreateRequest(current => current + 1); setActiveTab('projects'); window.scrollTo(0, 0); }
-    else setNewModalType(type);
+    else { setNewNoteCategoryId(null); setNewModalType(type); }
   };
 
   const loadMail = useCallback(async () => {
@@ -288,7 +290,7 @@ export const WorkspaceApp: React.FC = () => {
 
   const handleCreateNote = async (n: Partial<NoteItem>) => {
     try {
-      const newNote = await createNote(n.title?.trim() || 'Untitled Note', n.content || '');
+      const newNote = await createNote(n.title?.trim() || 'Untitled Note', n.content || '', n.categoryId ?? null);
       setNotes((current) => [newNote, ...current.filter(note => note.id !== newNote.id)]);
       showToast(`Note "${newNote.title}" saved.`);
     } catch (error: any) {
@@ -331,7 +333,7 @@ export const WorkspaceApp: React.FC = () => {
   const handleUpdateNote = async (updated: NoteItem) => {
     try {
       const saved = await updateNoteService(updated);
-      setNotes((current) => current.map((note) => (note.id === saved.id ? saved : note)));
+      setNotes((current) => current.map((note) => (note.id === saved.id ? mergeNoteOrganization(saved, note) : note)));
       showToast('Note saved.');
     } catch (error: any) {
       showToast(error instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to save notes.' : (error.message || 'Unable to save note.'));
@@ -413,7 +415,11 @@ export const WorkspaceApp: React.FC = () => {
               notes={notes}
               isActive={activeTab === 'notes'}
               isLoading={authStatus === 'loading' || (authStatus === 'authenticated' && isNotesLoading)}
-              onNewNote={() => setNewModalType('note')}
+              onNewNote={(categoryId) => { setNewNoteCategoryId(categoryId ?? null); setNewModalType('note'); }}
+              onOrganizationNotes={updated => {
+                const byId = new Map(updated.map(note => [note.id, note]));
+                setNotes(current => current.map(note => byId.has(note.id) ? mergeNoteOrganization(note, byId.get(note.id)!) : note));
+              }}
               onUpdateNote={handleUpdateNote}
               onDeleteNote={handleDeleteNote}
             />
@@ -483,8 +489,8 @@ export const WorkspaceApp: React.FC = () => {
       <NewItemModal
         isOpen={newModalType !== null}
         type={newModalType}
-        onClose={() => setNewModalType(null)}
-        onCreateNote={handleCreateNote}
+        onClose={() => { setNewModalType(null); setNewNoteCategoryId(null); }}
+        onCreateNote={note => handleCreateNote({ ...note, categoryId: newNoteCategoryId })}
         onCreateTransfer={handleUploadFile}
       />
 

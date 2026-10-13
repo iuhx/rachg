@@ -4360,6 +4360,10 @@ function ensureMailLedger(db) {
 }
 
 // workers/file-service/src/db.ts
+var NOTE_SELECT = `SELECT n.*, o.category_id, c.name AS category_name,
+  COALESCE(o.pinned, 0) AS pinned, COALESCE(o.revision, 0) AS organization_revision
+  FROM notes n LEFT JOIN note_organization o ON o.note_id = n.id
+  LEFT JOIN note_categories c ON c.id = o.category_id`;
 function getFileType(filename, mime) {
   const ext = filename.split(".").pop()?.toLowerCase() || "";
   if (["png", "jpg", "jpeg", "svg", "webp", "gif"].includes(ext) || mime.startsWith("image/")) {
@@ -4420,7 +4424,11 @@ function mapRecordToNoteItem(record) {
     content: record.content,
     excerpt: formatNoteExcerpt(record.content),
     updatedAt: formatNoteTimestamp(record.updated_at),
-    updatedTimestamp: record.updated_at
+    updatedTimestamp: record.updated_at,
+    categoryId: record.category_id ?? null,
+    categoryName: record.category_name ?? null,
+    pinned: Boolean(record.pinned),
+    organizationRevision: record.organization_revision ?? 0
   };
 }
 function mapRecordToFileItem(r, baseUrl) {
@@ -4483,6 +4491,16 @@ async function initializeSchema(db) {
   ).run();
   await db.prepare(`CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes (updated_at DESC);`).run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_notes_title ON notes (title)").run();
+  await db.prepare(`CREATE TABLE IF NOT EXISTS note_categories (
+    id TEXT PRIMARY KEY, name TEXT NOT NULL, name_key TEXT NOT NULL UNIQUE,
+    revision INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+  )`).run();
+  await db.prepare(`CREATE TABLE IF NOT EXISTS note_organization (
+    note_id TEXT PRIMARY KEY REFERENCES notes(id) ON DELETE CASCADE,
+    category_id TEXT REFERENCES note_categories(id) ON DELETE SET NULL,
+    pinned INTEGER NOT NULL DEFAULT 0 CHECK (pinned IN (0, 1)), revision INTEGER NOT NULL DEFAULT 1
+  )`).run();
+  await db.prepare("CREATE INDEX IF NOT EXISTS idx_note_organization_category ON note_organization (category_id)").run();
   await db.prepare(`CREATE TABLE IF NOT EXISTS note_shares (
     note_id TEXT PRIMARY KEY REFERENCES notes(id) ON DELETE CASCADE,
     token TEXT NOT NULL UNIQUE,
@@ -4611,21 +4629,24 @@ async function incrementDownloadCount(db, id) {
 async function markFileDeleted(db, id) {
   await db.prepare(`UPDATE files SET status = 'deleted' WHERE id = ?`).bind(id).run();
 }
-async function insertNoteRecord(db, record) {
+async function insertNoteRecord(db, record, categoryId2 = null) {
   await ensureSchema(db);
-  await db.prepare(
-    `INSERT INTO notes (id, title, content, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?)`
-  ).bind(record.id, record.title, record.content, record.created_at, record.updated_at).run();
+  const [result] = await db.batch([
+    db.prepare(`INSERT INTO notes (id, title, content, created_at, updated_at)
+      SELECT ?, ?, ?, ?, ? WHERE ? IS NULL OR EXISTS (SELECT 1 FROM note_categories WHERE id = ?)`).bind(record.id, record.title, record.content, record.created_at, record.updated_at, categoryId2, categoryId2),
+    db.prepare(`INSERT INTO note_organization (note_id, category_id, pinned, revision)
+      SELECT ?, ?, 0, 1 WHERE changes() > 0`).bind(record.id, categoryId2)
+  ]);
+  return (result.meta?.changes ?? 0) > 0;
 }
 async function getNoteRecordById(db, id) {
   await ensureSchema(db);
-  const result = await db.prepare(`SELECT * FROM notes WHERE id = ? LIMIT 1`).bind(id).first();
+  const result = await db.prepare(`${NOTE_SELECT} WHERE n.id = ? LIMIT 1`).bind(id).first();
   return result ?? null;
 }
 async function listNotes(db) {
   await ensureSchema(db);
-  const result = await db.prepare(`SELECT * FROM notes ORDER BY updated_at DESC LIMIT 200`).all();
+  const result = await db.prepare(`${NOTE_SELECT} ORDER BY n.updated_at DESC LIMIT 200`).all();
   return result.results ?? [];
 }
 async function updateNoteRecord(db, id, title, content, updatedAt) {
@@ -4637,8 +4658,9 @@ async function updateNoteRecord(db, id, title, content, updatedAt) {
 }
 async function deleteNoteRecord(db, id) {
   await ensureSchema(db);
-  const [, result] = await db.batch([
+  const [, , result] = await db.batch([
     db.prepare("DELETE FROM note_shares WHERE note_id = ?").bind(id),
+    db.prepare("DELETE FROM note_organization WHERE note_id = ?").bind(id),
     db.prepare("DELETE FROM notes WHERE id = ?").bind(id)
   ]);
   return (result.meta?.changes ?? 0) > 0;
@@ -7063,13 +7085,13 @@ async function routeProjects(request, db) {
   if (!["GET", ...id ? ["PUT", "DELETE"] : ["POST"]].includes(method)) throw new InputError("Method not allowed", 405);
   let body = {};
   let input;
-  let revision = 0;
+  let revision2 = 0;
   if (method !== "GET") {
     const value = await boundedJson(request);
     if (!value || typeof value !== "object" || Array.isArray(value)) throw new InputError("Expected a project object.");
     body = value;
     if (method !== "DELETE") input = parseInput(body);
-    if (id) revision = revisionOf(body);
+    if (id) revision2 = revisionOf(body);
     else if (typeof body.id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.id)) throw new InputError("A stable project creation ID is required.");
   }
   await ensureProjects(db);
@@ -7096,16 +7118,87 @@ async function routeProjects(request, db) {
   if (method === "PUT") {
     const value = input;
     const row = await db.prepare(`UPDATE workspace_projects SET name=?,tagline=?,description=?,status=?,external_url=?,
-      updated_at=MAX(updated_at+1,?),revision=revision+1 WHERE id=? AND revision=? RETURNING *`).bind(value.name, value.tagline, value.description, value.status, value.externalUrl, Date.now(), id, revision).first();
+      updated_at=MAX(updated_at+1,?),revision=revision+1 WHERE id=? AND revision=? RETURNING *`).bind(value.name, value.tagline, value.description, value.status, value.externalUrl, Date.now(), id, revision2).first();
     if (row) return { status: 200, body: { success: true, project: mapProject(row) } };
   } else {
-    const deleted = await db.prepare("DELETE FROM workspace_projects WHERE id=? AND revision=? RETURNING id").bind(id, revision).first();
+    const deleted = await db.prepare("DELETE FROM workspace_projects WHERE id=? AND revision=? RETURNING id").bind(id, revision2).first();
     if (deleted) return { status: 200, body: { success: true, id } };
   }
   const exists = await db.prepare("SELECT id FROM workspace_projects WHERE id=?").bind(id).first();
   if (!exists && method === "DELETE") return { status: 200, body: { success: true, id } };
   if (!exists) throw new InputError("Project not found. It may have been deleted elsewhere.", 404);
   throw new InputError("This project changed elsewhere. Your edits are kept. Close this form, refresh Projects and reopen the latest version before saving or deleting.", 409);
+}
+
+// workers/file-service/src/note-organization.ts
+var uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
+function categoryId(value) {
+  if (value === null || value === void 0) return null;
+  if (typeof value !== "string" || !uuid.test(value)) throw new InputError("Invalid category.");
+  return value;
+}
+function categoryName(value) {
+  if (typeof value !== "string") throw new InputError("A category name is required.");
+  const name = value.normalize("NFKC").trim();
+  if (!name || name.length > 40 || /[\x00-\x1f\x7f]/.test(name)) throw new InputError("Category names must be 1\u201340 characters without control characters.");
+  return { name, key: name.toLowerCase() };
+}
+function revision(value) {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) throw new InputError("A valid revision is required.");
+  return value;
+}
+async function listNoteCategories(db) {
+  await ensureSchema(db);
+  return (await db.prepare("SELECT id, name, revision FROM note_categories ORDER BY name_key, id").all()).results;
+}
+async function routeNoteCategories(request, db, id) {
+  await ensureSchema(db);
+  if (!id && request.method === "GET") return { success: true, categories: await listNoteCategories(db) };
+  if (id) categoryId(id);
+  if (!id && request.method !== "POST" || id && !["PUT", "DELETE"].includes(request.method)) throw new InputError("Method not allowed", 405);
+  const body = await boundedJson(request);
+  if (!body || typeof body !== "object") throw new InputError("Invalid category request.");
+  if (!id) {
+    const newId = categoryId(body.id);
+    if (!newId) throw new InputError("A category ID is required.");
+    const { name, key } = categoryName(body.name), now = Date.now();
+    await db.prepare(`INSERT INTO note_categories (id, name, name_key, created_at, updated_at)
+      SELECT ?, ?, ?, ?, ? WHERE (SELECT COUNT(*) FROM note_categories) < 50 ON CONFLICT DO NOTHING`).bind(newId, name, key, now, now).run();
+    const saved = await db.prepare("SELECT id, name_key FROM note_categories WHERE id = ?").bind(newId).first();
+    if (!saved || saved.name_key !== key) throw new InputError("That category already exists, or the 50-category limit was reached. Refresh and try again.", 409);
+  } else if (request.method === "PUT") {
+    const { name, key } = categoryName(body.name);
+    const result = await db.prepare(`UPDATE note_categories SET name = ?, name_key = ?, revision = revision + 1, updated_at = ?
+      WHERE id = ? AND revision = ? AND NOT EXISTS (SELECT 1 FROM note_categories WHERE name_key = ? AND id != ?)`).bind(name, key, Date.now(), id, revision(body.revision), key, id).run();
+    if (!result.meta.changes) throw new InputError("The category changed or that name already exists. Refresh and try again.", 409);
+  } else {
+    const expected = revision(body.revision);
+    const [, deleted] = await db.batch([
+      db.prepare(`UPDATE note_organization SET category_id = NULL, revision = revision + 1
+        WHERE category_id = ? AND EXISTS (SELECT 1 FROM note_categories WHERE id = ? AND revision = ?)`).bind(id, id, expected),
+      db.prepare("DELETE FROM note_categories WHERE id = ? AND revision = ?").bind(id, expected)
+    ]);
+    if (!deleted.meta.changes) throw new InputError("The category changed. Refresh and try again.", 409);
+  }
+  return { success: true, categories: await listNoteCategories(db) };
+}
+async function routeNoteOrganization(request, db, id) {
+  if (request.method !== "PUT") throw new InputError("Method not allowed", 405);
+  const body = await boundedJson(request);
+  if (!body || typeof body !== "object" || typeof body.pinned !== "boolean" || !("categoryId" in body)) throw new InputError("A category and pin state are required.");
+  const target = categoryId(body.categoryId), expected = revision(body.revision);
+  await ensureSchema(db);
+  const result = await db.prepare(`INSERT INTO note_organization (note_id, category_id, pinned, revision)
+    SELECT ?, ?, ?, 1 WHERE EXISTS (SELECT 1 FROM notes WHERE id = ?)
+      AND (? IS NULL OR EXISTS (SELECT 1 FROM note_categories WHERE id = ?))
+      AND (? = 0 OR EXISTS (SELECT 1 FROM note_organization WHERE note_id = ?))
+    ON CONFLICT(note_id) DO UPDATE SET category_id = excluded.category_id,
+      pinned = excluded.pinned, revision = note_organization.revision + 1
+      WHERE note_organization.revision = ?`).bind(id, target, Number(body.pinned), id, target, target, expected, id, expected).run();
+  if (!result.meta.changes) throw new InputError("The note or category changed. Refresh organization and try again.", 409);
+  const note = await getNoteRecordById(db, id);
+  if (!note) throw new InputError("Note not found", 404);
+  return { success: true, note: mapRecordToNoteItem(note) };
 }
 
 // workers/file-service/src/note-transfer.ts
@@ -7116,7 +7209,7 @@ async function routeNoteTransfer(request, db) {
     const after = url.searchParams.get("after") || "";
     if (after && !/^[A-Za-z0-9_-]{1,120}$/.test(after)) throw new InputError("Invalid export cursor");
     await ensureSchema(db);
-    const result = await db.prepare("SELECT * FROM notes WHERE id > ? ORDER BY id ASC LIMIT 11").bind(after).all();
+    const result = await db.prepare(`${NOTE_SELECT} WHERE n.id > ? ORDER BY n.id ASC LIMIT 11`).bind(after).all();
     const records = result.results.slice(0, 10);
     return { success: true, notes: records.map(mapRecordToNoteItem), nextCursor: result.results.length > 10 ? records[9].id : null };
   }
@@ -7125,15 +7218,28 @@ async function routeNoteTransfer(request, db) {
   if (!payload || typeof payload.id !== "string" || !/^import-[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(payload.id) || typeof payload.title !== "string" || !payload.title.trim() || payload.title.trim().length > 200 || typeof payload.content !== "string" || utf8Size(payload.content) > MAX_TEXT_BYTES) {
     throw new InputError("A valid import ID, title (up to 200 characters) and note (up to 1 MB) are required.");
   }
+  const category = payload.categoryName == null ? null : categoryName(payload.categoryName);
+  if (payload.pinned !== void 0 && typeof payload.pinned !== "boolean") throw new InputError("Invalid pin state.");
   await ensureSchema(db);
   const title = payload.title.trim(), content = payload.content, now = Date.now();
-  const inserted = await db.prepare(`INSERT INTO notes (id, title, content, created_at, updated_at)
-    SELECT ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM notes WHERE title = ? AND content = ?)
-    ON CONFLICT(id) DO NOTHING`).bind(payload.id, title, content, now, now, title, content).run();
-  const byId = await db.prepare("SELECT * FROM notes WHERE id = ?").bind(payload.id).first();
+  const [, inserted] = await db.batch([
+    db.prepare(`INSERT INTO note_categories (id, name, name_key, created_at, updated_at)
+      SELECT ?, ?, ?, ?, ? WHERE ? IS NOT NULL AND (SELECT COUNT(*) FROM note_categories) < 50
+        AND NOT EXISTS (SELECT 1 FROM notes WHERE id = ? OR (title = ? AND content = ?))
+      ON CONFLICT DO NOTHING`).bind(crypto.randomUUID(), category?.name ?? "", category?.key ?? "", now, now, category?.key ?? null, payload.id, title, content),
+    db.prepare(`INSERT INTO notes (id, title, content, created_at, updated_at)
+      SELECT ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM notes WHERE title = ? AND content = ?)
+        AND (? IS NULL OR EXISTS (SELECT 1 FROM note_categories WHERE name_key = ?))
+      ON CONFLICT(id) DO NOTHING`).bind(payload.id, title, content, now, now, title, content, category?.key ?? null, category?.key ?? null),
+    // changes() refers to the immediately preceding INSERT. Retries and exact
+    // duplicates must never reapply old organization metadata.
+    db.prepare(`INSERT INTO note_organization (note_id, category_id, pinned, revision)
+      SELECT ?, (SELECT id FROM note_categories WHERE name_key = ?), ?, 1 WHERE changes() > 0`).bind(payload.id, category?.key ?? null, Number(payload.pinned ?? false))
+  ]);
+  const byId = await db.prepare(`${NOTE_SELECT} WHERE n.id = ?`).bind(payload.id).first();
   if (byId && (byId.title !== title || byId.content !== content)) throw new InputError("This imported note was changed after saving. It has not been overwritten.", 409);
-  const record = byId || await db.prepare("SELECT * FROM notes WHERE title = ? AND content = ? LIMIT 1").bind(title, content).first();
-  if (!record) throw new InputError("The note changed during import. Retry this item.", 409);
+  const record = byId || await db.prepare(`${NOTE_SELECT} WHERE n.title = ? AND n.content = ? LIMIT 1`).bind(title, content).first();
+  if (!record) throw new InputError("The note changed or the 50-category limit was reached. Refresh categories and retry this item.", 409);
   return { success: true, note: mapRecordToNoteItem(record), imported: (inserted.meta?.changes ?? 0) > 0 };
 }
 
@@ -7303,7 +7409,7 @@ async function parseNotePayload(request) {
   const title = candidate.title.trim();
   const content = candidate.content;
   if (!title || title.length > 200 || utf8Size(content) > MAX_TEXT_BYTES) return null;
-  return { title, content };
+  return { title, content, categoryId: request.method === "POST" ? categoryId(candidate.categoryId) : null };
 }
 var index_default = {
   async fetch(request, env, ctx) {
@@ -7380,6 +7486,10 @@ var index_default = {
           origin
         );
       }
+      const categoryMatch = url.pathname.match(/^\/v1\/note-categories(?:\/([a-zA-Z0-9_-]+))?$/);
+      if (categoryMatch) return jsonResponse(await routeNoteCategories(request, env.DB, categoryMatch[1]), 200, origin);
+      const organizationMatch = url.pathname.match(/^\/v1\/notes\/([a-zA-Z0-9_-]+)\/organization$/);
+      if (organizationMatch) return jsonResponse(await routeNoteOrganization(request, env.DB, organizationMatch[1]), 200, origin);
       if (url.pathname === "/v1/notes/export" || url.pathname === "/v1/notes/import") {
         return jsonResponse(await routeNoteTransfer(request, env.DB), 200, origin);
       }
@@ -7536,9 +7646,10 @@ var index_default = {
           created_at: now,
           updated_at: now
         };
-        await insertNoteRecord(env.DB, record);
+        if (!await insertNoteRecord(env.DB, record, payload.categoryId)) throw new InputError("The category no longer exists. Choose another category.", 409);
+        const savedRecord = await getNoteRecordById(env.DB, record.id);
         return jsonResponse(
-          { success: true, note: mapRecordToNoteItem(record) },
+          { success: true, note: mapRecordToNoteItem(savedRecord) },
           201,
           origin
         );

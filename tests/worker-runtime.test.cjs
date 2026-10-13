@@ -55,6 +55,10 @@ test('release Worker runs reliably in workerd with actual D1 and R2 bindings', {
   const db = await mf.getD1Database('DB');
   const bucket = await mf.getR2Bucket('FILES_BUCKET');
 
+  // Exercise the schema upgrade against the original notes-only schema.
+  await db.prepare('CREATE TABLE notes (id TEXT PRIMARY KEY, title TEXT NOT NULL, content TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)').run();
+  await db.prepare("INSERT INTO notes VALUES ('legacy-organization', 'Legacy', 'Preserved body', 1, 2)").run();
+
   await t.test('signed admin access works; forged, expired and wrong-user assertions fail closed', async () => {
     const tampered = auth.split('.');
     tampered[2] = (tampered[2][0] === 'a' ? 'b' : 'a') + tampered[2].slice(1);
@@ -68,6 +72,32 @@ test('release Worker runs reliably in workerd with actual D1 and R2 bindings', {
     const response = await request('/health');
     assert.equal(response.status, 200);
     assert.equal((await response.json()).schema, 'ready');
+  });
+
+  await t.test('note categories migrate legacy notes and preserve bodies through transactional moves, imports and deletion', async () => {
+    const json = (method, body) => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const category = { id: crypto.randomUUID(), name: 'Runtime category' };
+    const created = await request('/v1/note-categories', json('POST', category));
+    assert.equal(created.status, 200); await created.text();
+    const old = await (await request('/v1/notes/legacy-organization')).json();
+    assert.equal(old.note.categoryId, null); assert.equal(old.note.organizationRevision, 0);
+    const moved = await request('/v1/notes/legacy-organization/organization', json('PUT', { categoryId: category.id, pinned: true, revision: 0 }));
+    assert.equal(moved.status, 200); assert.equal((await moved.json()).note.categoryName, category.name);
+    const newResponse = await request('/v1/notes', json('POST', { title: 'Created in category', content: 'Atomic creation', categoryId: category.id }));
+    assert.equal(newResponse.status, 201); const { note: newNote } = await newResponse.json(); assert.equal(newNote.categoryId, category.id);
+    const input = { id: `import-${crypto.randomUUID()}`, title: 'Runtime classified import', content: 'Imported body', categoryName: category.name, pinned: true };
+    const concurrent = await Promise.all([request('/v1/notes/import', json('POST', input)), request('/v1/notes/import', json('POST', { ...input, id: `import-${crypto.randomUUID()}` }))]);
+    const imported = await Promise.all(concurrent.map(response => response.json()));
+    assert.deepEqual(imported.map(result => result.imported).sort(), [false, true]);
+    assert.equal(imported[0].note.pinned, true); assert.equal(imported[0].note.categoryName, category.name);
+    const deleted = await request(`/v1/note-categories/${category.id}`, json('DELETE', { revision: 1 }));
+    assert.equal(deleted.status, 200); await deleted.text();
+    const after = await (await request('/v1/notes/legacy-organization')).json();
+    assert.equal(after.note.content, 'Preserved body'); assert.equal(after.note.categoryId, null); assert.equal(after.note.pinned, true); assert.equal(after.note.organizationRevision, 2);
+    const stale = await request('/v1/notes/legacy-organization/organization', json('PUT', { categoryId: null, pinned: false, revision: 1 }));
+    assert.equal(stale.status, 409); await stale.text();
+    for (const id of ['legacy-organization', newNote.id, imported[0].note.id]) { const removed = await request(`/v1/notes/${id}`, { method: 'DELETE' }); assert.equal(removed.status, 200); await removed.text(); }
+    assert.equal((await db.prepare('SELECT COUNT(*) n FROM note_organization').first()).n, 0);
   });
 
   await t.test('daily task completion and dated history persist in real D1', async () => {

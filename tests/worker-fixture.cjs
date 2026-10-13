@@ -23,10 +23,17 @@ function fixture() {
     };
     return { bind(...values) { args = values; return this; }, run: () => execute('run'), all: () => execute('all'), first: () => execute('first') };
   } };
-  DB.batch = async (statements) => {
+  let batches = Promise.resolve();
+  // D1 serializes transactions; a single SQLite connection cannot BEGIN two
+  // overlapping batches. Keep the fixture faithful for concurrent imports.
+  DB.batch = (statements) => {
+    const pending = batches.then(async () => {
     sqlite.exec('BEGIN');
     try { const results=[]; for(const statement of statements)results.push(await statement.run()); sqlite.exec('COMMIT'); return results; }
     catch(error){sqlite.exec('ROLLBACK');throw error;}
+    });
+    batches = pending.catch(() => {});
+    return pending;
   };
   const bucket = {
     async put(key, body, options) {

@@ -18,12 +18,15 @@ Outgoing mail uses Resend. Store the key only as the Worker secret `RESEND_API_K
 All note routes require the same Cloudflare Access JWT as the file routes:
 
 - `GET /v1/notes` — list notes ordered by most recently updated
-- `POST /v1/notes` — create `{ "title": "...", "content": "..." }`
+- `POST /v1/notes` — create `{ "title": "...", "content": "...", "categoryId": null }` (category optional)
 - `GET /v1/notes/:id` — read one note
 - `PUT /v1/notes/:id` — replace title and Markdown content
 - `DELETE /v1/notes/:id` — delete one note
 
-Notes are stored in the D1 `notes` table. There are no tags, user records, or anonymous note tokens.
+Notes are stored in the D1 `notes` table; additive `note_categories` and
+`note_organization` tables hold one-level categories, pins and revision checks.
+See [Note organization](../../docs/NOTE-ORGANIZATION.md) for category endpoints,
+safe deletion, search and import/export behavior.
 
 Independent temporary file transfer micro-service powered by Cloudflare Workers, Cloudflare R2 (isolated `transfers/` prefix), and Cloudflare D1 (lightweight metadata table).
 

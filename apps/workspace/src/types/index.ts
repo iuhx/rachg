@@ -20,6 +20,10 @@ export interface FileItem {
 }
 
 export interface NoteItem {
+  categoryId?: string | null;
+  categoryName?: string | null;
+  pinned?: boolean;
+  organizationRevision?: number;
   id: string;
   title: string;
   excerpt: string;
@@ -27,6 +31,8 @@ export interface NoteItem {
   updatedAt: string;
   updatedTimestamp: number;
 }
+
+export interface NoteCategory { id: string; name: string; revision: number }
 
 export interface MailItem {
   id: string;

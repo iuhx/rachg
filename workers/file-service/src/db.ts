@@ -22,7 +22,16 @@ export interface NoteRecord {
   content: string;
   created_at: number;
   updated_at: number;
+  category_id?: string | null;
+  category_name?: string | null;
+  pinned?: number;
+  organization_revision?: number;
 }
+
+export const NOTE_SELECT = `SELECT n.*, o.category_id, c.name AS category_name,
+  COALESCE(o.pinned, 0) AS pinned, COALESCE(o.revision, 0) AS organization_revision
+  FROM notes n LEFT JOIN note_organization o ON o.note_id = n.id
+  LEFT JOIN note_categories c ON c.id = o.category_id`;
 
 export interface MailRecord {
   id: string;
@@ -112,6 +121,10 @@ export function mapRecordToNoteItem(record: NoteRecord): NoteItem {
     excerpt: formatNoteExcerpt(record.content),
     updatedAt: formatNoteTimestamp(record.updated_at),
     updatedTimestamp: record.updated_at,
+    categoryId: record.category_id ?? null,
+    categoryName: record.category_name ?? null,
+    pinned: Boolean(record.pinned),
+    organizationRevision: record.organization_revision ?? 0,
   };
 }
 
@@ -193,6 +206,17 @@ async function initializeSchema(db: D1Database): Promise<void> {
     .prepare(`CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes (updated_at DESC);`)
     .run();
   await db.prepare('CREATE INDEX IF NOT EXISTS idx_notes_title ON notes (title)').run();
+
+  await db.prepare(`CREATE TABLE IF NOT EXISTS note_categories (
+    id TEXT PRIMARY KEY, name TEXT NOT NULL, name_key TEXT NOT NULL UNIQUE,
+    revision INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+  )`).run();
+  await db.prepare(`CREATE TABLE IF NOT EXISTS note_organization (
+    note_id TEXT PRIMARY KEY REFERENCES notes(id) ON DELETE CASCADE,
+    category_id TEXT REFERENCES note_categories(id) ON DELETE SET NULL,
+    pinned INTEGER NOT NULL DEFAULT 0 CHECK (pinned IN (0, 1)), revision INTEGER NOT NULL DEFAULT 1
+  )`).run();
+  await db.prepare('CREATE INDEX IF NOT EXISTS idx_note_organization_category ON note_organization (category_id)').run();
 
   await db.prepare(`CREATE TABLE IF NOT EXISTS note_shares (
     note_id TEXT PRIMARY KEY REFERENCES notes(id) ON DELETE CASCADE,
@@ -374,21 +398,22 @@ export async function markFileDeleted(db: D1Database, id: string): Promise<void>
     .run();
 }
 
-export async function insertNoteRecord(db: D1Database, record: NoteRecord): Promise<void> {
+export async function insertNoteRecord(db: D1Database, record: NoteRecord, categoryId: string | null = null): Promise<boolean> {
   await ensureSchema(db);
-  await db
-    .prepare(
-      `INSERT INTO notes (id, title, content, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?)`
-    )
-    .bind(record.id, record.title, record.content, record.created_at, record.updated_at)
-    .run();
+  const [result] = await db.batch([
+    db.prepare(`INSERT INTO notes (id, title, content, created_at, updated_at)
+      SELECT ?, ?, ?, ?, ? WHERE ? IS NULL OR EXISTS (SELECT 1 FROM note_categories WHERE id = ?)`)
+      .bind(record.id, record.title, record.content, record.created_at, record.updated_at, categoryId, categoryId),
+    db.prepare(`INSERT INTO note_organization (note_id, category_id, pinned, revision)
+      SELECT ?, ?, 0, 1 WHERE changes() > 0`).bind(record.id, categoryId),
+  ]);
+  return (result.meta?.changes ?? 0) > 0;
 }
 
 export async function getNoteRecordById(db: D1Database, id: string): Promise<NoteRecord | null> {
   await ensureSchema(db);
   const result = await db
-    .prepare(`SELECT * FROM notes WHERE id = ? LIMIT 1`)
+    .prepare(`${NOTE_SELECT} WHERE n.id = ? LIMIT 1`)
     .bind(id)
     .first<NoteRecord>();
   return result ?? null;
@@ -397,7 +422,7 @@ export async function getNoteRecordById(db: D1Database, id: string): Promise<Not
 export async function listNotes(db: D1Database): Promise<NoteRecord[]> {
   await ensureSchema(db);
   const result = await db
-    .prepare(`SELECT * FROM notes ORDER BY updated_at DESC LIMIT 200`)
+    .prepare(`${NOTE_SELECT} ORDER BY n.updated_at DESC LIMIT 200`)
     .all<NoteRecord>();
   return result.results ?? [];
 }
@@ -421,8 +446,9 @@ export async function updateNoteRecord(
 
 export async function deleteNoteRecord(db: D1Database, id: string): Promise<boolean> {
   await ensureSchema(db);
-  const [, result] = await db.batch([
+  const [, , result] = await db.batch([
     db.prepare('DELETE FROM note_shares WHERE note_id = ?').bind(id),
+    db.prepare('DELETE FROM note_organization WHERE note_id = ?').bind(id),
     db.prepare('DELETE FROM notes WHERE id = ?').bind(id),
   ]);
   return (result.meta?.changes ?? 0) > 0;

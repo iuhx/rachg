@@ -73,7 +73,7 @@ test('a full cold cleanup batch stays within 50 storage calls', () => withFixtur
     f.load('workers/file-service/src/note-shares.ts').cleanupNoteShares(coldDB),
   ]);
   assert.deepEqual(result, { deleted: 7, failed: 0 });
-  assert.equal(f.queries.length - start + storageCalls, 39);
+  assert.equal(f.queries.length - start + storageCalls, 42);
   assert.equal(f.sqlite.prepare("SELECT COUNT(*) n FROM files WHERE status='active'").get().n, 1);
 }));
 
