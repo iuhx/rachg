@@ -3,6 +3,8 @@
   "name": "rachg-file-service",
   "account_id": "183126450d0d9188448b6265c97e595f",
   "keep_vars": true,
+  "workers_dev": true,
+  "preview_urls": true,
   "routes": [{ "pattern": "api.rachg.com", "custom_domain": true }],
   "triggers": { "crons": ["*/15 * * * *"] },
   "main": "src/index.ts",
