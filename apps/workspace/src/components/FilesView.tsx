@@ -23,7 +23,7 @@ interface FilesViewProps {
   transfers: FileItem[];
   onUploadFile: (file: File, expiry: string, storageBackend?: StorageBackend) => Promise<unknown> | void;
   webdavAvailable?: boolean;
-  onDeleteTransfer: (id: string) => Promise<void>;
+  onDeleteTransfer: (id: string, deleteRemote?: boolean) => Promise<void>;
   onGenerateQr: (file: FileItem) => void;
   isUploading?: boolean;
   isLoading?: boolean;
@@ -53,6 +53,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [fileToDelete, setFileToDelete] = useState<FileItem | null>(null);
+  const [deleteRemote, setDeleteRemote] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [copyError, setCopyError] = useState('');
   const [uploadError, setUploadError] = useState('');
@@ -60,6 +61,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
   const uploadBusy = useRef(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const deletingRef = useRef(false);
+  const canKeepOriginal = fileToDelete?.storageBackend === 'webdav' && fileToDelete.expiresIn === 'Permanent' && !fileToDelete.expiresTimestamp;
   const fileType = (file: FileItem) => FILE_TYPES.some(type => type.value === file.type) ? file.type : 'text';
   const typeCounts = Object.fromEntries(FILE_TYPES.map(type => [type.value, transfers.filter(file => fileType(file) === type.value).length]));
   const visibleFiles = typeFilter === 'all' ? transfers : transfers.filter(file => fileType(file) === typeFilter);
@@ -72,7 +74,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
     deletingRef.current = true;
     setIsDeleting(true);
     try {
-      await onDeleteTransfer(fileToDelete.id);
+      await onDeleteTransfer(fileToDelete.id, canKeepOriginal ? deleteRemote : undefined);
       setFileToDelete(null);
     } catch {
       // The parent displays the failure. Keep this dialog open for retry.
@@ -168,7 +170,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
             {isUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
           </span>
           <span className="type-section-heading text-neutral-900 dark:text-white">{isUploading ? 'Saving file…' : 'Drop a file here'}</span>
-          <span className="type-caption mt-1">{selectedExpiry === 'permanent' ? 'Private. Kept until you delete it.' : 'Private. Expires after the selected time.'}</span>
+          <span className="type-caption mt-1">{selectedExpiry === 'permanent' ? storageBackend === 'webdav' ? 'Private. Saved permanently to WebDAV.' : 'Private. Kept until you delete it.' : 'Private. Expires after the selected time.'}</span>
           <button type="button" disabled={isUploading} onClick={() => fileInput.current?.click()} className="workspace-button workspace-button-secondary mt-3">Choose file</button>
         </div>
       </section>
@@ -213,7 +215,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
                     {copiedId === file.id ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
                   </button>
                   <button disabled={!file.shareUrl || file.status !== 'active' || Boolean(file.expiresTimestamp && file.expiresTimestamp <= Date.now())} onClick={() => onGenerateQr(file)} className="workspace-button workspace-button-secondary min-h-8 px-2" title="Generate QR code" aria-label={`Generate QR for ${file.name}`}><QrCode className="w-4 h-4" /></button>
-                  <button onClick={() => setFileToDelete(file)} className="workspace-button workspace-button-secondary min-h-8 px-2 text-neutral-400 hover:text-red-500 cursor-pointer" title="Delete file" aria-label={`Delete ${file.name}`}>
+                  <button onClick={() => { if (!deletingRef.current) { setDeleteRemote(false); setFileToDelete(file); } }} className="workspace-button workspace-button-secondary min-h-8 px-2 text-neutral-400 hover:text-red-500 cursor-pointer" title="Delete file" aria-label={`Delete ${file.name}`}>
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
@@ -225,13 +227,22 @@ export const FilesView: React.FC<FilesViewProps> = ({
 
       <ConfirmDialog
         isOpen={fileToDelete !== null}
-        title="Delete file?"
-        description={fileToDelete ? `“${fileToDelete.name}” will be permanently removed from your private file space.` : 'This file will be permanently removed from your private file space.'}
-        confirmLabel="Delete file"
+        title={canKeepOriginal ? 'Remove file?' : 'Delete file?'}
+        description={canKeepOriginal
+          ? deleteRemote
+            ? `“${fileToDelete.name}” will be permanently deleted from the workspace and WebDAV. This cannot be undone.`
+            : `“${fileToDelete.name}” will be removed from the workspace and its links will stop working. The original file will stay in WebDAV.`
+          : fileToDelete ? `“${fileToDelete.name}” will be permanently removed from your private file space.` : 'This file will be permanently removed from your private file space.'}
+        confirmLabel={canKeepOriginal ? deleteRemote ? 'Delete from both' : 'Remove from workspace' : 'Delete file'}
         isConfirming={isDeleting}
         onConfirm={() => void confirmDelete()}
         onCancel={() => { if (!isDeleting) setFileToDelete(null); }}
-      />
+      >
+        {canKeepOriginal && <label className="type-secondary flex items-start gap-2.5 cursor-pointer">
+          <input type="checkbox" className="workspace-checkbox mt-0.5" aria-label="Also delete the file from WebDAV" checked={deleteRemote} disabled={isDeleting} onChange={event => setDeleteRemote(event.target.checked)} />
+          <span>Also delete the file from WebDAV</span>
+        </label>}
+      </ConfirmDialog>
     </div>
   );
 };

@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { fixture } = require('./worker-fixture.cjs');
-const { components, find, label } = require('./component-fixture.cjs');
+const { components, find, label, elements } = require('./component-fixture.cjs');
 const root = 'https://higa.teracloud.jp/dav/rachg/';
 const username = 'fixture-user', password = 'fixture-password';
 const json = (method, body) => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -74,7 +74,7 @@ test('uploads, downloads, ranges, text pages and deletion use WebDAV while prese
   assert.equal((await f.request(`/f/${file.id}`, { headers: { Range: 'bytes=99-100' } })).status, 416);
   assert.match(await (await f.request(`/t/${file.id}`)).text(), /hello world/);
   assert.equal((await f.uploadWebdav('x'.repeat(1100))).status, 201, 'WebDAV is not capped by the R2 quota');
-  assert.equal((await f.request(`/v1/files/${file.id}`, { method: 'DELETE' })).status, 200);
+  assert.equal((await f.request(`/v1/files/${file.id}?deleteRemote=true`, { method: 'DELETE' })).status, 200);
   assert.equal((await f.request(`/f/${file.id}`)).status, 404); assert.ok(f.remote.has(root + 'unrelated.txt')); assert.equal(f.objects.size, 1);
 });
 
@@ -90,6 +90,93 @@ test('expired and ambiguous WebDAV uploads are cleaned only by exact key, and fa
   f.sqlite.prepare("UPDATE files SET created_at=0 WHERE status='uploading'").run();
   cleanup = await f.load('workers/file-service/src/cleanup.ts').cleanupStorage(f.DB, f.bucket, f.env); assert.equal(cleanup.deleted, 1); assert.equal(f.remote.size, 1);
   assert.ok(f.remote.has(root + 'unrelated.txt'));
+});
+
+test('permanent WebDAV removal revokes every platform link while retaining the remote file without credentials or cleanup', async t => {
+  const f = setup(t);
+  const { file } = await (await f.uploadWebdav('keep this forever')).json();
+  const remoteCount = f.remote.size, calls = f.calls.length;
+  delete f.env.WEBDAV_PASSWORD;
+  assert.equal((await f.request(`/v1/files/${file.id}`, { method: 'DELETE' })).status, 200);
+  assert.equal(f.calls.length, calls, 'removing metadata makes no WebDAV request');
+  assert.equal(f.sqlite.prepare('SELECT status FROM files WHERE id=?').get(file.id).status, 'deleted');
+  assert.equal((await (await f.request('/v1/files')).json()).files.length, 0);
+  for (const path of [`/f/${file.id}`, `/t/${file.id}`, `/v1/files/${file.id}`]) assert.equal((await f.request(path)).status, 404);
+  assert.equal((await f.request(`/v1/files/${file.id}?deleteRemote=true`, { method: 'DELETE' })).status, 404);
+  f.sqlite.prepare('UPDATE files SET created_at=0').run();
+  await f.load('workers/file-service/src/cleanup.ts').cleanupStorage(f.DB, f.bucket, f.env);
+  assert.equal(f.calls.length, calls); assert.equal(f.remote.size, remoteCount);
+});
+
+test('remote deletion requires a precise opt-in for permanent files; timed WebDAV and R2 retain physical deletion', async t => {
+  const f = setup(t);
+  const permanent = (await (await f.uploadWebdav('permanent')).json()).file;
+  for (const query of ['deleteRemote=yes', 'deleteRemote=1', 'deleteRemote=true&deleteRemote=false']) {
+    assert.equal((await f.request(`/v1/files/${permanent.id}?${query}`, { method: 'DELETE' })).status, 400);
+  }
+  assert.equal(f.calls.filter(call => call.method === 'DELETE').length, 0);
+  assert.equal((await f.request(`/v1/files/${permanent.id}?deleteRemote=true`, { method: 'DELETE' })).status, 200);
+  const timed = (await (await f.uploadWebdav('timed', '1 hour')).json()).file;
+  assert.equal((await f.request(`/v1/files/${timed.id}`, { method: 'DELETE' })).status, 200);
+  const r2 = (await (await f.upload()).json()).file;
+  assert.equal((await f.request(`/v1/files/${r2.id}`, { method: 'DELETE' })).status, 200);
+  assert.equal(f.remote.size, 1); assert.equal(f.objects.size, 0);
+});
+
+test('a concurrent physical delete cannot purge a WebDAV file detached after its initial read', async t => {
+  const f = setup(t), { file } = await (await f.uploadWebdav('race-safe copy')).json();
+  let release, entered;
+  const gate = new Promise(resolve => { entered = resolve; });
+  f.hooks.beforeSql = async sql => {
+    if (/UPDATE files SET status = 'purging' WHERE id = \? AND status NOT IN/.test(sql)) { entered(); await new Promise(resolve => { release = resolve; }); }
+  };
+  const deleting = f.request(`/v1/files/${file.id}?deleteRemote=true`, { method: 'DELETE' });
+  await gate;
+  assert.equal((await f.request(`/v1/files/${file.id}`, { method: 'DELETE' })).status, 200);
+  release(); assert.equal((await deleting).status, 409);
+  f.hooks.beforeSql = null;
+  await f.load('workers/file-service/src/cleanup.ts').cleanupStorage(f.DB, f.bucket, f.env);
+  assert.equal(f.calls.filter(call => call.method === 'DELETE').length, 0); assert.equal(f.remote.size, 2);
+});
+
+test('a failed authorized purge remains retryable and cannot be presented as keeping the original', async t => {
+  const f = setup(t), { file } = await (await f.uploadWebdav('pending purge')).json();
+  f.options.deny = true;
+  assert.equal((await f.request(`/v1/files/${file.id}?deleteRemote=true`, { method: 'DELETE' })).status, 502);
+  assert.equal(f.sqlite.prepare('SELECT status FROM files WHERE id=?').get(file.id).status, 'purging');
+  const before = f.calls.length;
+  assert.equal((await f.request(`/v1/files/${file.id}`, { method: 'DELETE' })).status, 409);
+  assert.equal(f.calls.length, before);
+  f.options.deny = false;
+  assert.equal((await f.request(`/v1/files/${file.id}?deleteRemote=true`, { method: 'DELETE' })).status, 200);
+  assert.equal(f.remote.size, 1);
+});
+
+test('file confirmation defaults to keeping WebDAV copies, resets choices and locks the checkbox during deletion', async () => {
+  const f = components(), { FilesView } = f.load('apps/workspace/src/components/FilesView.tsx');
+  const permanent = { id: 'keep', name: 'keep.png', storageBackend: 'webdav', expiresIn: 'Permanent', status: 'active', type: 'image', size: '1 KB' };
+  let finish;
+  const calls = [], h = f.mount(FilesView, { transfers: [permanent, { ...permanent, id: 'r2', name: 'r2.png', storageBackend: 'r2' }], onUploadFile() {}, onGenerateQr() {}, onDeleteTransfer: (...args) => { calls.push(args); return new Promise(resolve => { finish = resolve; }); } });
+  const dialog = () => find(h, n => n.type?.name === 'ConfirmDialog');
+  const checkbox = () => find(h, n => n.props['aria-label'] === 'Also delete the file from WebDAV');
+  const open = name => { find(h, n => n.props['aria-label'] === `Delete ${name}`).props.onClick(); h.render(); };
+  try {
+    open('keep.png'); assert.equal(checkbox().props.checked, false); assert.equal(dialog().props.confirmLabel, 'Remove from workspace');
+    checkbox().props.onChange({ target: { checked: true } }); h.render(); assert.equal(dialog().props.confirmLabel, 'Delete from both');
+    dialog().props.onCancel(); h.render(); open('keep.png'); assert.equal(checkbox().props.checked, false);
+    dialog().props.onConfirm(); h.render(); assert.equal(checkbox().props.disabled, true); assert.deepEqual(calls[0], ['keep', false]);
+    finish(); await new Promise(setImmediate); h.render();
+    open('keep.png'); checkbox().props.onChange({ target: { checked: true } }); h.render(); dialog().props.onConfirm(); h.render();
+    assert.deepEqual(calls[1], ['keep', true]); finish(); await new Promise(setImmediate); h.render();
+    open('r2.png'); assert.equal(elements(h.tree).filter(n => n.props['aria-label'] === 'Also delete the file from WebDAV').length, 0); assert.equal(dialog().props.confirmLabel, 'Delete file');
+  } finally { h.unmount(); }
+});
+
+test('file service sends remote deletion only for an explicit boolean opt-in', async t => {
+  const service = components().load('apps/workspace/src/services/fileService.ts'), urls = [];
+  t.mock.method(global, 'fetch', async (url, options) => { urls.push(new URL(url)); assert.equal(options.method, 'DELETE'); assert.equal(options.credentials, 'include'); return Response.json({ success: true }); });
+  await service.deleteFileService('keep'); await service.deleteFileService('keep', false); await service.deleteFileService('remove', true); await service.deleteFileService('keep', 'false');
+  assert.deepEqual(urls.map(url => url.search), ['', '', '?deleteRemote=true', '']);
 });
 
 test('failed authentication is never stored or leaked; path traversal and collisions cannot delete other files', async t => {

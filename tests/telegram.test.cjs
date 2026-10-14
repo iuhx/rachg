@@ -95,7 +95,9 @@ test('photos and original image documents save to permanent WebDAV Files with th
     const downloaded = await f.request(`/f/${file.id}`); assert.equal(downloaded.status, 200); assert.equal((await downloaded.arrayBuffer()).byteLength, file.sizeBytes);
     assert.equal((await f.request(`/v1/files/${file.id}`, { method: 'DELETE' })).status, 200);
   }
-  assert.equal(f.remote.size, 0); assert.equal(f.receipts.length, 2);
+  assert.equal(f.remote.size, 2); assert.equal(f.receipts.length, 2);
+  await f.load('workers/file-service/src/cleanup.ts').cleanupStorage(f.DB, f.bucket, f.env);
+  assert.equal(f.remote.size, 2, 'removing Telegram file records keeps permanent WebDAV originals');
 });
 
 test('oversized, binary and unsupported documents return useful replies without false success', async t => {

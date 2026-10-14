@@ -42,6 +42,19 @@ The folder test uses a bounded, read-only Depth-0 PROPFIND with a longer deadlin
 
 ## Storage behavior
 
+- Removing a permanent WebDAV file defaults to removing its workspace entry only.
+  The confirmation dialog offers an unchecked **Also delete the file from WebDAV**
+  option. Selecting it explicitly removes both the workspace entry and the remote file.
+  Timed WebDAV files and all R2 files retain their existing deletion/expiry behavior.
+- The API uses `DELETE /v1/files/:id?deleteRemote=true` for explicit remote deletion
+  of permanent WebDAV files. Omitting the option (including older clients) keeps the
+  remote copy. Invalid or conflicting option values are rejected before any action.
+- Workspace-only removal immediately revokes file, text-share and QR link access.
+  A deleted database marker prevents cleanup and later delete requests from removing
+  the retained copy. It is no longer managed in Files; access/remove it in InfiniCLOUD.
+  Removal must atomically claim an active record. An already-started remote deletion
+  cannot safely be changed into a keep operation.
+
 - Files are at most 99 MB (99,000,000 bytes). The list labels R2 versus InfiniCLOUD. Existing R2 files
   require no migration, and a retry never silently changes storage destination.
 - InfiniCLOUD files use UUID-prefixed filenames directly inside `rachg/`; conditional

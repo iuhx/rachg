@@ -128,7 +128,7 @@ test('release Worker runs reliably in workerd with actual D1 and R2 bindings', {
     const health = await (await request('/health')).json(); assert.equal(health.quota.usedBytes, 0);
     const download = await request(`/f/${file.id}`); assert.equal(await download.text(), 'runtime webdav contents');
     const partial = await request(`/f/${file.id}`, { headers: { Range: 'bytes=0-6' } }); assert.equal(partial.status, 206); assert.equal(await partial.text(), 'runtime');
-    const removed = await request(`/v1/files/${file.id}`, { method: 'DELETE' }); assert.equal(removed.status, 200); await removed.text(); assert.equal(webdavFiles.size, 0); assert.equal((await bucket.list()).objects.length, 0);
+    const removed = await request(`/v1/files/${file.id}?deleteRemote=true`, { method: 'DELETE' }); assert.equal(removed.status, 200); await removed.text(); assert.equal(webdavFiles.size, 0); assert.equal((await bucket.list()).objects.length, 0);
   });
 
   await t.test('note categories migrate legacy notes and preserve bodies through transactional moves, imports and deletion', async () => {
@@ -369,6 +369,9 @@ test('release Worker runs reliably in workerd with actual D1 and R2 bindings', {
     const protectedNotes = await request('/v1/notes', { headers: { 'cf-access-jwt-assertion': '', 'X-Telegram-Bot-Api-Secret-Token': telegramSecret } }); assert.equal(protectedNotes.status, 401); await protectedNotes.text();
     assert.equal(telegramReplies.length, 2);
     for (const route of [`/v1/notes/${note.id}`, `/v1/files/${file.id}`]) { const removed = await request(route, { method: 'DELETE' }); assert.equal(removed.status, 200); await removed.text(); }
+    assert.equal((await db.prepare('SELECT status FROM files WHERE id=?').bind(file.id).first()).status, 'deleted');
+    assert.ok(webdavFiles.has(webdavRoot + encodeURIComponent(file.r2_key.slice('webdav/'.length))), 'the permanent WebDAV original survives platform removal');
+    const revoked = await request(`/f/${file.id}`); assert.equal(revoked.status, 404); await revoked.text();
     const replay = await post(markdown); assert.equal(replay.status, 200); await replay.text();
     assert.equal(await db.prepare('SELECT id FROM notes WHERE id=?').bind(note.id).first(), null);
   });
@@ -391,7 +394,7 @@ test('release Worker runs reliably in workerd with actual D1 and R2 bindings', {
         assert.equal(size, data.length); assert.equal(hash.digest('hex'), expected);
         const range = await send(`/f/${file.id}`, { headers: { Range: 'bytes=98999990-98999999' } });
         assert.equal(range.status, 206); assert.deepEqual(new Uint8Array(await range.arrayBuffer()), data.slice(-10));
-        const removed = await send(`/v1/files/${file.id}`, { method: 'DELETE' }); assert.equal(removed.status, 200); await removed.text();
+        const removed = await send(`/v1/files/${file.id}?deleteRemote=true`, { method: 'DELETE' }); assert.equal(removed.status, 200); await removed.text();
         const oversized = await send(`/v1/files/upload?size=99000001&storageBackend=${backend}`, { method: 'POST', body: 'x' });
         assert.equal(oversized.status, 413); await oversized.text();
         for (const declared of [2, 4]) {

@@ -3,6 +3,8 @@
 `@rachgx_bot` accepts private messages from Telegram user `6121514938` only.
 
 - Photos become permanent WebDAV files and appear in the existing Files view.
+  Removing their workspace entries keeps the WebDAV originals by default; the
+  Files confirmation dialog offers an explicit option to delete the originals too.
 - Images sent as documents retain their original filename and bytes (JPEG, PNG,
   WebP, GIF, BMP, AVIF, HEIC/HEIF, SVG and TIFF). Send photos as files when original
   image quality matters; ordinary Telegram photos may have been compressed.

@@ -53,10 +53,10 @@ export async function uploadFileService(file: File, expiry: string = '48 hours',
   return { file: data.file, isLive: true };
 }
 
-export async function deleteFileService(id: string): Promise<boolean> {
+export async function deleteFileService(id: string, deleteRemote = false): Promise<boolean> {
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}/v1/files/${id}`, {
+    response = await fetch(`${API_BASE_URL}/v1/files/${encodeURIComponent(id)}${deleteRemote === true ? '?deleteRemote=true' : ''}`, {
       method: 'DELETE', credentials: 'include',
     });
   } catch {

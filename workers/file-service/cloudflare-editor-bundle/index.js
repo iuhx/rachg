@@ -8489,15 +8489,25 @@ var index_default = {
       }
       if (request.method === "DELETE" && v1FileDetailMatch) {
         const id = v1FileDetailMatch[1];
+        const remoteOptions = url.searchParams.getAll("deleteRemote");
+        if (remoteOptions.length > 1 || remoteOptions.some((value) => value !== "true" && value !== "false")) throw new InputError("Invalid remote deletion option");
+        const deleteRemote = remoteOptions[0] === "true";
         const record = await getFileRecordById(env.DB, id);
-        if (!record || record.status === "deleted") {
+        if (!record || record.status === "deleted" || record.status === "purged") {
           return jsonResponse(
             { success: false, error: "File not found", code: "NOT_FOUND", status: 404 },
             404,
             origin
           );
         }
-        await env.DB.prepare("UPDATE files SET status = 'purging' WHERE id = ? AND status != 'deleted'").bind(id).run();
+        if (record.r2_key.startsWith("webdav/") && record.expires_at === 0 && !deleteRemote) {
+          const detached = await env.DB.prepare(`UPDATE files SET status = 'deleted'
+            WHERE id = ? AND status = 'active' AND expires_at = 0 AND r2_key LIKE 'webdav/%'`).bind(id).run();
+          if (!detached.meta?.changes) throw new InputError("The file changed or remote deletion has already started. Refresh the file list before continuing.", 409);
+          return jsonResponse({ success: true, message: "File removed from workspace. The WebDAV copy was kept.", id }, 200, origin);
+        }
+        const claimed = await env.DB.prepare("UPDATE files SET status = 'purging' WHERE id = ? AND status NOT IN ('deleted', 'purged')").bind(id).run();
+        if (!claimed.meta?.changes) throw new InputError("The file has already been removed. Refresh the file list before continuing.", 409);
         await storage.delete(record.r2_key);
         await markFileDeleted(env.DB, id);
         return jsonResponse(

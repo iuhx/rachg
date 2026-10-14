@@ -330,12 +330,12 @@ export const WorkspaceApp: React.FC = () => {
     }
   };
 
-  const handleDeleteTransfer = async (id: string) => {
+  const handleDeleteTransfer = async (id: string, deleteRemote?: boolean) => {
     try {
-      await deleteFileService(id);
+      await deleteFileService(id, deleteRemote);
       deletedTransfers.current.add(id);
       setTransfers((current) => current.filter((t) => t.id !== id));
-      showToast('File transfer revoked.');
+      showToast('File removed from workspace.');
     } catch (err: any) {
       showToast(err instanceof AuthenticationRequiredError ? 'Sign in with Cloudflare Access to delete files.' : (err.message || 'Delete failed'));
       throw err;

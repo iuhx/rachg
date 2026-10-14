@@ -7,6 +7,7 @@ interface ConfirmDialogProps {
   description: string;
   confirmLabel: string;
   isConfirming?: boolean;
+  children?: React.ReactNode;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -17,14 +18,18 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   description,
   confirmLabel,
   isConfirming = false,
+  children,
   onConfirm,
   onCancel,
 }) => {
   const cancelRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
+    if (isOpen) cancelRef.current?.focus();
+  }, [isOpen]);
+
+  useEffect(() => {
     if (!isOpen) return;
-    cancelRef.current?.focus();
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && !isConfirming) onCancel();
     };
@@ -54,6 +59,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             <X className="w-4 h-4" />
           </button>
         </div>
+        {children && <div className="mt-4">{children}</div>}
         <div className="flex justify-end gap-2 mt-6">
           <button ref={cancelRef} type="button" onClick={onCancel} disabled={isConfirming} className="workspace-button workspace-button-secondary cursor-pointer disabled:opacity-50">Cancel</button>
           <button type="button" onClick={onConfirm} disabled={isConfirming} className="workspace-button bg-red-600 text-white hover:bg-red-700 cursor-pointer disabled:opacity-50">{isConfirming ? 'Deleting…' : confirmLabel}</button>
