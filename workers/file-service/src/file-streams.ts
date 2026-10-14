@@ -4,16 +4,24 @@ import { InputError } from '../../common/content';
 export async function storeStream(body: ReadableStream, size: number, store: (body: ReadableStream) => Promise<void>) {
   const fixed = new FixedLengthStream(size);
   const abort = new AbortController();
-  const timer = setTimeout(() => abort.abort(new InputError('Upload timed out. Please retry.', 408)), 300_000);
+  let timer: ReturnType<typeof setTimeout>;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new InputError('Upload timed out. Please retry.', 408)), 300_000);
+  });
   const pumping = body.pipeTo(fixed.writable, { signal: abort.signal }).catch(error => {
     throw error instanceof InputError ? error : new InputError('Upload length did not match the declared file size. Please retry.');
   });
-  try { await Promise.all([pumping, store(fixed.readable)]); }
+  try { await Promise.race([Promise.all([pumping, store(fixed.readable)]), deadline]); }
   catch (error) {
     if (error instanceof TypeError && /FixedLengthStream/.test(error.message)) throw new InputError('Upload length did not match the declared file size. Please retry.');
     throw error;
   }
-  finally { clearTimeout(timer); abort.abort(); await pumping.catch(() => {}); }
+  finally {
+    clearTimeout(timer!); abort.abort();
+    // An early rejection (for example WebDAV 412) may leave no reader at all.
+    // Cancel that readable to release a backpressured write; never await a stuck pipe.
+    await fixed.readable.cancel().catch(() => {});
+  }
 }
 
 /** Validate lengths while forwarding chunks; a provider ignoring Range is sliced without buffering. */

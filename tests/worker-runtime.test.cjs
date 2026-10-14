@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { createRequire } = require('node:module');
-const { generateKeyPairSync, sign, createHash } = require('node:crypto');
+const { generateKeyPairSync, sign, createHash, createHmac } = require('node:crypto');
 const root = path.resolve(__dirname, '..');
 const tempRoot = path.join(root, '.wrangler', 'runtime-tests');
 fs.mkdirSync(tempRoot, { recursive: true });
@@ -31,12 +31,28 @@ test('release Worker runs reliably in workerd with actual D1 and R2 bindings', {
   let outgoingMail;
   const webdavRoot = 'https://higa.teracloud.jp/dav/rachg/';
   const webdavFiles = new Map();
+  const telegramToken = '987654321:runtime_telegram_fixture_token_12345', telegramUser = 6121514938;
+  const telegramFiles = new Map(), telegramReplies = [];
+  const telegramSecret = createHmac('sha256', telegramToken).update('rachg:telegram-webhook:v1').digest('hex');
   const runtimeOptions = {
     rootPath: root, host: '127.0.0.1', port: 0, cf: false,
     modules: true, scriptPath: path.join(root, 'workers/file-service/cloudflare-editor-bundle/index.js'),
     compatibilityDate: '2026-09-01', compatibilityFlags: ['nodejs_compat'],
     d1Databases: ['DB'], r2Buckets: ['FILES_BUCKET'], d1Persist: false, r2Persist: false,
     outboundService: async request => {
+      if (request.url.startsWith(`https://api.telegram.org/bot${telegramToken}/`)) {
+        const method = request.url.split('/').pop(), payload = await request.json();
+        if (method === 'getMe') return MockResponse.json({ ok: true, result: { id: 987654321, is_bot: true, username: 'rachgx_bot' } });
+        if (method === 'setWebhook') { assert.equal(payload.secret_token, telegramSecret); assert.deepEqual(payload.allowed_updates, ['message']); return MockResponse.json({ ok: true, result: true }); }
+        if (method === 'getFile') { const data = telegramFiles.get(payload.file_id); assert.ok(data); return MockResponse.json({ ok: true, result: { file_path: `documents/${payload.file_id}`, file_size: data.byteLength } }); }
+        assert.equal(method, 'sendMessage'); assert.equal(payload.chat_id, telegramUser); telegramReplies.push(payload);
+        return MockResponse.json({ ok: true, result: { message_id: 1000 + telegramReplies.length } });
+      }
+      if (request.url.startsWith(`https://api.telegram.org/file/bot${telegramToken}/`)) {
+        assert.equal(request.headers.get('accept-encoding'), 'identity');
+        const data = telegramFiles.get(request.url.split('/').pop()); assert.ok(data);
+        return new MockResponse(data, { headers: { 'Content-Length': String(data.byteLength) } });
+      }
       if (request.url.startsWith(webdavRoot)) {
         assert.equal(request.headers.get('authorization'), 'Basic ' + Buffer.from('runtime-user:runtime-password').toString('base64'));
         assert.equal(request.headers.has('cf-access-jwt-assertion'), false);
@@ -61,7 +77,8 @@ test('release Worker runs reliably in workerd with actual D1 and R2 bindings', {
       return MockResponse.json(jwks);
     },
     bindings: { ACCESS_TEAM_DOMAIN: issuer, ACCESS_AUDIENCE: 'local-workspace',
-      ACCESS_ADMIN_EMAIL: 'admin@example.invalid', MAX_STORAGE_BYTES: '1000', RESEND_API_KEY: 'local-fixture-only', PUBLIC_NOTE_SHARES_ENABLED: 'true', WEBDAV_USERNAME: 'runtime-user', WEBDAV_PASSWORD: 'runtime-password' },
+      ACCESS_ADMIN_EMAIL: 'admin@example.invalid', MAX_STORAGE_BYTES: '1000', RESEND_API_KEY: 'local-fixture-only', PUBLIC_NOTE_SHARES_ENABLED: 'true', WEBDAV_USERNAME: 'runtime-user', WEBDAV_PASSWORD: 'runtime-password',
+      TELEGRAM_ENABLED: 'true', TELEGRAM_BOT_TOKEN: telegramToken, TELEGRAM_ALLOWED_USER_ID: String(telegramUser), TELEGRAM_BOT_USERNAME: 'rachgx_bot' },
   };
   const mf = new Miniflare(convertV4MiniflareOptions(runtimeOptions));
   t.after(() => mf.dispose());
@@ -330,6 +347,30 @@ test('release Worker runs reliably in workerd with actual D1 and R2 bindings', {
     const deleted = await request(`/v1/projects/${saved.id}`, { ...post, method: 'DELETE', body: JSON.stringify({ revision: 2 }) });
     assert.equal(deleted.status, 200); await deleted.text();
     assert.equal((await db.prepare('SELECT COUNT(*) n FROM workspace_projects').first()).n, 0);
+  });
+
+  await t.test('Telegram webhook imports images and Unicode Markdown in workerd without weakening Access or duplicating records', async () => {
+    const configured = await request('/v1/integrations/telegram', { method: 'POST' }); assert.equal(configured.status, 200); assert.equal((await configured.json()).telegram.enabled, true);
+    const content = '# Telegram 笔记\r\n\r\n**完整正文**\n';
+    telegramFiles.set('runtime_md', new Uint8Array(Buffer.concat([Buffer.from([255,254]), Buffer.from(content, 'utf16le')])));
+    telegramFiles.set('runtime_photo', new Uint8Array([255,216,255,1,2,3,4]));
+    const update = (id, attachment) => ({ update_id: id, message: { message_id: id, date: 1791936000, from: { id: telegramUser, is_bot: false }, chat: { id: telegramUser, type: 'private' }, ...attachment } });
+    const post = (body, secret = telegramSecret) => request('/integrations/telegram/webhook', { method: 'POST', headers: { 'cf-access-jwt-assertion': '', 'Content-Type': 'application/json', 'X-Telegram-Bot-Api-Secret-Token': secret }, body: JSON.stringify(body) });
+    const markdown = update(900, { document: { file_id: 'runtime_md', file_name: '真实笔记.md' } });
+    const denied = await post(markdown, 'wrong'); assert.equal(denied.status, 401); await denied.text();
+    const replies = await Promise.all([post(markdown), post(markdown), post(update(901, { photo: [{ file_id: 'runtime_photo', width: 640, height: 480 }] }))]);
+    for (const response of replies) { assert.equal(response.status, 200); await response.text(); }
+    for (let i = 0; i < 150; i++) { if ((await db.prepare("SELECT COUNT(*) n FROM telegram_jobs WHERE receipt_status='sent'").first()).n === 2) break; await new Promise(resolve => setTimeout(resolve, 30)); }
+    const jobs = (await db.prepare('SELECT * FROM telegram_jobs ORDER BY message_id').all()).results;
+    assert.equal(jobs.length, 2); assert.ok(jobs.every(job => job.status === 'done' && job.receipt_status === 'sent'), JSON.stringify(jobs.map(job => ({ status: job.status, result: job.result_text }))));
+    const note = await db.prepare('SELECT * FROM notes WHERE id=?').bind(`telegram-${jobs[0].target_id}`).first(); assert.equal(note.title, '真实笔记'); assert.equal(note.content, content);
+    const file = await db.prepare('SELECT * FROM files WHERE id=?').bind(jobs[1].target_id).first(); assert.equal(file.status, 'active'); assert.equal(file.expires_at, 0); assert.ok(file.r2_key.startsWith('webdav/'));
+    const download = await request(`/f/${file.id}`); assert.deepEqual(new Uint8Array(await download.arrayBuffer()), telegramFiles.get('runtime_photo'));
+    const protectedNotes = await request('/v1/notes', { headers: { 'cf-access-jwt-assertion': '', 'X-Telegram-Bot-Api-Secret-Token': telegramSecret } }); assert.equal(protectedNotes.status, 401); await protectedNotes.text();
+    assert.equal(telegramReplies.length, 2);
+    for (const route of [`/v1/notes/${note.id}`, `/v1/files/${file.id}`]) { const removed = await request(route, { method: 'DELETE' }); assert.equal(removed.status, 200); await removed.text(); }
+    const replay = await post(markdown); assert.equal(replay.status, 200); await replay.text();
+    assert.equal(await db.prepare('SELECT id FROM notes WHERE id=?').bind(note.id).first(), null);
   });
 
   await t.test('99 MB streams round trip through R2 and WebDAV; oversized and false lengths never activate', async () => {

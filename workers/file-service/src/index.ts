@@ -65,8 +65,10 @@ import { routeTodos } from './todos';
 import { systemHealth } from './system-health';
 import { boundedForm, boundedJson, InputError, mailPlainText, MAX_FILE_BYTES, MAX_BUFFERED_FILE_BYTES, MAX_MAIL_BYTES, MAX_TEXT_BYTES, readBounded, utf8Size } from '../../common/content';
 import { storeStream } from './file-streams';
+import { receiveTelegram, runTelegramTasks, configureTelegram, telegramStatus } from './telegram';
+import { TELEGRAM_WEBHOOK_PATH, type TelegramEnv } from './telegram-client';
 
-export interface Env {
+export interface Env extends TelegramEnv {
   WEBDAV_USERNAME?: string;
   WEBDAV_PASSWORD?: string;
   PUBLIC_NOTE_SHARES_ENABLED?: string;
@@ -213,7 +215,9 @@ export default {
     }
 
     try {
-      // Access may bypass ONLY /s/*. All other routes retain administrator auth.
+      if (url.pathname === TELEGRAM_WEBHOOK_PATH) return await receiveTelegram(request, env, ctx);
+      // Browser Access bypass remains restricted to /s/*. The exact Telegram
+      // callback above separately requires its secret and numeric user allowlist.
       if (url.pathname.startsWith('/s/')) {
         try {
           return await publicNoteShare(request, env.DB, env.PUBLIC_NOTE_SHARES_ENABLED === 'true', origin);
@@ -235,6 +239,11 @@ export default {
         if (source && source !== url.origin && !allowed.includes(source)) {
           return jsonResponse<ApiErrorResponse>({ success: false, error: 'Request origin is not allowed', code: 'INVALID_ORIGIN', status: 403 }, 403, origin);
         }
+      }
+      if (url.pathname === '/v1/integrations/telegram') {
+        if (request.method === 'POST') await configureTelegram(env);
+        else if (request.method !== 'GET') throw new InputError('Method not allowed', 405);
+        return jsonResponse({ success: true, telegram: await telegramStatus(env) }, 200, origin);
       }
       // -------------------------------------------------------------
       // Health check & Service status
@@ -859,6 +868,10 @@ export default {
     }
   },
   async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    if (_event.cron === '* * * * *') {
+      ctx.waitUntil(runTelegramTasks(env).catch(() => console.error('Telegram task processing deferred')));
+      return;
+    }
     ctx.waitUntil(cleanupStorage(env.DB, env.FILES_BUCKET, { WEBDAV_USERNAME: env.WEBDAV_USERNAME, WEBDAV_PASSWORD: env.WEBDAV_PASSWORD }));
     ctx.waitUntil(cleanupNoteShares(env.DB));
   },

@@ -4819,19 +4819,22 @@ function mailPlainText(html, maxOutput = 256 * 1024) {
 async function storeStream(body, size, store) {
   const fixed = new FixedLengthStream(size);
   const abort = new AbortController();
-  const timer = setTimeout(() => abort.abort(new InputError("Upload timed out. Please retry.", 408)), 3e5);
+  let timer;
+  const deadline = new Promise((_2, reject) => {
+    timer = setTimeout(() => reject(new InputError("Upload timed out. Please retry.", 408)), 3e5);
+  });
   const pumping = body.pipeTo(fixed.writable, { signal: abort.signal }).catch((error) => {
     throw error instanceof InputError ? error : new InputError("Upload length did not match the declared file size. Please retry.");
   });
   try {
-    await Promise.all([pumping, store(fixed.readable)]);
+    await Promise.race([Promise.all([pumping, store(fixed.readable)]), deadline]);
   } catch (error) {
     if (error instanceof TypeError && /FixedLengthStream/.test(error.message)) throw new InputError("Upload length did not match the declared file size. Please retry.");
     throw error;
   } finally {
     clearTimeout(timer);
     abort.abort();
-    await pumping.catch(() => {
+    await fixed.readable.cancel().catch(() => {
     });
   }
 }
@@ -7620,6 +7623,301 @@ async function systemHealth(request, env) {
   };
 }
 
+// workers/file-service/src/telegram-client.ts
+var TELEGRAM_WEBHOOK_PATH = "/integrations/telegram/webhook";
+var TELEGRAM_WEBHOOK_URL = `https://rachg-file-service.haenlau.workers.dev${TELEGRAM_WEBHOOK_PATH}`;
+var TELEGRAM_FILE_BYTES = 2e7;
+var TelegramError = class extends Error {
+  constructor(message, retryable = true) {
+    super(message);
+    this.retryable = retryable;
+  }
+  retryable;
+};
+function telegramConfig(env) {
+  const token = env.TELEGRAM_BOT_TOKEN || "", userId = Number(env.TELEGRAM_ALLOWED_USER_ID);
+  if (env.TELEGRAM_ENABLED !== "true" || !/^\d{5,20}:[\w-]{20,120}$/.test(token) || !Number.isSafeInteger(userId) || userId <= 0 || !/^\w{5,32}$/.test(env.TELEGRAM_BOT_USERNAME || "")) return null;
+  return { token, userId, botId: token.split(":")[0], username: env.TELEGRAM_BOT_USERNAME };
+}
+async function webhookSecret(token) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(token), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode("rachg:telegram-webhook:v1"));
+  return Array.from(new Uint8Array(signature), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+async function isTelegramWebhook(request, env) {
+  const config = telegramConfig(env), supplied = request.headers.get("X-Telegram-Bot-Api-Secret-Token");
+  if (!config || !supplied || supplied.length !== 64) return false;
+  const expected = await webhookSecret(config.token);
+  let difference = 0;
+  for (let i = 0; i < expected.length; i++) difference |= expected.charCodeAt(i) ^ supplied.charCodeAt(i);
+  return difference === 0;
+}
+async function telegramApi(token, method, payload = {}) {
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      redirect: "manual",
+      signal: AbortSignal.timeout(15e3)
+    });
+    const data = JSON.parse(new TextDecoder().decode(await readBounded(response.body, 64e3)));
+    if (!response.ok || data.ok !== true || data.result === void 0) throw new TelegramError("Telegram \u6682\u65F6\u65E0\u6CD5\u5904\u7406\u8BF7\u6C42\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5\u3002", response.status >= 500 || response.status === 429 || response.status === 408);
+    return data.result;
+  } catch (error) {
+    if (error instanceof TelegramError) throw error;
+    throw new TelegramError("\u6682\u65F6\u65E0\u6CD5\u8FDE\u63A5 Telegram\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5\u3002");
+  }
+}
+async function telegramFile(token, fileId, maximum) {
+  const meta = await telegramApi(token, "getFile", { file_id: fileId });
+  const path = meta.file_path;
+  if (!path || !/^[\w./-]+$/.test(path) || path.startsWith("/") || path.split("/").some((part) => !part || part === "." || part === "..")) throw new TelegramError("Telegram \u8FD4\u56DE\u4E86\u65E0\u6548\u7684\u6587\u4EF6\u5730\u5740\u3002", false);
+  if (meta.file_size !== void 0 && (!Number.isSafeInteger(meta.file_size) || meta.file_size < 1 || meta.file_size > maximum)) throw new TelegramError(maximum === TELEGRAM_FILE_BYTES ? "\u56FE\u7247\u8D85\u8FC7 20MB\uFF0C\u8BF7\u901A\u8FC7\u5DE5\u4F5C\u53F0\u7F51\u9875\u4E0A\u4F20\u3002" : "Markdown \u6587\u4EF6\u8D85\u8FC7\u7B14\u8BB0\u7684 1MB \u9650\u5236\uFF0C\u8BF7\u7F29\u5C0F\u540E\u518D\u53D1\u9001\u3002", false);
+  try {
+    const response = await fetch(`https://api.telegram.org/file/bot${token}/${path}`, { redirect: "manual", headers: { "Accept-Encoding": "identity" }, signal: AbortSignal.timeout(6e4) });
+    if (response.status !== 200 || !response.body) {
+      await response.body?.cancel();
+      throw new TelegramError("\u6682\u65F6\u65E0\u6CD5\u4E0B\u8F7D Telegram \u6587\u4EF6\u3002");
+    }
+    const header = response.headers.get("content-length");
+    const length = header !== null && /^\d+$/.test(header) ? Number(header) : void 0;
+    const size = meta.file_size ?? length;
+    if (size === void 0 || !Number.isSafeInteger(size) || size < 1 || size > maximum || length !== void 0 && length !== size || response.headers.has("content-encoding")) {
+      await response.body.cancel();
+      throw new TelegramError("\u6587\u4EF6\u5927\u5C0F\u6216\u4F20\u8F93\u683C\u5F0F\u4E0D\u7B26\u5408\u8981\u6C42\uFF0C\u8BF7\u901A\u8FC7\u5DE5\u4F5C\u53F0\u7F51\u9875\u4E0A\u4F20\u3002", false);
+    }
+    return { body: response.body, size };
+  } catch (error) {
+    if (error instanceof TelegramError || error instanceof InputError) throw error;
+    throw new TelegramError("\u6682\u65F6\u65E0\u6CD5\u4E0B\u8F7D Telegram \u6587\u4EF6\u3002");
+  }
+}
+
+// workers/file-service/src/telegram.ts
+var HELP = "\u53D1\u9001\u56FE\u7247\uFF0C\u6211\u4F1A\u6C38\u4E45\u4FDD\u5B58\u5230 Files\uFF08WebDAV\uFF09\uFF1B\u53D1\u9001 .md \u6587\u4EF6\uFF0C\u6211\u4F1A\u5C06\u6B63\u6587\u4FDD\u5B58\u5230 Notes\uFF0C\u6587\u4EF6\u540D\u4F5C\u4E3A\u6807\u9898\u3002\u56FE\u7247\u6700\u5927 20MB\uFF0C\u7B14\u8BB0\u6B63\u6587\u6700\u5927 1MB\u3002";
+var ready4 = /* @__PURE__ */ new WeakMap();
+var LEASE_MS = 6e5;
+var object = (value) => value && typeof value === "object" && !Array.isArray(value) ? value : {};
+var positiveId = (value) => typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+function ensureTelegramSchema(db) {
+  let pending = ready4.get(db);
+  if (!pending) {
+    pending = db.batch([
+      db.prepare(`CREATE TABLE IF NOT EXISTS telegram_jobs (
+        id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, chat_id INTEGER NOT NULL, message_id INTEGER NOT NULL,
+        source TEXT NOT NULL, target_id TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', attempts INTEGER NOT NULL DEFAULT 0,
+        lease_token TEXT, lease_until INTEGER NOT NULL DEFAULT 0, next_attempt_at INTEGER NOT NULL DEFAULT 0,
+        result_text TEXT, receipt_status TEXT NOT NULL DEFAULT 'pending', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+      )`),
+      db.prepare("CREATE INDEX IF NOT EXISTS idx_telegram_pending ON telegram_jobs(status, next_attempt_at, lease_until)"),
+      db.prepare("CREATE TABLE IF NOT EXISTS telegram_config (id TEXT PRIMARY KEY, fingerprint TEXT, registered_at INTEGER, last_error TEXT)")
+    ]).then(() => {
+    }).catch((error) => {
+      ready4.delete(db);
+      throw error;
+    });
+    ready4.set(db, pending);
+  }
+  return pending;
+}
+function sourceFor(message) {
+  const notice = (text) => ({ kind: "notice", notice: text, fileId: "", filename: "", mime: "" });
+  let media, filename, mime, kind;
+  if (Array.isArray(message.photo) && message.photo.length && message.photo.length <= 20) {
+    media = message.photo.map(object).reduce((best, candidate) => Number(candidate.width) * Number(candidate.height) > Number(best.width || 0) * Number(best.height || 0) ? candidate : best, {});
+    filename = `telegram-${message.message_id}.jpg`;
+    mime = "image/jpeg";
+    kind = "image";
+  } else {
+    media = object(message.document);
+    filename = typeof media.file_name === "string" ? media.file_name : "";
+    if (!filename || filename.length > 240 || /[\x00-\x1f\x7f/\\]/.test(filename)) return notice(HELP);
+    const extension = filename.split(".").pop()?.toLowerCase();
+    const imageTypes = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif", bmp: "image/bmp", avif: "image/avif", heic: "image/heic", heif: "image/heif", svg: "image/svg+xml", tif: "image/tiff", tiff: "image/tiff" };
+    if (extension === "md" || extension === "markdown") {
+      kind = "markdown";
+      mime = "text/markdown";
+    } else if (extension && imageTypes[extension]) {
+      kind = "image";
+      mime = imageTypes[extension];
+    } else return notice(HELP);
+  }
+  if (typeof media.file_id !== "string" || !/^[\w-]{1,512}$/.test(media.file_id)) return notice("\u65E0\u6CD5\u8BFB\u53D6\u8FD9\u4EFD\u6587\u4EF6\uFF0C\u8BF7\u91CD\u65B0\u53D1\u9001\u3002");
+  const maximum = kind === "markdown" ? MAX_TEXT_BYTES : TELEGRAM_FILE_BYTES;
+  if (media.file_size !== void 0 && (!positiveId(media.file_size) || media.file_size > maximum)) return notice(kind === "markdown" ? "Markdown \u6587\u4EF6\u8D85\u8FC7\u7B14\u8BB0\u7684 1MB \u9650\u5236\uFF0C\u8BF7\u7F29\u5C0F\u540E\u518D\u53D1\u9001\u3002" : "\u56FE\u7247\u8D85\u8FC7 20MB\uFF0C\u8BF7\u901A\u8FC7\u5DE5\u4F5C\u53F0\u7F51\u9875\u4E0A\u4F20\u3002");
+  return { kind, filename, mime, fileId: media.file_id, notice: "" };
+}
+async function receiveTelegram(request, env, ctx) {
+  const headers = { "Cache-Control": "no-store", "Content-Type": "text/plain; charset=utf-8" };
+  if (request.method !== "POST") return new Response("Method not allowed", { status: 405, headers });
+  if (!await isTelegramWebhook(request, env)) return new Response("Unauthorized", { status: 401, headers });
+  try {
+    if (request.headers.get("content-type")?.split(";")[0].trim() !== "application/json") return new Response("Expected JSON", { status: 415, headers });
+    const update = object(JSON.parse(new TextDecoder().decode(await readBounded(request.body, 64e3))));
+    const message = object(update.message), sender = object(message.from), chat = object(message.chat), config = telegramConfig(env);
+    if (typeof update.update_id !== "number" || !Number.isSafeInteger(update.update_id) || update.update_id < 0 || !positiveId(message.message_id) || sender.id !== config.userId || sender.is_bot !== false || chat.type !== "private" || chat.id !== config.userId) return new Response("OK", { headers });
+    await ensureTelegramSchema(env.DB);
+    const id = `${config.botId}:${config.userId}:${message.message_id}`, now = Date.now();
+    await env.DB.prepare(`INSERT OR IGNORE INTO telegram_jobs (id, bot_id, chat_id, message_id, source, target_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, config.botId, config.userId, message.message_id, JSON.stringify(sourceFor(message)), crypto.randomUUID(), now, now).run();
+    ctx.waitUntil(processTelegramJob(id, env).catch(() => console.error("Telegram job deferred", { id })));
+    return new Response("OK", { headers });
+  } catch (error) {
+    return new Response(error instanceof SyntaxError ? "Invalid JSON" : "Please retry", { status: error instanceof InputError ? error.status : error instanceof SyntaxError ? 400 : 503, headers });
+  }
+}
+async function finishNotice(env, job, token, text, failed = false) {
+  await env.DB.prepare(`UPDATE telegram_jobs SET status = ?, result_text = ?, lease_token = NULL, lease_until = 0, updated_at = ?
+    WHERE id = ? AND status = 'processing' AND lease_token = ?`).bind(failed ? "failed" : "done", text, Date.now(), job.id, token).run();
+}
+async function saveMarkdown(env, job, token, source, botToken) {
+  const file = await telegramFile(botToken, source.fileId, MAX_TEXT_BYTES);
+  const data = new Uint8Array(await readBounded(file.body, MAX_TEXT_BYTES));
+  if (data.length !== file.size) throw new TelegramError("\u6587\u4EF6\u4E0B\u8F7D\u4E0D\u5B8C\u6574\uFF0C\u8BF7\u91CD\u8BD5\u3002");
+  const encoding = data[0] === 255 && data[1] === 254 ? "utf-16le" : data[0] === 254 && data[1] === 255 ? "utf-16be" : "utf-8";
+  let content;
+  try {
+    content = new TextDecoder(encoding, { fatal: true, ignoreBOM: false }).decode(data);
+  } catch {
+    throw new TelegramError("\u8BF7\u5C06 Markdown \u4FDD\u5B58\u4E3A UTF-8 \u6216\u5E26 BOM \u7684 UTF-16 \u7F16\u7801\u540E\u91CD\u65B0\u53D1\u9001\u3002", false);
+  }
+  if (!content.trim() || /[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(content)) throw new TelegramError("\u6587\u4EF6\u4E2D\u6CA1\u6709\u6709\u6548\u7684 Markdown \u6B63\u6587\u3002", false);
+  if (utf8Size(content) > MAX_TEXT_BYTES) throw new TelegramError("Markdown \u6B63\u6587\u8D85\u8FC7 1MB\uFF0C\u8BF7\u7F29\u5C0F\u540E\u518D\u53D1\u9001\u3002", false);
+  const title = source.filename.replace(/\.(md|markdown)$/i, "").trim().slice(0, 200).replace(/[\uD800-\uDBFF]$/, "") || "Telegram note";
+  const noteId = `telegram-${job.target_id}`, now = Date.now();
+  await ensureSchema(env.DB);
+  await env.DB.batch([
+    env.DB.prepare(`INSERT INTO notes (id, title, content, created_at, updated_at)
+      SELECT ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM telegram_jobs WHERE id = ? AND status = 'processing' AND lease_token = ?)`).bind(noteId, title, content, now, now, job.id, token),
+    env.DB.prepare(`INSERT INTO note_organization (note_id, category_id, pinned, revision)
+      SELECT ?, NULL, 0, 1 WHERE changes() > 0`).bind(noteId),
+    env.DB.prepare(`UPDATE telegram_jobs SET status = 'done', result_text = ?, lease_token = NULL, lease_until = 0, updated_at = ?
+      WHERE id = ? AND status = 'processing' AND lease_token = ?`).bind(`\u5DF2\u4FDD\u5B58\u5230 Notes\uFF1A${title}
+https://rachg.com/`, now, job.id, token)
+  ]);
+}
+async function saveImage(env, job, token, source, botToken) {
+  const storage = new StoredFiles(env);
+  await storage.ready("webdav");
+  const file = await telegramFile(botToken, source.fileId, TELEGRAM_FILE_BYTES);
+  let consumed = false;
+  try {
+    await ensureSchema(env.DB);
+    const id = crypto.randomUUID(), key = buildWebdavKey(id, source.filename), now = Date.now();
+    const results = await env.DB.batch([
+      env.DB.prepare(`UPDATE files SET status = 'purging' WHERE id = ? AND status = 'uploading'
+        AND EXISTS (SELECT 1 FROM telegram_jobs WHERE id = ? AND lease_token = ? AND status = 'processing')`).bind(job.target_id, job.id, token),
+      env.DB.prepare(`INSERT INTO files (id, filename, size_bytes, mime_type, r2_key, created_at, expires_at, download_count, delete_token, owner_id, status)
+        SELECT ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, 'uploading' WHERE EXISTS (SELECT 1 FROM telegram_jobs WHERE id = ? AND lease_token = ? AND status = 'processing')`).bind(id, source.filename, file.size, source.mime, key, now, crypto.randomUUID(), `telegram:${job.chat_id}`, job.id, token),
+      env.DB.prepare(`UPDATE telegram_jobs SET target_id = ? WHERE id = ? AND lease_token = ? AND status = 'processing'`).bind(id, job.id, token)
+    ]);
+    if (!results[1].meta.changes) return;
+    consumed = true;
+    try {
+      await storeStream(file.body, file.size, (body) => storage.put(key, body, source.mime, { fileId: id, filename: source.filename, expiresAt: "0" }));
+    } catch (error) {
+      if (error instanceof WebdavConflict) await env.DB.prepare("UPDATE files SET status = 'purged' WHERE id = ? AND status = 'uploading'").bind(id).run();
+      throw error;
+    }
+    await env.DB.batch([
+      env.DB.prepare(`UPDATE files SET status = 'active' WHERE id = ? AND status = 'uploading'
+        AND EXISTS (SELECT 1 FROM telegram_jobs WHERE id = ? AND lease_token = ? AND status = 'processing')`).bind(id, job.id, token),
+      env.DB.prepare(`UPDATE telegram_jobs SET status = 'done', result_text = ?, lease_token = NULL, lease_until = 0, updated_at = ?
+        WHERE id = ? AND lease_token = ? AND status = 'processing' AND EXISTS (SELECT 1 FROM files WHERE id = ? AND status = 'active')`).bind(`\u5DF2\u4FDD\u5B58\u5230 Files\uFF1A${source.filename}
+\u6C38\u4E45\u4FDD\u5B58 \xB7 WebDAV
+https://api.rachg.com/f/${id}`, Date.now(), job.id, token, id)
+    ]);
+  } finally {
+    if (!consumed) await file.body.cancel().catch(() => {
+    });
+  }
+}
+async function sendReceipt(id, env) {
+  const config = telegramConfig(env);
+  if (!config) return;
+  const job = await env.DB.prepare("SELECT * FROM telegram_jobs WHERE id = ?").bind(id).first();
+  if (!job || job.bot_id !== config.botId || job.chat_id !== config.userId || !["done", "failed"].includes(job.status) || !job.result_text || job.receipt_status !== "pending") return;
+  const claimed = await env.DB.prepare(`UPDATE telegram_jobs SET receipt_status = 'sending' WHERE id = ? AND receipt_status = 'pending' AND status IN ('done', 'failed')`).bind(id).run();
+  if (!claimed.meta.changes) return;
+  try {
+    await telegramApi(config.token, "sendMessage", { chat_id: config.userId, text: job.result_text, link_preview_options: { is_disabled: true }, reply_parameters: { message_id: job.message_id, allow_sending_without_reply: true } });
+    await env.DB.prepare("UPDATE telegram_jobs SET receipt_status = 'sent' WHERE id = ?").bind(id).run();
+  } catch {
+    await env.DB.prepare("UPDATE telegram_jobs SET receipt_status = 'unknown' WHERE id = ? AND receipt_status = 'sending'").bind(id).run();
+  }
+}
+async function processTelegramJob(id, env) {
+  const config = telegramConfig(env);
+  if (!config) return;
+  await ensureTelegramSchema(env.DB);
+  const now = Date.now(), token = crypto.randomUUID();
+  const claimed = await env.DB.prepare(`UPDATE telegram_jobs SET status = 'processing', lease_token = ?, lease_until = ?, attempts = attempts + 1, updated_at = ?
+    WHERE id = ? AND bot_id = ? AND chat_id = ? AND attempts < 3 AND ((status = 'pending' AND next_attempt_at <= ?) OR (status = 'processing' AND lease_until <= ?))`).bind(token, now + LEASE_MS, now, id, config.botId, config.userId, now, now).run();
+  if (!claimed.meta.changes) {
+    await env.DB.prepare(`UPDATE telegram_jobs SET status = 'failed', result_text = ?, lease_token = NULL, lease_until = 0, updated_at = ?
+      WHERE id = ? AND bot_id = ? AND chat_id = ? AND attempts >= 3 AND ((status = 'processing' AND lease_until <= ?) OR (status = 'pending' AND next_attempt_at <= ?))`).bind("\u672A\u4FDD\u5B58\u6210\u529F\uFF1A\u5904\u7406\u591A\u6B21\u4E2D\u65AD\u3002\u8BF7\u7A0D\u540E\u91CD\u65B0\u53D1\u9001\uFF0C\u6216\u4F7F\u7528 https://rachg.com/ \u4E0A\u4F20\u3002", now, id, config.botId, config.userId, now, now).run();
+    await sendReceipt(id, env);
+    return;
+  }
+  const job = await env.DB.prepare("SELECT * FROM telegram_jobs WHERE id = ? AND lease_token = ?").bind(id, token).first();
+  if (!job) return;
+  try {
+    const source = JSON.parse(job.source);
+    if (source.kind === "notice") await finishNotice(env, job, token, source.notice);
+    else if (source.kind === "markdown") await saveMarkdown(env, job, token, source, config.token);
+    else await saveImage(env, job, token, source, config.token);
+  } catch (error) {
+    const retryable = error instanceof TelegramError ? error.retryable : !(error instanceof InputError && error.status === 413);
+    if (retryable && job.attempts < 3) {
+      await env.DB.prepare(`UPDATE telegram_jobs SET status = 'pending', next_attempt_at = ?, lease_token = NULL, lease_until = 0, updated_at = ?
+        WHERE id = ? AND lease_token = ? AND status = 'processing'`).bind(Date.now() + job.attempts * 6e4, Date.now(), id, token).run();
+    } else {
+      const explanation = error instanceof TelegramError ? error.message : "\u5B58\u50A8\u670D\u52A1\u6682\u65F6\u4E0D\u53EF\u7528\u3002";
+      await finishNotice(env, job, token, `\u672A\u4FDD\u5B58\u6210\u529F\uFF1A${explanation}
+\u8BF7\u7A0D\u540E\u91CD\u65B0\u53D1\u9001\uFF0C\u6216\u4F7F\u7528 https://rachg.com/ \u4E0A\u4F20\u3002`, true);
+    }
+  }
+  await sendReceipt(id, env);
+}
+async function configureTelegram(env) {
+  const config = telegramConfig(env);
+  if (!config) return false;
+  await ensureTelegramSchema(env.DB);
+  const secret = await webhookSecret(config.token), fingerprint = `${config.botId}:${config.userId}:${config.username}:${secret}`;
+  const digest = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(fingerprint))), (b) => b.toString(16).padStart(2, "0")).join("");
+  const saved = await env.DB.prepare("SELECT fingerprint FROM telegram_config WHERE id = 'webhook'").first();
+  if (saved?.fingerprint === digest) return true;
+  try {
+    const me2 = await telegramApi(config.token, "getMe");
+    if (!me2.is_bot || String(me2.id) !== config.botId || me2.username?.toLowerCase() !== config.username.toLowerCase()) throw new TelegramError("Token \u5BF9\u5E94\u7684\u673A\u5668\u4EBA\u4E0E\u914D\u7F6E\u540D\u79F0\u4E0D\u4E00\u81F4\u3002", false);
+    const result = await telegramApi(config.token, "setWebhook", { url: TELEGRAM_WEBHOOK_URL, secret_token: secret, allowed_updates: ["message"], max_connections: 2, drop_pending_updates: false });
+    if (result !== true) throw new TelegramError("Webhook \u914D\u7F6E\u672A\u6210\u529F\u3002");
+    await env.DB.prepare(`INSERT INTO telegram_config (id, fingerprint, registered_at, last_error) VALUES ('webhook', ?, ?, NULL)
+      ON CONFLICT(id) DO UPDATE SET fingerprint = excluded.fingerprint, registered_at = excluded.registered_at, last_error = NULL`).bind(digest, Date.now()).run();
+    return true;
+  } catch {
+    await env.DB.prepare(`INSERT INTO telegram_config (id, last_error) VALUES ('webhook', 'Telegram setup failed; verify the bot token and username.')
+      ON CONFLICT(id) DO UPDATE SET last_error = excluded.last_error`).run();
+    console.error("Telegram webhook configuration needs attention");
+    return false;
+  }
+}
+async function runTelegramTasks(env) {
+  if (!await configureTelegram(env)) return;
+  const config = telegramConfig(env), now = Date.now();
+  const jobs = await env.DB.prepare(`SELECT id FROM telegram_jobs WHERE bot_id = ? AND chat_id = ? AND (
+    (status = 'pending' AND next_attempt_at <= ?) OR (status = 'processing' AND lease_until <= ?) OR (status IN ('done', 'failed') AND receipt_status = 'pending'))
+    ORDER BY created_at LIMIT 2`).bind(config.botId, config.userId, now, now).all();
+  for (const job of jobs.results) await processTelegramJob(job.id, env).catch(() => console.error("Telegram job deferred", { id: job.id }));
+}
+async function telegramStatus(env) {
+  await ensureTelegramSchema(env.DB);
+  const registration = await env.DB.prepare("SELECT registered_at, last_error FROM telegram_config WHERE id = 'webhook'").first();
+  const counts = await env.DB.prepare("SELECT status, COUNT(*) AS count FROM telegram_jobs GROUP BY status").all();
+  return { enabled: Boolean(telegramConfig(env)), username: env.TELEGRAM_BOT_USERNAME || null, registration, counts: counts.results };
+}
+
 // workers/file-service/src/index.ts
 function getAllowedOrigin(request, env) {
   const requestOrigin = request.headers.get("Origin");
@@ -7729,6 +8027,7 @@ var index_default = {
       });
     }
     try {
+      if (url.pathname === TELEGRAM_WEBHOOK_PATH) return await receiveTelegram(request, env, ctx);
       if (url.pathname.startsWith("/s/")) {
         try {
           return await publicNoteShare(request, env.DB, env.PUBLIC_NOTE_SHARES_ENABLED === "true", origin);
@@ -7750,6 +8049,11 @@ var index_default = {
         if (source && source !== url.origin && !allowed.includes(source)) {
           return jsonResponse({ success: false, error: "Request origin is not allowed", code: "INVALID_ORIGIN", status: 403 }, 403, origin);
         }
+      }
+      if (url.pathname === "/v1/integrations/telegram") {
+        if (request.method === "POST") await configureTelegram(env);
+        else if (request.method !== "GET") throw new InputError("Method not allowed", 405);
+        return jsonResponse({ success: true, telegram: await telegramStatus(env) }, 200, origin);
       }
       const storage = new StoredFiles(env);
       if (url.pathname === "/v1/storage/webdav") return jsonResponse(await routeWebdavSettings(request, env), 200, origin);
@@ -7809,9 +8113,9 @@ var index_default = {
         if (record.status !== "active" || isFileExpired(record.expires_at)) throw new InputError("This text share has expired", 410);
         if (record.mime_type.split(";")[0].trim().toLowerCase() !== "text/plain") throw new InputError("This file is not a plain text share", 415);
         if (record.size_bytes > 2e5) throw new InputError("Text share pages support up to 200 KB", 413);
-        const object = await storage.get(record.r2_key);
-        if (!object) throw new InputError("Text share not found", 404);
-        const bytes = await readBounded(new Response(object.body).body, 2e5);
+        const object2 = await storage.get(record.r2_key);
+        if (!object2) throw new InputError("Text share not found", 404);
+        const bytes = await readBounded(new Response(object2.body).body, 2e5);
         return textShareResponse(record.filename, new TextDecoder().decode(bytes), record.id);
       }
       if (request.method === "POST" && url.pathname === "/v1/mail/send") {
@@ -7909,10 +8213,10 @@ var index_default = {
       if (request.method === "GET" && mailDetailMatch) {
         const record = await getMailRecord(env.DB, mailDetailMatch[1]);
         if (!record) return jsonResponse({ success: false, error: "Email not found", code: "NOT_FOUND", status: 404 }, 404, origin);
-        const object = await getMailObject(env.FILES_BUCKET, record.r2_key);
-        if (!object) return jsonResponse({ success: false, error: "Email content is missing", code: "NOT_FOUND", status: 404 }, 404, origin);
-        if (object.size > MAX_MAIL_BYTES) throw new InputError("This message exceeds the 5 MiB preview limit", 413);
-        const parsed = await PostalMime.parse(await object.arrayBuffer());
+        const object2 = await getMailObject(env.FILES_BUCKET, record.r2_key);
+        if (!object2) return jsonResponse({ success: false, error: "Email content is missing", code: "NOT_FOUND", status: 404 }, 404, origin);
+        if (object2.size > MAX_MAIL_BYTES) throw new InputError("This message exceeds the 5 MiB preview limit", 413);
+        const parsed = await PostalMime.parse(await object2.arrayBuffer());
         const item = mapMailItem(record);
         const message = {
           ...item,
@@ -8291,6 +8595,10 @@ var index_default = {
     }
   },
   async scheduled(_event, env, ctx) {
+    if (_event.cron === "* * * * *") {
+      ctx.waitUntil(runTelegramTasks(env).catch(() => console.error("Telegram task processing deferred")));
+      return;
+    }
     ctx.waitUntil(cleanupStorage(env.DB, env.FILES_BUCKET, { WEBDAV_USERNAME: env.WEBDAV_USERNAME, WEBDAV_PASSWORD: env.WEBDAV_PASSWORD }));
     ctx.waitUntil(cleanupNoteShares(env.DB));
   }

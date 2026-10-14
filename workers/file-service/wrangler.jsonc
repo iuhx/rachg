@@ -6,7 +6,7 @@
   "workers_dev": true,
   "preview_urls": true,
   "routes": [{ "pattern": "api.rachg.com", "custom_domain": true }],
-  "triggers": { "crons": ["*/15 * * * *"] },
+  "triggers": { "crons": ["*/15 * * * *", "* * * * *"] },
   "main": "src/index.ts",
   "build": { "command": "npm --prefix ../../packages/shared run build" },
   "compatibility_date": "2026-09-01",
@@ -33,6 +33,9 @@
 
   // Service configuration & Limits
   "vars": {
+    "TELEGRAM_ENABLED": "true",
+    "TELEGRAM_BOT_USERNAME": "rachgx_bot",
+    "TELEGRAM_ALLOWED_USER_ID": "6121514938",
     // Access bypass is restricted to api.rachg.com/s/*. See docs/NOTE-SHARING.md.
     "PUBLIC_NOTE_SHARES_ENABLED": "true",
     "MAX_STORAGE_BYTES": "4294967296", // 4GB max total active storage cap
