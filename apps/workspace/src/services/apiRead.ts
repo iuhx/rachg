@@ -16,11 +16,16 @@ export async function readApiJson<T>(url: string, resource: string): Promise<T> 
     if (remaining <= 0) throw new Error(`Loading ${resource} timed out. Please retry.`);
     let response: Response;
     let data: any;
+    let phase = 'waiting for response headers';
+    let serverTiming = '';
     try {
       response = await fetch(url, {
         credentials: 'include', redirect: 'manual', cache: 'no-store',
         headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(Math.min(30_000, remaining)),
       });
+      phase = 'receiving response data';
+      const timing = response.headers?.get('server-timing');
+      if (timing && /^auth;dur=\d+, read;dur=\d+$/.test(timing)) serverTiming = ` Server timing: ${timing}.`;
       if (response.type === 'opaqueredirect' || response.redirected || [301, 302, 303, 307, 308, 401, 403].includes(response.status)) {
         void response.body?.cancel().catch(() => {});
         throw new AuthenticationRequiredError();
@@ -47,7 +52,7 @@ export async function readApiJson<T>(url: string, resource: string): Promise<T> 
         continue;
       }
       if (error instanceof Error && ['TimeoutError', 'AbortError'].includes(error.name)) {
-        throw new Error(`Loading ${resource} timed out. Please retry.`);
+        throw new Error(`Loading ${resource} timed out. Please retry. Last attempt: ${phase}.${serverTiming}`);
       }
       throw new Error(`Unable to reach the ${resource} service. Please retry.`);
     }

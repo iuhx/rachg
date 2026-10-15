@@ -260,3 +260,17 @@ test('HTML upstream failures retain the service status instead of asking for ano
   const rejected = assert.rejects(service.fetchNotes(), error => /HTTP 502/.test(error.message) && !/Reconnect/.test(error.message));
   await new Promise(setImmediate); t.mock.timers.tick(500); await rejected; assert.equal(calls,2);
 });
+
+test('timeouts identify whether headers or the response body stalled without exposing arbitrary headers', async t => {
+  const f = components(), service = f.load('apps/workspace/src/services/noteService.ts');
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const fetch = t.mock.method(global, 'fetch', async () => { throw new DOMException('Timed out', 'TimeoutError'); });
+  let rejected = assert.rejects(service.fetchNotes(), /Last attempt: waiting for response headers/);
+  await new Promise(setImmediate); t.mock.timers.tick(500); await rejected;
+  fetch.mock.mockImplementation(async () => ({ok:true,status:200,headers:new Headers({'server-timing':'auth;dur=47, read;dur=944'}),json:async()=>{throw new DOMException('Timed out','TimeoutError');}}));
+  rejected = assert.rejects(service.fetchNotes(), /receiving response data.*auth;dur=47, read;dur=944/);
+  await new Promise(setImmediate); t.mock.timers.tick(500); await rejected;
+  fetch.mock.mockImplementation(async () => ({ok:true,status:200,headers:new Headers({'server-timing':'untrusted-header-content'}),json:async()=>{throw new DOMException('Timed out','TimeoutError');}}));
+  rejected = assert.rejects(service.fetchNotes(), error=>/receiving response data/.test(error.message)&&!error.message.includes('untrusted-header-content'));
+  await new Promise(setImmediate); t.mock.timers.tick(500); await rejected;
+});

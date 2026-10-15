@@ -109,9 +109,10 @@ function jsonResponse<T>(data: T, status: number = 200, origin: string): Respons
 
 function readResponse<T>(data: T, origin: string, route: string, started: number, authenticated: number): Response {
   const authMs = authenticated - started, readMs = Date.now() - authenticated;
-  if (authMs + readMs >= 2000) console.warn('Workspace read delayed', { route, authMs, readMs });
+  console.info('Workspace read completed', { route, authMs, readMs });
   const response = jsonResponse(data, 200, origin);
   response.headers.set('Server-Timing', `auth;dur=${authMs}, read;dur=${readMs}`);
+  response.headers.set('Access-Control-Expose-Headers', 'Server-Timing');
   return response;
 }
 
@@ -234,8 +235,14 @@ export default {
         }
       }
       const authStarted = Date.now();
+      if (request.method === 'GET' && ['/v1/notes/export', '/v1/files'].includes(url.pathname)) {
+        console.info('Workspace read started', { route: url.pathname });
+      }
       const auth = await resolveAuth(request, env);
       const authenticatedAt = Date.now();
+      if (request.method === 'GET' && ['/v1/notes/export', '/v1/files'].includes(url.pathname)) {
+        console.info('Workspace read authenticated', { route: url.pathname, authenticated: isAuthenticated(auth) });
+      }
       if (!isAuthenticated(auth)) {
         return jsonResponse<ApiErrorResponse>(
           { success: false, error: 'Authentication required', code: 'UNAUTHORIZED', status: 401 },
@@ -872,6 +879,9 @@ export default {
         origin
       );
     } catch (err: any) {
+      if (request.method === 'GET' && ['/v1/notes/export', '/v1/files'].includes(url.pathname)) {
+        console.warn('Workspace read failed', { route: url.pathname, status: err instanceof InputError ? err.status : 500 });
+      }
       if (err instanceof InputError) return jsonResponse<ApiErrorResponse>({ success: false, error: err.message, code: 'INVALID_INPUT', status: err.status }, err.status, origin);
       console.error('File service error:', err);
       if (err?.message?.includes('Access JWT') || err?.message?.includes('Cloudflare Access')) {

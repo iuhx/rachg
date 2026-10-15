@@ -29,8 +29,27 @@ timed out. A specific production root cause has not yet been established.
 - Successful keys keep the existing five-minute cache; failed retrievals are
   not cached. Signature, issuer, audience, expiry and administrator checks remain.
 - Files listing and Notes export return `Server-Timing` for authentication and
-  database/read work. Reads taking two seconds or longer log only the route and
-  durations, never note contents, tokens or request headers.
+  database/read work. It is exposed to the authenticated frontend for diagnosis.
+- Workers Logs persistence is enabled, with automatic invocation logs disabled.
+  These two reads log their start, authentication result, completion timings or
+  failure status, without note contents, tokens or request headers in these
+  diagnostic messages. Other pre-existing application logs retain their own
+  behavior; this is not a claim that every existing log has been sanitized.
+- Timeout messages distinguish waiting for response headers from a stalled
+  response body. A validated Server-Timing header is included when available.
+
+## Recurrence observed later on 2026-10-15
+
+The user reported another timeout, with a successful manual Retry. The first
+normal reload captured after enabling log persistence showed Files authentication
+at 47 ms and read work at 944 ms. The Notes event sequence was incomplete, so it
+does not establish the failed request's root cause. Initial public probes also
+took several seconds. Network instability, authentication and database wait
+must still be distinguished using a failed request's complete trace.
+
+Enabling diagnostics is not a root-cause fix. The page/attempt timeouts were not
+extended again during this investigation, and no data or authentication policy
+was changed.
 
 ## Verification
 
