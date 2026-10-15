@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
+import { BackToTop } from './BackToTop';
 import { DashboardView } from './DashboardView';
 import { ProjectsView } from './ProjectsView';
 import { NotesView } from './NotesView';
@@ -33,6 +34,7 @@ const ToolsView = React.lazy(() => import('./ToolsView').then(module => ({ defau
 
 export const WorkspaceApp: React.FC = () => {
   const [activeTab, setActiveTab] = useState<NavTab>('home');
+  useEffect(() => { window.scrollTo(0, 0); }, [activeTab]);
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
   const [authStatus, setAuthStatus] = useState<'loading' | 'authenticated' | 'unauthenticated'>('loading');
   const [userEmail, setUserEmail] = useState<string>();
@@ -370,14 +372,11 @@ export const WorkspaceApp: React.FC = () => {
       {/* Sidebar with refined brandmark */}
       <Sidebar
         activeTab={activeTab}
-        onTabChange={(tab) => {
-          setActiveTab(tab);
-          window.scrollTo(0, 0);
-        }}
+        onTabChange={setActiveTab}
       />
 
       {/* Main Studio Canvas */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-screen overflow-y-auto">
+      <div className="flex-1 flex flex-col min-w-0 min-h-screen">
         <TopBar
           onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
           isDarkMode={isDarkMode}
@@ -509,6 +508,8 @@ export const WorkspaceApp: React.FC = () => {
         webdavAvailable={webdavAvailable}
         onCreateTransfer={(file, backend) => handleUploadFile(file, '48 hours', backend)}
       />
+
+      <BackToTop />
 
       {/* Toast Notification */}
       {toastMessage && (
