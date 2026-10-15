@@ -1,4 +1,5 @@
 import type { AuthContext } from '@rachg/shared';
+import { InputError } from '../../common/content';
 
 interface AccessClaims {
   iss?: unknown;
@@ -50,17 +51,24 @@ async function getAccessKeys(teamDomain: string): Promise<AccessJwk[]> {
   const cached = jwksCache.get(teamDomain);
   if (cached && cached.expiresAt > Date.now()) return cached.keys;
 
-  const response = await fetch(`${teamDomain}/cdn-cgi/access/certs`, {
-    headers: { Accept: 'application/json' },
-  });
-  if (!response.ok) throw new Error(`Access JWKS request failed with HTTP ${response.status}`);
-
-  const body = (await response.json()) as AccessJwks;
-  const keys = body.keys?.filter((key) => key.kty === 'RSA' && key.n && key.e) ?? [];
-  if (keys.length === 0) throw new Error('Access JWKS did not contain RSA keys');
-
-  jwksCache.set(teamDomain, { expiresAt: Date.now() + JWKS_CACHE_TTL_MS, keys });
-  return keys;
+  try {
+    const response = await fetch(`${teamDomain}/cdn-cgi/access/certs`, {
+      headers: { Accept: 'application/json' }, redirect: 'manual', signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) {
+      void response.body?.cancel().catch(() => {});
+      throw new Error('Access keys unavailable');
+    }
+    const body = (await response.json()) as AccessJwks;
+    const keys = Array.isArray(body?.keys) ? body.keys.filter((key) => key?.kty === 'RSA' && key.n && key.e) : [];
+    if (keys.length === 0) throw new Error('Access keys unavailable');
+    jwksCache.set(teamDomain, { expiresAt: Date.now() + JWKS_CACHE_TTL_MS, keys });
+    return keys;
+  } catch {
+    // The administrator's session may still be valid. Fail closed with a
+    // temporary service error so read clients can retry without signing out.
+    throw new InputError('Authentication service is temporarily unavailable. Please retry.', 503);
+  }
 }
 
 async function verifyAccessJwt(token: string, env: AccessAuthEnv): Promise<AccessClaims> {
@@ -126,9 +134,10 @@ export async function resolveAuth(request: Request, env: AccessAuthEnv): Promise
   try {
     claims = await verifyAccessJwt(assertion, env);
   } catch (error) {
+    if (error instanceof InputError && error.status === 503) throw error;
     // Treat malformed, expired, non-admin, and unverifiable assertions alike.
     // This keeps every private route at 401 without leaking verification details.
-    console.warn('Cloudflare Access assertion rejected:', error);
+    console.warn('Cloudflare Access assertion rejected');
     return { authType: 'anonymous' };
   }
   const email = typeof claims.email === 'string'

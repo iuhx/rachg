@@ -5098,15 +5098,25 @@ function audienceMatches(aud, expected) {
 async function getAccessKeys(teamDomain) {
   const cached = jwksCache.get(teamDomain);
   if (cached && cached.expiresAt > Date.now()) return cached.keys;
-  const response = await fetch(`${teamDomain}/cdn-cgi/access/certs`, {
-    headers: { Accept: "application/json" }
-  });
-  if (!response.ok) throw new Error(`Access JWKS request failed with HTTP ${response.status}`);
-  const body = await response.json();
-  const keys = body.keys?.filter((key) => key.kty === "RSA" && key.n && key.e) ?? [];
-  if (keys.length === 0) throw new Error("Access JWKS did not contain RSA keys");
-  jwksCache.set(teamDomain, { expiresAt: Date.now() + JWKS_CACHE_TTL_MS, keys });
-  return keys;
+  try {
+    const response = await fetch(`${teamDomain}/cdn-cgi/access/certs`, {
+      headers: { Accept: "application/json" },
+      redirect: "manual",
+      signal: AbortSignal.timeout(5e3)
+    });
+    if (!response.ok) {
+      void response.body?.cancel().catch(() => {
+      });
+      throw new Error("Access keys unavailable");
+    }
+    const body = await response.json();
+    const keys = Array.isArray(body?.keys) ? body.keys.filter((key) => key?.kty === "RSA" && key.n && key.e) : [];
+    if (keys.length === 0) throw new Error("Access keys unavailable");
+    jwksCache.set(teamDomain, { expiresAt: Date.now() + JWKS_CACHE_TTL_MS, keys });
+    return keys;
+  } catch {
+    throw new InputError("Authentication service is temporarily unavailable. Please retry.", 503);
+  }
 }
 async function verifyAccessJwt(token, env) {
   const teamDomain = env.ACCESS_TEAM_DOMAIN ? normalizeTeamDomain(env.ACCESS_TEAM_DOMAIN) : "";
@@ -5157,7 +5167,8 @@ async function resolveAuth(request, env) {
   try {
     claims = await verifyAccessJwt(assertion, env);
   } catch (error) {
-    console.warn("Cloudflare Access assertion rejected:", error);
+    if (error instanceof InputError && error.status === 503) throw error;
+    console.warn("Cloudflare Access assertion rejected");
     return { authType: "anonymous" };
   }
   const email = typeof claims.email === "string" ? claims.email : typeof claims.preferred_username === "string" ? claims.preferred_username : void 0;
@@ -7940,6 +7951,13 @@ function jsonResponse(data, status = 200, origin) {
     }
   });
 }
+function readResponse(data, origin, route, started, authenticated) {
+  const authMs = authenticated - started, readMs = Date.now() - authenticated;
+  if (authMs + readMs >= 2e3) console.warn("Workspace read delayed", { route, authMs, readMs });
+  const response = jsonResponse(data, 200, origin);
+  response.headers.set("Server-Timing", `auth;dur=${authMs}, read;dur=${readMs}`);
+  return response;
+}
 function generateCode(length = 6) {
   const chars = "abcdefghjkmnpqrstuvwxyz23456789";
   let res = "";
@@ -8035,7 +8053,9 @@ var index_default = {
           return new Response("This note link is temporarily unavailable.", { status: 503, headers: publicShareHeaders() });
         }
       }
+      const authStarted = Date.now();
       const auth = await resolveAuth(request, env);
+      const authenticatedAt = Date.now();
       if (!isAuthenticated(auth)) {
         return jsonResponse(
           { success: false, error: "Authentication required", code: "UNAUTHORIZED", status: 401 },
@@ -8097,7 +8117,8 @@ var index_default = {
       const organizationMatch = url.pathname.match(/^\/v1\/notes\/([a-zA-Z0-9_-]+)\/organization$/);
       if (organizationMatch) return jsonResponse(await routeNoteOrganization(request, env.DB, organizationMatch[1]), 200, origin);
       if (url.pathname === "/v1/notes/export" || url.pathname === "/v1/notes/import") {
-        return jsonResponse(await routeNoteTransfer(request, env.DB), 200, origin);
+        const result = await routeNoteTransfer(request, env.DB);
+        return url.pathname.endsWith("/export") ? readResponse(result, origin, "/v1/notes/export", authStarted, authenticatedAt) : jsonResponse(result, 200, origin);
       }
       const noteDetailMatch = url.pathname.match(/^\/v1\/notes\/([a-zA-Z0-9_-]+)$/);
       const noteShareMatch = url.pathname.match(/^\/v1\/notes\/([a-zA-Z0-9_-]+)\/share$/);
@@ -8448,7 +8469,7 @@ var index_default = {
         const records = await listActiveFiles(env.DB);
         const files = records.map((r) => mapRecordToFileItem(r, baseUrl));
         const totalSize = await getActiveStorageUsage(env.DB);
-        return jsonResponse(
+        return readResponse(
           {
             success: true,
             files,
@@ -8456,8 +8477,10 @@ var index_default = {
             maxSizeBytes: maxStorageLimit,
             usagePercent: Math.min(100, totalSize / maxStorageLimit * 100)
           },
-          200,
-          origin
+          origin,
+          "/v1/files",
+          authStarted,
+          authenticatedAt
         );
       }
       const v1FileDetailMatch = url.pathname.match(/^\/v1\/files\/([a-zA-Z0-9_-]+)$/);

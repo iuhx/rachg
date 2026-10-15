@@ -5,6 +5,7 @@ import type {
   NoteResponse,
 } from '../types';
 import { AuthenticationRequiredError } from './fileService';
+import { readApiJson } from './apiRead';
 
 import { API_BASE_URL } from '../config/api';
 import { NOTE_ARCHIVE_BYTES, NOTE_ARCHIVE_COUNT, type ImportNote } from '../utils/noteTransfer';
@@ -74,42 +75,12 @@ export function fetchNotesForExport(): Promise<NoteItem[]> {
   return readAllNotes(true);
 }
 
-/** Retry only this read, never a note creation, update, import or deletion. */
-async function readNotesPage(after: string): Promise<Response> {
-  const deadline = Date.now() + 30_000;
-  for (let attempt = 0; ; attempt++) {
-    const remaining = deadline - Date.now();
-    if (remaining <= 0) throw new Error('Loading notes timed out. Please retry.');
-    let response: Response;
-    try {
-      response = await fetch(`${API_BASE_URL}/v1/notes/export${after ? `?after=${encodeURIComponent(after)}` : ''}`, {
-        credentials: 'include', redirect: 'manual', cache: 'no-store',
-        headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(remaining),
-      });
-    } catch (error) {
-      if (error instanceof Error && ['TimeoutError', 'AbortError'].includes(error.name)) {
-        throw new Error('Loading notes timed out. Please retry.');
-      }
-      if (attempt === 0) { await new Promise(resolve => setTimeout(resolve, 500)); continue; }
-      throw new Error('Unable to reach the notes service. Retry, or reconnect your workspace if this continues.');
-    }
-    if (attempt === 0 && [408, 500, 502, 503, 504].includes(response.status)) {
-      await response.body?.cancel().catch(() => {});
-      await new Promise(resolve => setTimeout(resolve, 500));
-      continue;
-    }
-    return response;
-  }
-}
-
 async function readAllNotes(enforceArchiveLimits: boolean): Promise<NoteItem[]> {
   const notes: NoteItem[] = [];
   let after = '', totalBytes = 0;
   do {
-    const response = await readNotesPage(after);
-    if (response.type === 'opaqueredirect' || response.status === 302 || response.redirected) throw new AuthenticationRequiredError();
-    if (!response.ok) await throwNoteApiError(response, enforceArchiveLimits ? 'Unable to export notes' : 'Unable to load notes');
-    const data = await response.json().catch(() => null);
+    const data = await readApiJson<{ success: boolean; notes: NoteItem[]; nextCursor: string | null }>(
+      `${API_BASE_URL}/v1/notes/export${after ? `?after=${encodeURIComponent(after)}` : ''}`, 'notes');
     if (!data) throw new Error('Notes could not be loaded. Reconnect your workspace and try again.');
     if (!data?.success || !Array.isArray(data.notes) || (data.nextCursor !== null && (typeof data.nextCursor !== 'string' || data.nextCursor <= after))) throw new Error('Invalid note export response. No partial backup was downloaded.');
     totalBytes += new TextEncoder().encode(JSON.stringify(data.notes)).byteLength;

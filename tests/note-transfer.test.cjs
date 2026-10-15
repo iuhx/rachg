@@ -181,7 +181,7 @@ test('a slow successful note read gets the original 30-second allowance', async 
   assert.deepEqual(await pending, [saved]); assert.equal(calls, 1); assert.deepEqual(budgets, [30_000]);
 });
 
-test('note retries share one deadline and do not restart another timeout window', async t => {
+test('note retries remain bounded and do not restart an unlimited timeout window', async t => {
   const f = components(), service = f.load('apps/workspace/src/services/noteService.ts');
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
   const budgets = [];
@@ -198,6 +198,65 @@ test('note retries share one deadline and do not restart another timeout window'
   const rejected = assert.rejects(service.fetchNotes(), /Loading notes timed out/);
   t.mock.timers.tick(5000); await new Promise(setImmediate);
   t.mock.timers.tick(500); await new Promise(setImmediate);
-  assert.deepEqual(budgets, [30_000, 24_500]);
-  t.mock.timers.tick(24_500); await rejected; assert.equal(calls, 2);
+  assert.deepEqual(budgets, [30_000, 30_000]);
+  t.mock.timers.tick(30_000); await rejected; assert.equal(calls, 2);
+});
+
+test('a stalled first request can recover after timeout without exceeding the page budget', async t => {
+  const f = components(), service = f.load('apps/workspace/src/services/noteService.ts');
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const budgets = [];
+  t.mock.method(AbortSignal, 'timeout', ms => {
+    budgets.push(ms); const controller = new AbortController();
+    setTimeout(() => controller.abort(new DOMException('Timed out', 'TimeoutError')), ms);
+    return controller.signal;
+  });
+  const saved = item(); let calls = 0;
+  t.mock.method(global, 'fetch', (_url, { signal }) => {
+    if (++calls === 1) return new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
+    return Promise.resolve(Response.json({ success: true, notes: [saved], nextCursor: null }));
+  });
+  const pending = service.fetchNotes();
+  t.mock.timers.tick(30_000); await new Promise(setImmediate);
+  t.mock.timers.tick(500);
+  assert.deepEqual(await pending, [saved]);
+  assert.deepEqual(budgets, [30_000, 14_500]); assert.equal(calls, 2);
+});
+
+test('response-body connection failures retry the same complete notes page', async t => {
+  const f = components(), service = f.load('apps/workspace/src/services/noteService.ts');
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let calls = 0; const saved = item();
+  t.mock.method(global, 'fetch', async () => {
+    if (++calls === 1) return { ok: true, status: 200, async json() { throw new TypeError('Connection interrupted while reading body'); } };
+    return Response.json({ success: true, notes: [saved], nextCursor: null });
+  });
+  const pending = service.fetchNotes(); await new Promise(setImmediate);
+  t.mock.timers.tick(500);
+  assert.deepEqual(await pending, [saved]); assert.equal(calls, 2);
+});
+
+test('files distinguish network failure from expired login and retry only the read', async t => {
+  const f = components(), service = f.load('apps/workspace/src/services/fileService.ts');
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let calls = 0;
+  const fetch = t.mock.method(global, 'fetch', async () => { calls++; throw new TypeError('Connection reset'); });
+  const rejected = assert.rejects(service.fetchActiveFiles(), error => !(error instanceof service.AuthenticationRequiredError) && /Unable to reach the files service/.test(error.message));
+  await new Promise(setImmediate); t.mock.timers.tick(500); await rejected; assert.equal(calls, 2);
+  calls = 0;
+  fetch.mock.mockImplementation(async () => { calls++; return new Response(null, { status: 403 }); });
+  await assert.rejects(service.fetchActiveFiles(), service.AuthenticationRequiredError); assert.equal(calls, 1);
+  calls = 0;
+  fetch.mock.mockImplementation(async () => { calls++; throw new TypeError('Connection reset'); });
+  await assert.rejects(service.deleteFileService('sample'));
+  assert.equal(calls, 1, 'A failed deletion must not be retried as a read');
+});
+
+test('HTML upstream failures retain the service status instead of asking for another login', async t => {
+  const f = components(), service = f.load('apps/workspace/src/services/noteService.ts');
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let calls = 0;
+  t.mock.method(global, 'fetch', async () => { calls++; return new Response('<html>Bad gateway</html>', {status:502}); });
+  const rejected = assert.rejects(service.fetchNotes(), error => /HTTP 502/.test(error.message) && !/Reconnect/.test(error.message));
+  await new Promise(setImmediate); t.mock.timers.tick(500); await rejected; assert.equal(calls,2);
 });

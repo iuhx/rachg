@@ -107,6 +107,14 @@ function jsonResponse<T>(data: T, status: number = 200, origin: string): Respons
   });
 }
 
+function readResponse<T>(data: T, origin: string, route: string, started: number, authenticated: number): Response {
+  const authMs = authenticated - started, readMs = Date.now() - authenticated;
+  if (authMs + readMs >= 2000) console.warn('Workspace read delayed', { route, authMs, readMs });
+  const response = jsonResponse(data, 200, origin);
+  response.headers.set('Server-Timing', `auth;dur=${authMs}, read;dur=${readMs}`);
+  return response;
+}
+
 function generateCode(length: number = 6): string {
   const chars = 'abcdefghjkmnpqrstuvwxyz23456789';
   let res = '';
@@ -225,7 +233,9 @@ export default {
           return new Response('This note link is temporarily unavailable.', { status: 503, headers: publicShareHeaders() });
         }
       }
+      const authStarted = Date.now();
       const auth = await resolveAuth(request, env);
+      const authenticatedAt = Date.now();
       if (!isAuthenticated(auth)) {
         return jsonResponse<ApiErrorResponse>(
           { success: false, error: 'Authentication required', code: 'UNAUTHORIZED', status: 401 },
@@ -294,7 +304,10 @@ export default {
       const organizationMatch = url.pathname.match(/^\/v1\/notes\/([a-zA-Z0-9_-]+)\/organization$/);
       if (organizationMatch) return jsonResponse(await routeNoteOrganization(request, env.DB, organizationMatch[1]), 200, origin);
       if (url.pathname === '/v1/notes/export' || url.pathname === '/v1/notes/import') {
-        return jsonResponse(await routeNoteTransfer(request, env.DB), 200, origin);
+        const result = await routeNoteTransfer(request, env.DB);
+        return url.pathname.endsWith('/export')
+          ? readResponse(result, origin, '/v1/notes/export', authStarted, authenticatedAt)
+          : jsonResponse(result, 200, origin);
       }
       const noteDetailMatch = url.pathname.match(/^\/v1\/notes\/([a-zA-Z0-9_-]+)$/);
       const noteShareMatch = url.pathname.match(/^\/v1\/notes\/([a-zA-Z0-9_-]+)\/share$/);
@@ -688,7 +701,7 @@ export default {
         const files = records.map((r) => mapRecordToFileItem(r, baseUrl));
         const totalSize = await getActiveStorageUsage(env.DB);
 
-        return jsonResponse<FileListResponse>(
+        return readResponse<FileListResponse>(
           {
             success: true,
             files,
@@ -696,8 +709,7 @@ export default {
             maxSizeBytes: maxStorageLimit,
             usagePercent: Math.min(100, (totalSize / maxStorageLimit) * 100),
           },
-          200,
-          origin
+          origin, '/v1/files', authStarted, authenticatedAt
         );
       }
 

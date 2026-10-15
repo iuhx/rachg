@@ -1,17 +1,9 @@
 import type { FileItem, UploadResponse, FileListResponse, ApiErrorResponse } from '../types';
 import { FILE_UPLOAD_BYTES, type StorageBackend } from '@rachg/shared';
 
-import { API_BASE_URL, API_CONNECT_URL } from '../config/api';
-
-export class AuthenticationRequiredError extends Error {
-  readonly loginUrl: string;
-
-  constructor() {
-    super('Authentication required. Complete Cloudflare Access sign-in to continue.');
-    this.name = 'AuthenticationRequiredError';
-    this.loginUrl = API_CONNECT_URL;
-  }
-}
+import { API_BASE_URL } from '../config/api';
+import { AuthenticationRequiredError, readApiJson } from './apiRead';
+export { AuthenticationRequiredError } from './apiRead';
 
 async function throwApiError(response: Response, fallback: string): Promise<never> {
   if (response.status === 401) throw new AuthenticationRequiredError();
@@ -20,16 +12,7 @@ async function throwApiError(response: Response, fallback: string): Promise<neve
 }
 
 export async function fetchActiveFiles(): Promise<FileItem[]> {
-  let response: Response;
-  try {
-    response = await fetch(`${API_BASE_URL}/v1/files`, {
-      headers: { Accept: 'application/json' }, credentials: 'include',
-    });
-  } catch {
-    throw new AuthenticationRequiredError();
-  }
-  if (!response.ok) await throwApiError(response, 'Unable to load files');
-  const data = await response.json() as FileListResponse;
+  const data = await readApiJson<FileListResponse>(`${API_BASE_URL}/v1/files`, 'files');
   if (!data.success || !Array.isArray(data.files)) throw new Error('Malformed file list response');
   return data.files;
 }
