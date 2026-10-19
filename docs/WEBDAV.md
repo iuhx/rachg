@@ -24,13 +24,6 @@ passed a temporary file upload, full download, range read, and exact-key deletio
 through a remote Worker preview. The supplied `/v2/dav/rachg/` path returned HTTP
 400 with Apps Password authentication. This does not change or move the folder.
 
-On 2026-10-19 share links failed with "InfiniCLOUD returned an unsupported file
-size." InfiniCLOUD omits `Content-Length` on file GET/HEAD responses, while the
-2026-10-13 streaming rewrite sized downloads from that header, so every WebDAV
-download returned 502. Sizes now come from a one-byte `Range: bytes=0-0` probe
-(206 `Content-Range`, or 416 `bytes */0` for an empty file), with the bounded
-buffered path as a fallback for servers that ignore Range.
-
 ## Settings and checks
 
 Settings shows binding availability and a **Test connection** button. It never
@@ -70,9 +63,7 @@ The folder test uses a bounded, read-only Depth-0 PROPFIND with a longer deadlin
   authentication. Existing InfiniCLOUD files are not automatically imported.
 - The R2 4 GiB quota excludes InfiniCLOUD. InfiniCLOUD enforces its account quota.
 - WebDAV uploads/downloads stream with bounded memory; range reads work when a server ignores Range.
-  Existing R2 downloads retain their streaming path. Servers that omit `Content-Length` are
-  sized by the ranged probe; if such a server also ignores Range, downloads buffer up to the
-  file limit instead of streaming, and only HEAD/range requests stay unsupported.
+  Existing R2 downloads retain their streaming path.
 - Expiry cleanup receives the same Worker Secrets and deletes only recorded keys.
   Failed uploads/deletes remain retryable. There are no recursive directory operations.
 - Keep the same InfiniCLOUD account when rotating Secrets so existing files remain
@@ -89,6 +80,4 @@ validates its namespace before operating on any object.
 Tests cover Secret isolation, no settings-database dependency, rejected credential
 writes, unauthorized requests, quota separation, uploads/downloads/ranges, cleanup,
 path traversal, collision safety, the request deadline, and UI error recovery.
-WebDAV responses that omit `Content-Length` are covered for downloads, HEAD and
-ranges, including the buffered fallback when Range is ignored. The release bundle
-also runs in actual workerd with D1/R2 and a mock WebDAV service.
+The release bundle also runs in actual workerd with D1/R2 and a mock WebDAV service.

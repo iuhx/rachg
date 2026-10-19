@@ -66,30 +66,6 @@ export class WebdavClient {
       headers.set('Content-Type', response.headers.get('content-type') || 'application/octet-stream');
     } };
   }
-  /** InfiniCLOUD can omit Content-Length on file responses. A one-byte ranged GET still reports the total size. */
-  private async probeSize(storageKey: string): Promise<number | null> {
-    const response = await this.request(this.url(storageKey), 'GET', { Range: 'bytes=0-0' });
-    try {
-      if (response.status === 206) {
-        const contentRange = response.headers.get('content-range')?.match(/^bytes (\d+)-(\d+)\/(\d+)$/);
-        const size = Number(contentRange?.[3]);
-        if (!contentRange || Number(contentRange[1]) !== 0 || Number(contentRange[2]) !== 0 || !Number.isSafeInteger(size) || size <= 0 || size > MAX_FILE_BYTES) return null;
-        return size;
-      }
-      if (response.status === 416) {
-        const size = Number(response.headers.get('content-range')?.match(/^bytes \*\/(\d+)$/)?.[1]);
-        if (!Number.isSafeInteger(size) || size !== 0) return null;
-        return size;
-      }
-      if (response.status === 200) {
-        const length = response.headers.get('content-length');
-        const size = length !== null && /^\d+$/.test(length) ? Number(length) : NaN;
-        if (!Number.isSafeInteger(size) || size < 0 || size > MAX_FILE_BYTES) return null;
-        return size;
-      }
-      return null;
-    } finally { await response.body?.cancel().catch(() => {}); }
-  }
   async head(storageKey: string): Promise<StoredObject | null> {
     const response = await this.request(this.url(storageKey), 'HEAD');
     if (response.status === 404) { await response.body?.cancel(); return null; }
@@ -97,10 +73,8 @@ export class WebdavClient {
     const length = response.headers.get('content-length');
     const size = length !== null && /^\d+$/.test(length) ? Number(length) : NaN;
     await response.body?.cancel();
-    if (Number.isSafeInteger(size) && size >= 0 && size <= MAX_FILE_BYTES) return this.object(response, size);
-    const probed = await this.probeSize(storageKey);
-    if (probed === null) throw new InputError('InfiniCLOUD returned an unsupported file size.', 502);
-    return this.object(response, probed);
+    if (!Number.isSafeInteger(size) || size < 0 || size > MAX_FILE_BYTES) throw new InputError('InfiniCLOUD returned an unsupported file size.', 502);
+    return this.object(response, size);
   }
   async get(storageKey: string, range?: { offset: number; length: number }): Promise<StoredObject | null> {
     const response = await this.request(this.url(storageKey), 'GET', range ? { Range: `bytes=${range.offset}-${range.offset + range.length - 1}` } : {});
@@ -117,20 +91,9 @@ export class WebdavClient {
       if (!contentRange || Number(contentRange[1]) !== range.offset || Number(contentRange[2]) !== range.offset + range.length - 1 || (lengthHeader !== null && length !== range.length) || size > MAX_FILE_BYTES || size <= Number(contentRange[2])) return invalid('InfiniCLOUD returned an invalid byte range.');
       return this.object(response, size, fileSlice(response.body, range.length));
     }
-    if (lengthHeader !== null) {
-      if (!Number.isSafeInteger(length) || length < 0 || length > MAX_FILE_BYTES || (range && length < range.offset + range.length)) return invalid('InfiniCLOUD returned an invalid file size.');
-      return this.object(response, length, fileSlice(response.body, length, range?.offset, range?.length));
-    }
-    // InfiniCLOUD file responses can omit Content-Length. Prefer a cheap one-byte
-    // ranged probe so the download still streams; measure the bounded body as a
-    // last resort, matching the pre-streaming behavior for servers without ranges.
-    let probed: number | null = null;
-    try { probed = await this.probeSize(storageKey); } catch { probed = null; }
-    if (probed !== null && (!range || probed >= range.offset + range.length)) return this.object(response, probed, fileSlice(response.body, probed, range?.offset, range?.length));
-    const data = await readBounded(response.body, MAX_FILE_BYTES);
-    if (range && data.byteLength < range.offset + range.length) throw new InputError('The remote file changed during download. Retry the download.', 502);
-    // Some WebDAV services ignore Range. Slice the bounded body before sending 206.
-    return this.object(response, data.byteLength, new Response(range ? data.slice(range.offset, range.offset + range.length) : data).body!);
+    const size = lengthHeader === null ? (await this.head(storageKey))?.size : length;
+    if (size === undefined || !Number.isSafeInteger(size) || size < 0 || size > MAX_FILE_BYTES || (range && size < range.offset + range.length)) return invalid('InfiniCLOUD returned an invalid file size.');
+    return this.object(response, size, fileSlice(response.body, size, range?.offset, range?.length));
   }
 }
 
