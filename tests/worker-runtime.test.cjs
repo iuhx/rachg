@@ -31,6 +31,7 @@ test('release Worker runs reliably in workerd with actual D1 and R2 bindings', {
   let outgoingMail;
   const webdavRoot = 'https://higa.teracloud.jp/dav/rachg/';
   const webdavFiles = new Map();
+  let webdavNoLength = false;
   const telegramToken = '987654321:runtime_telegram_fixture_token_12345', telegramUser = 6121514938;
   const telegramFiles = new Map(), telegramReplies = [];
   const telegramSecret = createHmac('sha256', telegramToken).update('rachg:telegram-webhook:v1').digest('hex');
@@ -61,7 +62,18 @@ test('release Worker runs reliably in workerd with actual D1 and R2 bindings', {
         if (request.method === 'DELETE') { assert.notEqual(request.url, webdavRoot); webdavFiles.delete(request.url); return new MockResponse(null, { status: 204 }); }
         const data = webdavFiles.get(request.url);
         if (!data) return new MockResponse(null, { status: 404 });
-        return new MockResponse(request.method === 'HEAD' ? null : data, { headers: { 'Content-Length': String(data.byteLength), 'Content-Type': 'text/plain', ETag: '"runtime-dav"' } });
+        const headers = { 'Content-Type': 'text/plain', ETag: '"runtime-dav"' };
+        if (!webdavNoLength) headers['Content-Length'] = String(data.byteLength);
+        const stream = bytes => new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array(bytes)); controller.close(); } });
+        const range = request.headers.get('range')?.match(/^bytes=(\d+)-(\d+)$/);
+        if (request.method !== 'HEAD' && range && Number(range[1]) < data.byteLength) {
+          const from = Number(range[1]), to = Math.min(Number(range[2]), data.byteLength - 1);
+          const part = data.slice(from, to + 1);
+          const rangeHeaders = { ...headers, 'Content-Range': `bytes ${from}-${to}/${data.byteLength}` };
+          if (!webdavNoLength) rangeHeaders['Content-Length'] = String(part.byteLength);
+          return new MockResponse(webdavNoLength ? stream(part) : part, { status: 206, headers: rangeHeaders });
+        }
+        return new MockResponse(request.method === 'HEAD' ? null : (webdavNoLength ? stream(data) : data), { headers });
       }
       if (request.url === 'https://rdap.verisign.com/com/v1/domain/rachg.com') {
         assert.equal(request.headers.has('cf-access-jwt-assertion'), false);
@@ -128,6 +140,11 @@ test('release Worker runs reliably in workerd with actual D1 and R2 bindings', {
     const health = await (await request('/health')).json(); assert.equal(health.quota.usedBytes, 0);
     const download = await request(`/f/${file.id}`); assert.equal(await download.text(), 'runtime webdav contents');
     const partial = await request(`/f/${file.id}`, { headers: { Range: 'bytes=0-6' } }); assert.equal(partial.status, 206); assert.equal(await partial.text(), 'runtime');
+    webdavNoLength = true;
+    const noLength = await request(`/f/${file.id}`); assert.equal(noLength.status, 200); assert.equal(await noLength.text(), 'runtime webdav contents');
+    const noLengthHead = await request(`/f/${file.id}`, { method: 'HEAD' }); assert.equal(noLengthHead.status, 200); assert.equal(noLengthHead.headers.get('content-length'), '23');
+    const noLengthRange = await request(`/f/${file.id}`, { headers: { Range: 'bytes=0-6' } }); assert.equal(noLengthRange.status, 206); assert.equal(await noLengthRange.text(), 'runtime');
+    webdavNoLength = false;
     const removed = await request(`/v1/files/${file.id}?deleteRemote=true`, { method: 'DELETE' }); assert.equal(removed.status, 200); await removed.text(); assert.equal(webdavFiles.size, 0); assert.equal((await bucket.list()).objects.length, 0);
   });
 
