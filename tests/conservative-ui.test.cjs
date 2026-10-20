@@ -51,6 +51,23 @@ test('a remounted note recovers backup without automatically overwriting the ser
   assert.match(label(fresh.tree),/Recovered a draft/);assert.equal([...f.timers.values()].filter(t=>t.ms===900).length,0);assert.equal(saves,0);fresh.unmount();
 });
 
+test('Notes category controls stay in one compact row and note actions use equal mobile icon buttons',()=>{
+  const f=setup();
+  const category=find(f.h,n=>n.props['aria-label']==='Filter notes by category');
+  assert.match(category.props.className,/min-w-0 flex-1/);
+  const manage=find(f.h,n=>n.props['aria-label']==='Manage categories');
+  assert.match(manage.props.className,/h-9 w-9 min-h-9/);
+  assert.match(manage.props.className,/sm:w-auto/);
+  const actions=find(f.h,n=>n.props['aria-label']==='Note actions');
+  assert.match(actions.props.className,/flex-nowrap/);
+  for(const name of ['Edit note','Download note as Markdown','Share note','Delete note']){
+    const button=find(f.h,n=>n.type==='button'&&n.props['aria-label']===name);
+    assert.match(button.props.className,/h-9 w-9 min-h-9/);
+    assert.match(button.props.className,/sm:w-auto/);
+  }
+  f.h.unmount();
+});
+
 test('older email detail responses cannot replace the latest selection',async()=>{
   const f=components(),{WorkspaceApp}=f.load('apps/workspace/src/components/WorkspaceApp.tsx');
   const h=f.mount(WorkspaceApp,{});

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Download, Edit3, FileText, Folder, Pin, Plus, Search, Share2, Trash2, Upload, X } from 'lucide-react';
+import { Check, Download, Edit3, Eye, FileText, Folder, PenLine, Pin, Plus, Search, Settings2, Share2, Trash2, Upload, X } from 'lucide-react';
 import type { NoteItem, NoteCategory } from '../types';
 import { API_CONNECT_URL } from '../config/api';
 import { MarkdownPreview } from './MarkdownPreview';
@@ -346,18 +346,18 @@ export const NotesView: React.FC<NotesViewProps> = ({
         </div>
       </div>}
 
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-        <label className="workspace-field-inline type-label sm:max-w-xs">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 sm:flex sm:gap-3">
+        <label className="workspace-field-inline type-label min-w-0 flex-nowrap sm:max-w-xs">
           <Folder className="w-4 h-4 shrink-0 text-neutral-400" />
-          Category
-          <select value={categoryFilter} onChange={event => void changeCategoryFilter(event.target.value)} disabled={isLoading || organizationBusy} aria-label="Filter notes by category" className="workspace-select">
+          <span className="sr-only sm:not-sr-only">Category</span>
+          <select value={categoryFilter} onChange={event => void changeCategoryFilter(event.target.value)} disabled={isLoading || organizationBusy} aria-label="Filter notes by category" className="workspace-select min-w-0 flex-1 sm:flex-none">
             <option value="all">All notes ({notes.length})</option>
             {Boolean(counts['']) && <option value="">Uncategorized ({counts['']})</option>}
             {categories.map(category => <option key={category.id} value={category.id}>{category.name} ({counts[category.id] ?? 0})</option>)}
           </select>
         </label>
-        <button disabled={!canImport || isLoading || Boolean(loadError) || organizationBusy} onClick={() => setManageCategories(true)} className="workspace-button workspace-button-secondary self-start">Manage categories</button>
-        <span className="type-caption sm:ml-auto">{notes.filter(note => note.pinned).length} pinned · {categories.length} categories</span>
+        <button type="button" aria-label="Manage categories" title="Manage categories" disabled={!canImport || isLoading || Boolean(loadError) || organizationBusy} onClick={() => setManageCategories(true)} className="workspace-button workspace-button-secondary h-9 w-9 min-h-9 shrink-0 p-0 sm:h-9 sm:w-auto sm:px-3"><Settings2 className="h-4 w-4" /><span className="hidden sm:inline">Manage categories</span></button>
+        <span className="type-caption col-span-full sm:ml-auto">{notes.filter(note => note.pinned).length} pinned · {categories.length} categories</span>
       </div>
       {organizationError && <div role="alert" className="workspace-panel px-4 py-3 space-y-2"><p className="type-secondary text-red-600 dark:text-red-300">{organizationError}</p><button disabled={organizationBusy} onClick={() => void refreshOrganization().catch(error => setOrganizationError(error instanceof Error ? error.message : 'Unable to refresh organization.'))} className="workspace-button workspace-button-secondary">Refresh organization</button></div>}
 
@@ -423,28 +423,28 @@ export const NotesView: React.FC<NotesViewProps> = ({
               ) : activeNote && (
                 <div>
                   {isEditing && !filteredNotes.some(note => note.id === activeNote.id) && <p role="status" className="type-caption pb-3">Your open draft is outside the current filter. You can keep editing here.</p>}
-                  <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-neutral-100 dark:border-white/[0.06]">
+                  <div className="flex flex-col items-start gap-2 pb-4 border-b border-neutral-100 dark:border-white/[0.06] sm:flex-row sm:items-center sm:justify-between">
                     <div className="type-mono flex items-center gap-2 text-neutral-400">
                       <span>{formatRelativeTime(activeNote.updatedTimestamp, clock)}</span>
                       {isEditing && <><span>·</span><span className={saveState === 'error' ? 'text-red-500' : saveState === 'saved' ? 'text-emerald-600 dark:text-emerald-400' : ''}>{saveStateLabel(saveState)}</span></>}
                     </div>
-                    <div className="flex flex-wrap items-center gap-1.5">
+                    <div role="group" aria-label="Note actions" className="flex w-full flex-nowrap items-center justify-between gap-1 sm:w-auto sm:justify-start sm:gap-1.5">
                       {isEditing ? (
                         <>
                           <div className="workspace-segment" role="group" aria-label="Note editor mode">
-                            <button type="button" aria-pressed={editorMode === 'write'} onClick={() => setEditorMode('write')} className={`workspace-segment-item ${editorMode === 'write' ? 'workspace-segment-item-active' : ''}`}>Write</button>
-                            <button type="button" aria-pressed={editorMode === 'preview'} onClick={() => setEditorMode('preview')} className={`workspace-segment-item ${editorMode === 'preview' ? 'workspace-segment-item-active' : ''}`}>Preview</button>
+                            <button type="button" aria-label="Write" title="Write" aria-pressed={editorMode === 'write'} onClick={() => setEditorMode('write')} className={`workspace-segment-item h-8 w-8 justify-center p-0 sm:h-auto sm:w-auto sm:px-2 sm:py-1 ${editorMode === 'write' ? 'workspace-segment-item-active' : ''}`}><PenLine className="h-4 w-4 sm:hidden" /><span className="hidden sm:inline">Write</span></button>
+                            <button type="button" aria-label="Preview" title="Preview" aria-pressed={editorMode === 'preview'} onClick={() => setEditorMode('preview')} className={`workspace-segment-item h-8 w-8 justify-center p-0 sm:h-auto sm:w-auto sm:px-2 sm:py-1 ${editorMode === 'preview' ? 'workspace-segment-item-active' : ''}`}><Eye className="h-4 w-4 sm:hidden" /><span className="hidden sm:inline">Preview</span></button>
                           </div>
-                          <button onClick={() => void saveDraft()} disabled={saveState === 'saving' || !editTitle.trim()} className="workspace-button workspace-button-primary min-h-8 px-3 py-1 cursor-pointer disabled:opacity-50">
-                            <Check className="w-3.5 h-3.5" /><span>{saveState === 'saving' ? 'Saving…' : 'Save'}</span>
+                          <button type="button" aria-label={saveState === 'saving' ? 'Saving note' : 'Save note'} title={saveState === 'saving' ? 'Saving note' : 'Save note'} onClick={() => void saveDraft()} disabled={saveState === 'saving' || !editTitle.trim()} className="workspace-button workspace-button-primary h-9 w-9 min-h-9 shrink-0 p-0 cursor-pointer disabled:opacity-50 sm:h-8 sm:w-auto sm:min-h-8 sm:px-3 sm:py-1">
+                            <Check className="h-4 w-4" /><span className="hidden sm:inline">{saveState === 'saving' ? 'Saving…' : 'Save'}</span>
                           </button>
                         </>
                       ) : (
-                        <button onClick={startEdit} className="workspace-button workspace-button-secondary min-h-8 px-3 py-1 cursor-pointer"><Edit3 className="w-3.5 h-3.5" /><span>Edit</span></button>
+                        <button type="button" onClick={startEdit} title="Edit note" aria-label="Edit note" className="workspace-button workspace-button-secondary h-9 w-9 min-h-9 shrink-0 p-0 cursor-pointer sm:h-8 sm:w-auto sm:min-h-8 sm:px-3 sm:py-1"><Edit3 className="h-4 w-4" /><span className="hidden sm:inline">Edit</span></button>
                       )}
-                      <button onClick={exportCurrentNote} disabled={isDeleting || isDirty || saveState === 'saving' || recovered} title="Download note as Markdown" aria-label="Download note as Markdown" className="workspace-button workspace-button-secondary min-h-8 px-3 py-1 cursor-pointer disabled:opacity-50"><Download className="w-3.5 h-3.5" /><span>Download</span></button>
-                      <button onClick={() => setNoteToShare(activeNote)} disabled={isDeleting || isDirty || saveState === 'saving' || recovered} title={isDirty || recovered ? 'Save your changes before sharing' : 'Share a read-only snapshot'} className="workspace-button workspace-button-secondary min-h-8 px-3 py-1 cursor-pointer disabled:opacity-50"><Share2 className="w-3.5 h-3.5" /><span>Share</span></button>
-                      <button onClick={() => setNoteToDelete(activeNote)} disabled={isDeleting} title="Delete note" aria-label="Delete note" className="workspace-button workspace-button-secondary min-h-8 px-3 py-1 text-red-500 hover:text-red-600 cursor-pointer disabled:opacity-50"><Trash2 className="w-3.5 h-3.5" /><span>Delete</span></button>
+                      <button type="button" onClick={exportCurrentNote} disabled={isDeleting || isDirty || saveState === 'saving' || recovered} title="Download note as Markdown" aria-label="Download note as Markdown" className="workspace-button workspace-button-secondary h-9 w-9 min-h-9 shrink-0 p-0 cursor-pointer disabled:opacity-50 sm:h-8 sm:w-auto sm:min-h-8 sm:px-3 sm:py-1"><Download className="h-4 w-4" /><span className="hidden sm:inline">Download</span></button>
+                      <button type="button" onClick={() => setNoteToShare(activeNote)} disabled={isDeleting || isDirty || saveState === 'saving' || recovered} title={isDirty || recovered ? 'Save your changes before sharing' : 'Share a read-only snapshot'} aria-label="Share note" className="workspace-button workspace-button-secondary h-9 w-9 min-h-9 shrink-0 p-0 cursor-pointer disabled:opacity-50 sm:h-8 sm:w-auto sm:min-h-8 sm:px-3 sm:py-1"><Share2 className="h-4 w-4" /><span className="hidden sm:inline">Share</span></button>
+                      <button type="button" onClick={() => setNoteToDelete(activeNote)} disabled={isDeleting} title="Delete note" aria-label="Delete note" className="workspace-button workspace-button-secondary h-9 w-9 min-h-9 shrink-0 p-0 text-red-500 hover:text-red-600 cursor-pointer disabled:opacity-50 sm:h-8 sm:w-auto sm:min-h-8 sm:px-3 sm:py-1"><Trash2 className="h-4 w-4" /><span className="hidden sm:inline">Delete</span></button>
                     </div>
                   </div>
 
