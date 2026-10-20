@@ -62,8 +62,9 @@ test('Notes category controls stay in one compact row and note actions use equal
   assert.match(actions.props.className,/flex-nowrap/);
   for(const name of ['Edit note','Download note as Markdown','Share note','Delete note']){
     const button=find(f.h,n=>n.type==='button'&&n.props['aria-label']===name);
-    assert.match(button.props.className,/h-9 w-9 min-h-9/);
-    assert.match(button.props.className,/sm:w-auto/);
+    assert.match(button.props.className,/h-11 min-h-11/);
+    assert.match(button.props.className,/flex-1 basis-0/);
+    assert.match(button.props.className,/sm:flex-none sm:basis-auto/);
   }
   f.h.unmount();
 });
