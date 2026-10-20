@@ -1,10 +1,10 @@
 import type { WebdavSettings } from '@rachg/shared';
 import { InputError, MAX_FILE_BYTES, readBounded } from '../../common/content';
-import { fileSlice } from './file-streams';
+import { boundedFileStream, fileSlice } from './file-streams';
 
 export const WEBDAV_BASE_URL = 'https://higa.teracloud.jp/dav/rachg/';
 export interface WebdavEnv { WEBDAV_USERNAME?: string; WEBDAV_PASSWORD?: string }
-export interface StoredObject { size: number; httpEtag: string; body?: ReadableStream; writeHttpMetadata: (headers: Headers) => void }
+export interface StoredObject { size: number | null; httpEtag: string; body?: ReadableStream; writeHttpMetadata: (headers: Headers) => void }
 const encode = (value: Uint8Array) => btoa(String.fromCharCode(...value));
 
 function configured(env: WebdavEnv) {
@@ -61,20 +61,42 @@ export class WebdavClient {
     if (![200, 204, 404, 410].includes(response.status)) await this.failure(response);
     await response.body?.cancel();
   }
-  private object(response: Response, size: number, body?: ReadableStream): StoredObject {
+  private object(response: Response, size: number | null, body?: ReadableStream): StoredObject {
     return { size, body, httpEtag: response.headers.get('etag') || '', writeHttpMetadata: headers => {
       headers.set('Content-Type', response.headers.get('content-type') || 'application/octet-stream');
     } };
   }
+  private async probeSize(storageKey: string): Promise<number | null> {
+    const response = await this.request(this.url(storageKey), 'GET', { Range: 'bytes=0-0' });
+    try {
+      if (response.status === 206) {
+        const match = response.headers.get('content-range')?.match(/^bytes (\d+)-(\d+)\/(\d+)$/);
+        const start = Number(match?.[1]), end = Number(match?.[2]), size = Number(match?.[3]);
+        return match && start === 0 && end === 0 && Number.isSafeInteger(size) && size > 0 && size <= MAX_FILE_BYTES ? size : null;
+      }
+      if (response.status === 416) {
+        const emptySize = Number(response.headers.get('content-range')?.match(/^bytes \*\/(\d+)$/)?.[1]);
+        return emptySize === 0 ? 0 : null;
+      }
+      if (response.status === 200) {
+        const length = response.headers.get('content-length');
+        const size = length !== null && /^\d+$/.test(length) ? Number(length) : NaN;
+        return Number.isSafeInteger(size) && size >= 0 && size <= MAX_FILE_BYTES ? size : null;
+      }
+      return null;
+    } finally { await response.body?.cancel().catch(() => {}); }
+  }
   async head(storageKey: string): Promise<StoredObject | null> {
     const response = await this.request(this.url(storageKey), 'HEAD');
     if (response.status === 404) { await response.body?.cancel(); return null; }
-    if (response.status !== 200) await this.failure(response);
+    if (response.status !== 200 && ![405, 501].includes(response.status)) await this.failure(response);
     const length = response.headers.get('content-length');
     const size = length !== null && /^\d+$/.test(length) ? Number(length) : NaN;
     await response.body?.cancel();
-    if (!Number.isSafeInteger(size) || size < 0 || size > MAX_FILE_BYTES) throw new InputError('InfiniCLOUD returned an unsupported file size.', 502);
-    return this.object(response, size);
+    if (Number.isSafeInteger(size) && size >= 0 && size <= MAX_FILE_BYTES) return this.object(response, size);
+    let probed: number | null = null;
+    try { probed = await this.probeSize(storageKey); } catch { /* Return a valid HEAD response without a known length. */ }
+    return this.object(response, probed);
   }
   async get(storageKey: string, range?: { offset: number; length: number }): Promise<StoredObject | null> {
     const response = await this.request(this.url(storageKey), 'GET', range ? { Range: `bytes=${range.offset}-${range.offset + range.length - 1}` } : {});
@@ -87,13 +109,22 @@ export class WebdavClient {
     const length = lengthHeader !== null && /^\d+$/.test(lengthHeader) ? Number(lengthHeader) : NaN;
     if (response.status === 206 && range) {
       const contentRange = response.headers.get('content-range')?.match(/^bytes (\d+)-(\d+)\/(\d+)$/);
+      const offset = Number(contentRange?.[1]), end = Number(contentRange?.[2]);
       const size = Number(contentRange?.[3]);
-      if (!contentRange || Number(contentRange[1]) !== range.offset || Number(contentRange[2]) !== range.offset + range.length - 1 || (lengthHeader !== null && length !== range.length) || size > MAX_FILE_BYTES || size <= Number(contentRange[2])) return invalid('InfiniCLOUD returned an invalid byte range.');
+      if (!contentRange || offset !== range.offset || end !== range.offset + range.length - 1 || (lengthHeader !== null && length !== range.length) || !Number.isSafeInteger(size) || size > MAX_FILE_BYTES || size <= end) return invalid('InfiniCLOUD returned an invalid byte range.');
       return this.object(response, size, fileSlice(response.body, range.length));
     }
-    const size = lengthHeader === null ? (await this.head(storageKey))?.size : length;
-    if (size === undefined || !Number.isSafeInteger(size) || size < 0 || size > MAX_FILE_BYTES || (range && size < range.offset + range.length)) return invalid('InfiniCLOUD returned an invalid file size.');
-    return this.object(response, size, fileSlice(response.body, size, range?.offset, range?.length));
+    let size: number | null = Number.isSafeInteger(length) && length >= 0 && length <= MAX_FILE_BYTES ? length : null;
+    if (size === null) {
+      try { size = await this.probeSize(storageKey); } catch { /* The original body can still be streamed with a byte cap. */ }
+    }
+    if (range && size !== null) {
+      if (size < range.offset + range.length) return invalid('The requested byte range is outside the remote file.');
+      return this.object(response, size, fileSlice(response.body, size, range.offset, range.length));
+    }
+    if (size !== null) return this.object(response, size, fileSlice(response.body, size));
+    if (range && response.status === 206) return invalid('InfiniCLOUD returned an invalid byte range.');
+    return this.object(response, null, boundedFileStream(response.body, MAX_FILE_BYTES));
   }
 }
 

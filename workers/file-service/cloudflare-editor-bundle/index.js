@@ -4883,6 +4883,20 @@ function fileSlice(body, size, offset = 0, length = size) {
   });
   return fixed.readable;
 }
+function boundedFileStream(body, maximum, expectedSize) {
+  if (!body) throw new InputError("InfiniCLOUD returned an empty response.", 502);
+  let size = 0;
+  return body.pipeThrough(new TransformStream({
+    transform(chunk, controller) {
+      size += chunk.byteLength;
+      if (size > maximum) throw new InputError("The upstream file exceeds the supported size.", 502);
+      controller.enqueue(chunk);
+    },
+    flush() {
+      if (expectedSize !== void 0 && size !== expectedSize) throw new InputError("The upstream download length did not match its Content-Length.", 502);
+    }
+  }));
+}
 
 // workers/file-service/src/webdav.ts
 var WEBDAV_BASE_URL = "https://higa.teracloud.jp/dav/rachg/";
@@ -4961,18 +4975,46 @@ var WebdavClient = class {
       headers.set("Content-Type", response.headers.get("content-type") || "application/octet-stream");
     } };
   }
+  async probeSize(storageKey) {
+    const response = await this.request(this.url(storageKey), "GET", { Range: "bytes=0-0" });
+    try {
+      if (response.status === 206) {
+        const match = response.headers.get("content-range")?.match(/^bytes (\d+)-(\d+)\/(\d+)$/);
+        const start = Number(match?.[1]), end = Number(match?.[2]), size = Number(match?.[3]);
+        return match && start === 0 && end === 0 && Number.isSafeInteger(size) && size > 0 && size <= FILE_UPLOAD_BYTES ? size : null;
+      }
+      if (response.status === 416) {
+        const emptySize = Number(response.headers.get("content-range")?.match(/^bytes \*\/(\d+)$/)?.[1]);
+        return emptySize === 0 ? 0 : null;
+      }
+      if (response.status === 200) {
+        const length = response.headers.get("content-length");
+        const size = length !== null && /^\d+$/.test(length) ? Number(length) : NaN;
+        return Number.isSafeInteger(size) && size >= 0 && size <= FILE_UPLOAD_BYTES ? size : null;
+      }
+      return null;
+    } finally {
+      await response.body?.cancel().catch(() => {
+      });
+    }
+  }
   async head(storageKey) {
     const response = await this.request(this.url(storageKey), "HEAD");
     if (response.status === 404) {
       await response.body?.cancel();
       return null;
     }
-    if (response.status !== 200) await this.failure(response);
+    if (response.status !== 200 && ![405, 501].includes(response.status)) await this.failure(response);
     const length = response.headers.get("content-length");
     const size = length !== null && /^\d+$/.test(length) ? Number(length) : NaN;
     await response.body?.cancel();
-    if (!Number.isSafeInteger(size) || size < 0 || size > FILE_UPLOAD_BYTES) throw new InputError("InfiniCLOUD returned an unsupported file size.", 502);
-    return this.object(response, size);
+    if (Number.isSafeInteger(size) && size >= 0 && size <= FILE_UPLOAD_BYTES) return this.object(response, size);
+    let probed = null;
+    try {
+      probed = await this.probeSize(storageKey);
+    } catch {
+    }
+    return this.object(response, probed);
   }
   async get(storageKey, range) {
     const response = await this.request(this.url(storageKey), "GET", range ? { Range: `bytes=${range.offset}-${range.offset + range.length - 1}` } : {});
@@ -4991,13 +5033,25 @@ var WebdavClient = class {
     const length = lengthHeader !== null && /^\d+$/.test(lengthHeader) ? Number(lengthHeader) : NaN;
     if (response.status === 206 && range) {
       const contentRange = response.headers.get("content-range")?.match(/^bytes (\d+)-(\d+)\/(\d+)$/);
+      const offset = Number(contentRange?.[1]), end = Number(contentRange?.[2]);
       const size2 = Number(contentRange?.[3]);
-      if (!contentRange || Number(contentRange[1]) !== range.offset || Number(contentRange[2]) !== range.offset + range.length - 1 || lengthHeader !== null && length !== range.length || size2 > FILE_UPLOAD_BYTES || size2 <= Number(contentRange[2])) return invalid("InfiniCLOUD returned an invalid byte range.");
+      if (!contentRange || offset !== range.offset || end !== range.offset + range.length - 1 || lengthHeader !== null && length !== range.length || !Number.isSafeInteger(size2) || size2 > FILE_UPLOAD_BYTES || size2 <= end) return invalid("InfiniCLOUD returned an invalid byte range.");
       return this.object(response, size2, fileSlice(response.body, range.length));
     }
-    const size = lengthHeader === null ? (await this.head(storageKey))?.size : length;
-    if (size === void 0 || !Number.isSafeInteger(size) || size < 0 || size > FILE_UPLOAD_BYTES || range && size < range.offset + range.length) return invalid("InfiniCLOUD returned an invalid file size.");
-    return this.object(response, size, fileSlice(response.body, size, range?.offset, range?.length));
+    let size = Number.isSafeInteger(length) && length >= 0 && length <= FILE_UPLOAD_BYTES ? length : null;
+    if (size === null) {
+      try {
+        size = await this.probeSize(storageKey);
+      } catch {
+      }
+    }
+    if (range && size !== null) {
+      if (size < range.offset + range.length) return invalid("The requested byte range is outside the remote file.");
+      return this.object(response, size, fileSlice(response.body, size, range.offset, range.length));
+    }
+    if (size !== null) return this.object(response, size, fileSlice(response.body, size));
+    if (range && response.status === 206) return invalid("InfiniCLOUD returned an invalid byte range.");
+    return this.object(response, null, boundedFileStream(response.body, FILE_UPLOAD_BYTES));
   }
 };
 async function loadWebdav(env) {
@@ -7929,6 +7983,164 @@ async function telegramStatus(env) {
   return { enabled: Boolean(telegramConfig(env)), username: env.TELEGRAM_BOT_USERNAME || null, registration, counts: counts.results };
 }
 
+// workers/file-service/src/douyin.ts
+var MAX_INFO_BYTES = 1e6;
+var MAX_DOWNLOAD_BYTES = 500 * 1024 * 1024;
+var REDIRECT_LIMIT = 4;
+function getConfig(env) {
+  const key = env.DOUYIN_API_KEY?.trim();
+  const configuredBase = env.DOUYIN_API_BASE_URL?.trim();
+  if (!key || !configuredBase) throw new InputError("Douyin downloads are not configured on the Worker.", 503);
+  let base;
+  try {
+    base = new URL(configuredBase);
+  } catch {
+    throw new InputError("The Douyin API address is not configured correctly.", 503);
+  }
+  if (base.protocol !== "https:" || base.username || base.password || base.search || base.hash || !["", "/"].includes(base.pathname)) {
+    throw new InputError("The Douyin API must use a trusted HTTPS origin.", 503);
+  }
+  return { origin: base.origin, key };
+}
+function parseLink(request) {
+  const value = new URL(request.url).searchParams.get("url")?.trim() || "";
+  if (!value || value.length > 4096) throw new InputError("Enter a Douyin link or copied share text up to 4,096 characters.");
+  return value;
+}
+function apiUrl(origin, endpoint, link) {
+  const url = new URL("/api/" + endpoint, origin);
+  url.searchParams.set("url", link);
+  return url;
+}
+async function cancel(response) {
+  await response.body?.cancel().catch(() => {
+  });
+}
+async function requestInfo(origin, key, link) {
+  let response;
+  try {
+    response = await fetch(apiUrl(origin, "info", link), {
+      headers: { Accept: "application/json", "X-Api-Key": key },
+      redirect: "manual",
+      signal: AbortSignal.timeout(3e4)
+    });
+  } catch {
+    throw new InputError("Unable to reach the Douyin service. Please retry.", 502);
+  }
+  if (response.status >= 300 && response.status < 400) {
+    await cancel(response);
+    throw new InputError("The Douyin information service returned an unexpected redirect.", 502);
+  }
+  if (!response.ok) {
+    await cancel(response);
+    if (response.status === 422) throw new InputError("The Douyin link could not be parsed.", 422);
+    if (response.status === 401 || response.status === 403) throw new InputError("The Douyin service rejected its Worker credential.", 502);
+    throw new InputError("The Douyin information service returned HTTP " + response.status + ".", 502);
+  }
+  if (!response.headers.get("content-type")?.toLowerCase().includes("application/json")) {
+    await cancel(response);
+    throw new InputError("The Douyin service returned an unexpected response.", 502);
+  }
+  let body;
+  try {
+    body = await readBounded(response.body, MAX_INFO_BYTES);
+  } catch {
+    throw new InputError("The Douyin information response exceeded the supported size.", 502);
+  }
+  try {
+    return JSON.parse(new TextDecoder().decode(body));
+  } catch {
+    throw new InputError("The Douyin service returned invalid JSON.", 502);
+  }
+}
+async function requestDownload(origin, key, link, workspaceOrigin) {
+  let url = apiUrl(origin, "download", link);
+  let response;
+  for (let redirects = 0; ; redirects++) {
+    try {
+      response = await fetch(url, {
+        headers: redirects === 0 ? { "X-Api-Key": key, Accept: "video/mp4, application/zip, application/octet-stream" } : { Accept: "video/mp4, application/zip, application/octet-stream" },
+        redirect: "manual",
+        signal: AbortSignal.timeout(10 * 6e4)
+      });
+    } catch {
+      throw new InputError("Unable to download this Douyin video. Please retry.", 502);
+    }
+    if (![301, 302, 303, 307, 308].includes(response.status)) break;
+    const location = response.headers.get("location");
+    await cancel(response);
+    if (!location || redirects >= REDIRECT_LIMIT) throw new InputError("The Douyin download returned too many redirects.", 502);
+    try {
+      url = new URL(location, url);
+    } catch {
+      throw new InputError("The Douyin download returned an invalid redirect.", 502);
+    }
+    if (url.protocol !== "https:" || url.username || url.password) {
+      throw new InputError("The Douyin download redirected to an insecure address.", 502);
+    }
+  }
+  if (response.status !== 200) {
+    await cancel(response);
+    if (response.status === 422) throw new InputError("The Douyin link could not be parsed.", 422);
+    if (response.status === 401 || response.status === 403) throw new InputError("The Douyin service rejected its Worker credential.", 502);
+    throw new InputError("The Douyin download service returned HTTP " + response.status + ".", 502);
+  }
+  const contentType = response.headers.get("content-type")?.split(";")[0].trim().toLowerCase() || "application/octet-stream";
+  if (!["video/mp4", "application/zip", "application/octet-stream"].includes(contentType)) {
+    await cancel(response);
+    throw new InputError("The Douyin service did not return a video or photo archive.", 502);
+  }
+  const lengthHeader = response.headers.get("content-length");
+  const length = lengthHeader !== null && /^\d+$/.test(lengthHeader) ? Number(lengthHeader) : null;
+  if (lengthHeader !== null && (length === null || !Number.isSafeInteger(length) || length > MAX_DOWNLOAD_BYTES)) {
+    await cancel(response);
+    throw new InputError("The Douyin download exceeds the 500 MB limit.", 413);
+  }
+  const filename = contentType === "application/zip" ? "douyin-photos.zip" : "douyin-video.mp4";
+  const headers = new Headers({
+    "Content-Type": contentType,
+    "Content-Disposition": 'attachment; filename="' + filename + '"',
+    "Cache-Control": "private, no-store",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "Access-Control-Allow-Origin": workspaceOrigin,
+    "Access-Control-Allow-Credentials": "true",
+    "Access-Control-Expose-Headers": "X-Douyin-Title, X-Douyin-Author, Content-Disposition",
+    "Accept-Ranges": "none",
+    Vary: "Origin"
+  });
+  if (length !== null) headers.set("Content-Length", String(length));
+  for (const name of ["x-douyin-title", "x-douyin-author"]) {
+    const value = response.headers.get(name)?.replace(/[\x00-\x1f\x7f]/g, " ").trim().slice(0, 200);
+    if (value) headers.set(name, value);
+  }
+  return new Response(boundedFileStream(response.body, MAX_DOWNLOAD_BYTES, length ?? void 0), { status: 200, headers });
+}
+async function routeDouyin(request, env, origin) {
+  const url = new URL(request.url);
+  if (!["/v1/tools/douyin/info", "/v1/tools/douyin/download"].includes(url.pathname)) {
+    throw new InputError("Endpoint not found", 404);
+  }
+  if (request.method !== "GET") throw new InputError("Method not allowed", 405);
+  const { origin: upstreamOrigin, key } = getConfig(env);
+  const link = parseLink(request);
+  if (url.pathname.endsWith("/info")) {
+    const info = await requestInfo(upstreamOrigin, key, link);
+    return new Response(JSON.stringify(info), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+        "Access-Control-Allow-Origin": origin,
+        "Access-Control-Allow-Credentials": "true",
+        Vary: "Origin"
+      }
+    });
+  }
+  return requestDownload(upstreamOrigin, key, link, origin);
+}
+
 // workers/file-service/src/index.ts
 function getAllowedOrigin(request, env) {
   const requestOrigin = request.headers.get("Origin");
@@ -8085,6 +8297,7 @@ var index_default = {
       const storage = new StoredFiles(env);
       if (url.pathname === "/v1/storage/webdav") return jsonResponse(await routeWebdavSettings(request, env), 200, origin);
       if (url.pathname === "/v1/system-health") return jsonResponse(await systemHealth(request, env), 200, origin);
+      if (url.pathname.startsWith("/v1/tools/douyin/")) return await routeDouyin(request, env, origin);
       if (request.method === "GET" && url.pathname === "/auth/return") {
         return new Response(null, { status: 302, headers: {
           Location: "https://rachg.com/",
@@ -8573,7 +8786,7 @@ var index_default = {
           head = await storage.head(record.r2_key);
           if (!head) return new Response("File storage object missing.", { status: 404 });
           const ifRange = request.headers.get("If-Range");
-          if (request.method === "GET" && requestedRange && (!ifRange || ifRange === head.httpEtag)) {
+          if (request.method === "GET" && requestedRange && head.size !== null && (!ifRange || ifRange === head.httpEtag)) {
             range = parseByteRange(requestedRange, head.size) ?? void 0;
             if (!range) return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${head.size}`, "Cache-Control": "private, no-store" } });
           }
@@ -8592,9 +8805,11 @@ var index_default = {
         headers.set("X-Content-Type-Options", "nosniff");
         headers.set("Referrer-Policy", "no-referrer");
         if (r2Object.httpEtag) headers.set("etag", r2Object.httpEtag);
-        headers.set("Accept-Ranges", "bytes");
-        headers.set("Content-Length", String(range?.length ?? r2Object.size));
-        if (range) headers.set("Content-Range", `bytes ${range.offset}-${range.offset + range.length - 1}/${r2Object.size}`);
+        if (range && r2Object.size === null) range = void 0;
+        headers.set("Accept-Ranges", r2Object.size === null ? "none" : "bytes");
+        const responseSize = range?.length ?? r2Object.size;
+        if (responseSize !== null) headers.set("Content-Length", String(responseSize));
+        if (range && r2Object.size !== null) headers.set("Content-Range", `bytes ${range.offset}-${range.offset + range.length - 1}/${r2Object.size}`);
         headers.set(
           "Content-Disposition",
           `attachment; filename="${record.filename.replace(/[^a-zA-Z0-9._-]/g, "_")}"; filename*=UTF-8''${encodeURIComponent(record.filename).replace(/['()*]/g, (c) => "%" + c.charCodeAt(0).toString(16))}`
@@ -8603,7 +8818,7 @@ var index_default = {
         headers.set("Access-Control-Allow-Credentials", "true");
         headers.set("Vary", "Origin");
         return new Response(request.method === "HEAD" ? null : r2Object.body, {
-          status: range ? 206 : 200,
+          status: range && r2Object.size !== null ? 206 : 200,
           headers
         });
       }

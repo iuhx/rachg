@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Copy, Download, FileText, Image as ImageIcon, QrCode, Upload } from 'lucide-react';
+import { Check, Copy, Download, FileText, Image as ImageIcon, QrCode, Upload, Video } from 'lucide-react';
 import type { FileItem, NoteItem } from '../types';
 import type { StorageBackend } from '@rachg/shared';
 import { StoragePicker, useUploadSettings } from './StoragePicker';
@@ -20,6 +20,7 @@ interface ToolsViewProps {
 const expiries = ['1 hour', '24 hours', '48 hours', '7 days', 'permanent'];
 const ImageConverter = React.lazy(() => import('./ImageConverter').then(module => ({ default: module.ImageConverter })));
 const TextConverter = React.lazy(() => import('./TextConverter').then(module => ({ default: module.TextConverter })));
+const DouyinDownloader = React.lazy(() => import('./DouyinDownloader').then(module => ({ default: module.DouyinDownloader })));
 
 function QrPreview({ matrix }: { matrix: QrMatrix }) {
   const path = useMemo(() => {
@@ -35,9 +36,10 @@ function QrPreview({ matrix }: { matrix: QrMatrix }) {
 }
 
 export const ToolsView: React.FC<ToolsViewProps> = ({ files, fileRequest, onUploadFile, canUpload, onSaveNote, onOpenNotes, isActive = true, isFilesLoading = false, webdavAvailable = false }) => {
-  const [tool, setTool] = useState<'qr' | 'markdown' | 'images'>('qr');
+  const [tool, setTool] = useState<'qr' | 'markdown' | 'images' | 'douyin'>('qr');
   const [imagesVisited, setImagesVisited] = useState(false);
   const [textVisited, setTextVisited] = useState(false);
+  const [douyinVisited, setDouyinVisited] = useState(false);
   const [source, setSource] = useState<'text' | 'upload' | 'existing'>('text');
   const [text, setText] = useState('');
   const [selectedId, setSelectedId] = useState('');
@@ -140,9 +142,11 @@ export const ToolsView: React.FC<ToolsViewProps> = ({ files, fileRequest, onUplo
       <button className={`workspace-segment-item ${tool === 'qr' ? 'workspace-segment-item-active' : ''}`} aria-pressed={tool === 'qr'} onClick={() => { setTool('qr'); setNotice(null); }}><QrCode className="w-4 h-4" />Universal QR</button>
       <button className={`workspace-segment-item ${tool === 'markdown' ? 'workspace-segment-item-active' : ''}`} aria-pressed={tool === 'markdown'} onClick={() => { setTool('markdown'); setTextVisited(true); setNotice(null); }}><FileText className="w-4 h-4" />Text converter</button>
       <button className={`workspace-segment-item ${tool === 'images' ? 'workspace-segment-item-active' : ''}`} aria-pressed={tool === 'images'} onClick={() => { setTool('images'); setImagesVisited(true); setNotice(null); }}><ImageIcon className="w-4 h-4" />Image converter</button>
+      <button className={`workspace-segment-item ${tool === 'douyin' ? 'workspace-segment-item-active' : ''}`} aria-pressed={tool === 'douyin'} onClick={() => { setTool('douyin'); setDouyinVisited(true); setNotice(null); }}><Video className="w-4 h-4" />Douyin downloader</button>
     </div>
     {notice && <p role={notice.error ? 'alert' : 'status'} className={`workspace-panel p-3 type-secondary ${notice.error ? 'text-red-600 dark:text-red-300' : 'text-emerald-700 dark:text-emerald-400'}`}>{notice.text}</p>}
     {imagesVisited && <div hidden={tool !== 'images'}><React.Suspense fallback={<p className="type-secondary">Loading image converter…</p>}><ImageConverter /></React.Suspense></div>}
+    {douyinVisited && <div hidden={tool !== 'douyin'}><React.Suspense fallback={<p className="type-secondary">Loading Douyin downloader…</p>}><DouyinDownloader canDownload={canUpload} isActive={isActive && tool === 'douyin'} webdavAvailable={webdavAvailable} onUploadFile={onUploadFile} /></React.Suspense></div>}
 
     <section hidden={tool !== 'qr'} aria-label="Universal QR">
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-5 items-start">

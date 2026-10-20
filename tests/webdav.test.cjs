@@ -9,7 +9,7 @@ const collection = () => new Response(`<?xml version="1.0"?><d:multistatus xmlns
 function setup(t) {
   const f = fixture(); t.after(() => f.close()); f.env.WEBDAV_USERNAME = username; f.env.WEBDAV_PASSWORD = password;
   const remote = new Map([[root + 'unrelated.txt', new TextEncoder().encode('keep me').buffer]]), calls = [];
-  const options = { deny: false, ignoreRange: false, collision: false, failAfterPut: false };
+  const options = { deny: false, ignoreRange: false, omitLength: false, collision: false, failAfterPut: false };
   t.mock.method(global, 'fetch', async (url, init) => {
     calls.push({ url, method: init.method }); assert.equal(init.redirect, 'manual'); assert.ok(String(url).startsWith(root));
     const headers = new Headers(init.headers); assert.equal(headers.get('authorization'), 'Basic ' + Buffer.from(`${username}:${password}`).toString('base64'));
@@ -26,11 +26,14 @@ function setup(t) {
     if (init.method === 'DELETE') { assert.notEqual(url, root); assert.notEqual(url, root + 'unrelated.txt'); remote.delete(url); return new Response(null, { status: 204 }); }
     const data = remote.get(url); if (!data) return new Response(null, { status: 404 });
     assert.equal(headers.get('accept-encoding'), 'identity');
-    const responseHeaders = { 'Content-Type': 'text/plain', 'Content-Length': String(data.byteLength), ETag: '"fixture-etag"' };
+    const responseHeaders = { 'Content-Type': 'text/plain', ETag: '"fixture-etag"' };
+    if (!options.omitLength) responseHeaders['Content-Length'] = String(data.byteLength);
     if (init.method === 'HEAD') return new Response(null, { headers: responseHeaders });
     if (headers.has('range') && !options.ignoreRange) {
       const [, a, b] = headers.get('range').match(/bytes=(\d+)-(\d+)/); const from = Number(a), to = Number(b);
-      return new Response(data.slice(from, to + 1), { status: 206, headers: { ...responseHeaders, 'Content-Length': String(to - from + 1), 'Content-Range': `bytes ${from}-${to}/${data.byteLength}` } });
+      const rangeHeaders = { ...responseHeaders, 'Content-Range': `bytes ${from}-${to}/${data.byteLength}` };
+      if (!options.omitLength) rangeHeaders['Content-Length'] = String(to - from + 1);
+      return new Response(data.slice(from, to + 1), { status: 206, headers: rangeHeaders });
     }
     return new Response(data, { headers: responseHeaders });
   });
@@ -76,6 +79,26 @@ test('uploads, downloads, ranges, text pages and deletion use WebDAV while prese
   assert.equal((await f.uploadWebdav('x'.repeat(1100))).status, 201, 'WebDAV is not capped by the R2 quota');
   assert.equal((await f.request(`/v1/files/${file.id}?deleteRemote=true`, { method: 'DELETE' })).status, 200);
   assert.equal((await f.request(`/f/${file.id}`)).status, 404); assert.ok(f.remote.has(root + 'unrelated.txt')); assert.equal(f.objects.size, 1);
+});
+
+test('downloads, HEAD and byte ranges work when WebDAV omits Content-Length', async t => {
+  const f = setup(t); f.options.omitLength = true;
+  const { file } = await (await f.uploadWebdav('hello world')).json();
+  const full = await f.request(`/f/${file.id}`);
+  assert.equal(full.status, 200); assert.equal(full.headers.get('content-length'), '11'); assert.equal(await full.text(), 'hello world');
+  const head = await f.request(`/f/${file.id}`, { method: 'HEAD' });
+  assert.equal(head.status, 200); assert.equal(head.headers.get('content-length'), '11'); assert.equal(await head.text(), '');
+  const range = await f.request(`/f/${file.id}`, { headers: { Range: 'bytes=2-4' } });
+  assert.equal(range.status, 206); assert.equal(range.headers.get('content-range'), 'bytes 2-4/11'); assert.equal(await range.text(), 'llo');
+});
+
+test('downloads remain streamed when WebDAV omits length and ignores Range', async t => {
+  const f = setup(t); f.options.omitLength = true; f.options.ignoreRange = true;
+  const { file } = await (await f.uploadWebdav('hello world')).json();
+  const head = await f.request(`/f/${file.id}`, { method: 'HEAD' });
+  assert.equal(head.status, 200); assert.equal(head.headers.get('content-length'), null);
+  const ranged = await f.request(`/f/${file.id}`, { headers: { Range: 'bytes=2-4' } });
+  assert.equal(ranged.status, 200); assert.equal(ranged.headers.get('content-length'), null); assert.equal(await ranged.text(), 'hello world');
 });
 
 test('expired and ambiguous WebDAV uploads are cleaned only by exact key, and failed deletes remain retryable', async t => {

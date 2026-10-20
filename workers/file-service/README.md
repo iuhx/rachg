@@ -18,6 +18,12 @@ Private mail endpoints are `GET /v1/mail`, `GET /v1/mail/:id`, `DELETE /v1/mail/
 
 Outgoing mail uses Resend. Store the key only as the Worker secret `RESEND_API_KEY`; keep `RESEND_FROM_EMAIL` as a Worker variable set to a sender verified in Resend (the default is `me@rachg.com`). The browser never receives the Resend key.
 
+The optional Douyin downloader is exposed only through the Access-protected
+workspace API. Its HTTPS origin is configured as `DOUYIN_API_BASE_URL`; configure
+the Worker Secret as described in [Douyin downloader](../../docs/DOUYIN-DOWNLOADER.md).
+Never configure an HTTP upstream: the API credential must not cross the network
+in clear text.
+
 ### Private Markdown Notes
 
 All note routes require the same Cloudflare Access JWT as the file routes:

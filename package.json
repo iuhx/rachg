@@ -9,7 +9,7 @@
     "preview:workspace": "npm --prefix apps/workspace run preview",
     "dev:file-service": "npm --prefix workers/file-service run dev",
     "build:all": "npm --prefix apps/workspace run build && node scripts/build-workers.cjs",
-    "test:hardening": "node --test tests/conservative-hardening.test.cjs tests/conservative-ui.test.cjs tests/reliability.test.cjs tests/tools.test.cjs tests/app-reliability.test.cjs tests/mail-format.test.cjs tests/projects.test.cjs tests/image-tools.test.cjs tests/text-tools.test.cjs tests/note-sharing.test.cjs tests/note-transfer.test.cjs tests/note-organization.test.cjs tests/daily-planner.test.cjs tests/system-health.test.cjs tests/webdav.test.cjs tests/document-tools.test.cjs tests/telegram.test.cjs",
+    "test:hardening": "node --test tests/conservative-hardening.test.cjs tests/conservative-ui.test.cjs tests/reliability.test.cjs tests/tools.test.cjs tests/app-reliability.test.cjs tests/mail-format.test.cjs tests/projects.test.cjs tests/image-tools.test.cjs tests/text-tools.test.cjs tests/note-sharing.test.cjs tests/note-transfer.test.cjs tests/note-organization.test.cjs tests/daily-planner.test.cjs tests/system-health.test.cjs tests/webdav.test.cjs tests/douyin.test.cjs tests/document-tools.test.cjs tests/telegram.test.cjs",
     "test:runtime": "node --test tests/worker-runtime.test.cjs",
     "test:auth": "node --test tests/auth-reliability.test.cjs",
     "check": "pnpm --filter @rachg/shared build && pnpm --filter @rachg/file-service typecheck && pnpm --filter @rachg/mail-ingest typecheck && pnpm --filter @rachg/workspace exec tsc --noEmit && pnpm --filter @rachg/file-service test:retention && pnpm test:auth && pnpm test:hardening && pnpm run build:all && pnpm test:runtime"

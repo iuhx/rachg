@@ -30,6 +30,80 @@ test('locally generated QR pixels decode to exact Unicode text and URLs', () => 
   assert.equal(createQr('\ud800').kind, 'error');
 });
 
+test('Douyin downloader inspects copied share text and offers the authenticated streaming endpoint', async () => {
+  const f = components();
+  f.services.apiRead = { AuthenticationRequiredError: class AuthenticationRequiredError extends Error {} };
+  f.services.douyinService = {
+    fetchDouyinInfo: async link => ({ meta: { title: 'Test video', author: 'Creator', duration: 12, resolution: '1080p', likes: 42 }, candidate_urls: ['https://cdn.example.invalid/video.mp4'] , receivedLink: link }),
+    douyinDownloadUrl: link => 'https://api.example.invalid/v1/tools/douyin/download?url=' + encodeURIComponent(link),
+  };
+  const { DouyinDownloader } = f.load('apps/workspace/src/components/DouyinDownloader.tsx');
+  const h = f.mount(DouyinDownloader, { canDownload: true, isActive: true, webdavAvailable: true, onUploadFile: async () => fileItem('saved') });
+  const source = '4.10 copied https://v.douyin.com/abc';
+  find(h, n => n.props.id === 'douyin-link').props.onChange({ target: { value: source } }); h.render();
+  await find(h, n => n.type === 'form').props.onSubmit({ preventDefault() {} }); h.render();
+  assert.match(label(h.tree), /Test video/); assert.match(label(h.tree), /Creator/); assert.match(label(h.tree), /1080p/);
+  const download = find(h, n => n.type === 'a' && n.props['aria-label'] === 'Download Douyin video');
+  assert.equal(download.props.href, 'https://api.example.invalid/v1/tools/douyin/download?url=' + encodeURIComponent(source));
+  h.unmount();
+});
+
+test('Douyin save defaults to WebDAV and permanently uploads the fetched File into Files', async () => {
+  const f = components();
+  f.services.apiRead = { AuthenticationRequiredError: class AuthenticationRequiredError extends Error {} };
+  const uploaded = [];
+  const savedFile = new File(['video'], 'A safe title.mp4', { type: 'video/mp4' });
+  f.services.douyinService = {
+    fetchDouyinInfo: async () => ({ meta: { title: 'A safe title' }, candidate_urls: [] }),
+    douyinDownloadUrl: () => 'https://api.example.invalid/download',
+    fetchDouyinFile: async (link, title) => { assert.equal(link, 'https://v.douyin.com/abc'); assert.equal(title, 'A safe title'); return savedFile; },
+  };
+  const { DouyinDownloader } = f.load('apps/workspace/src/components/DouyinDownloader.tsx');
+  const h = f.mount(DouyinDownloader, {
+    canDownload: true, isActive: true, webdavAvailable: true,
+    onUploadFile: async (...args) => { uploaded.push(args); return fileItem('saved'); },
+  });
+  find(h, n => n.props.id === 'douyin-link').props.onChange({ target: { value: 'https://v.douyin.com/abc' } }); h.render();
+  await find(h, n => n.type === 'form').props.onSubmit({ preventDefault() {} }); h.render();
+  const destination = find(h, n => n.type?.name === 'StoragePicker');
+  assert.equal(destination.props.value, 'webdav');
+  find(h, n => n.type === 'button' && label(n) === 'Save permanently to Files').props.onClick();
+  await new Promise(resolve => setImmediate(resolve)); h.render();
+  assert.equal(uploaded.length, 1);
+  assert.equal(uploaded[0][0], savedFile);
+  assert.equal(uploaded[0][1], 'permanent');
+  assert.equal(uploaded[0][2], 'webdav');
+  destination.props.onChange('r2'); h.render();
+  assert.equal(find(h, n => n.type?.name === 'StoragePicker').props.value, 'r2');
+  find(h, n => n.type === 'button' && label(n) === 'Save permanently to Files').props.onClick();
+  await new Promise(resolve => setImmediate(resolve)); h.render();
+  assert.equal(uploaded.length, 2);
+  assert.equal(uploaded[1][2], 'r2');
+  h.unmount();
+});
+
+test('Douyin File save uses Access credentials, safe names and enforces the Files size limit', async t => {
+  const f = components();
+  f.services.apiRead = { AuthenticationRequiredError: class AuthenticationRequiredError extends Error {} };
+  const service = f.load('apps/workspace/src/services/douyinService.ts');
+  let requestUrl, requestInit;
+  let tooLarge = false;
+  t.mock.method(globalThis, 'fetch', async (url, init) => {
+    if (tooLarge) return new Response(null, { headers: { 'Content-Type': 'video/mp4', 'Content-Length': '99000001' } });
+    requestUrl = new URL(url); requestInit = init;
+    return new Response(new Uint8Array([1, 2, 3]), { headers: { 'Content-Type': 'video/mp4', 'Content-Length': '3' } });
+  });
+  const file = await service.fetchDouyinFile('https://v.douyin.com/abc', 'clip/unsafe');
+  assert.equal(file.name, 'clip_unsafe.mp4');
+  assert.equal(file.size, 3);
+  assert.equal(requestUrl.pathname, '/v1/tools/douyin/download');
+  assert.equal(requestUrl.searchParams.get('url'), 'https://v.douyin.com/abc');
+  assert.equal(requestInit.credentials, 'include');
+  assert.equal(requestInit.redirect, 'manual');
+  tooLarge = true;
+  await assert.rejects(service.fetchDouyinFile('https://v.douyin.com/large', 'large'), /99 MB/);
+});
+
 test('file uploads stream the original File with simple CORS metadata and reject files over 99 MB', async t => {
   const api = components().load('apps/workspace/src/services/fileService.ts');
   let requests = 0;

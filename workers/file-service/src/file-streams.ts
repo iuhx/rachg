@@ -56,3 +56,19 @@ export function fileSlice(body: ReadableStream<Uint8Array> | null, size: number,
   void sliced.pipeTo(fixed.writable).catch(() => {});
   return fixed.readable;
 }
+
+/** Keep unknown-length upstream downloads streamed and enforce the file size limit. */
+export function boundedFileStream(body: ReadableStream<Uint8Array> | null, maximum: number, expectedSize?: number): ReadableStream<Uint8Array> {
+  if (!body) throw new InputError('InfiniCLOUD returned an empty response.', 502);
+  let size = 0;
+  return body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      size += chunk.byteLength;
+      if (size > maximum) throw new InputError('The upstream file exceeds the supported size.', 502);
+      controller.enqueue(chunk);
+    },
+    flush() {
+      if (expectedSize !== undefined && size !== expectedSize) throw new InputError('The upstream download length did not match its Content-Length.', 502);
+    },
+  }));
+}

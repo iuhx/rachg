@@ -67,6 +67,7 @@ import { boundedForm, boundedJson, InputError, mailPlainText, MAX_FILE_BYTES, MA
 import { storeStream } from './file-streams';
 import { receiveTelegram, runTelegramTasks, configureTelegram, telegramStatus } from './telegram';
 import { TELEGRAM_WEBHOOK_PATH, type TelegramEnv } from './telegram-client';
+import { routeDouyin } from './douyin';
 
 export interface Env extends TelegramEnv {
   WEBDAV_USERNAME?: string;
@@ -81,6 +82,8 @@ export interface Env extends TelegramEnv {
   ACCESS_ADMIN_EMAIL?: string;
   RESEND_API_KEY?: string;
   RESEND_FROM_EMAIL?: string;
+  DOUYIN_API_BASE_URL?: string;
+  DOUYIN_API_KEY?: string;
 }
 
 function getAllowedOrigin(request: Request, env: Env): string {
@@ -268,6 +271,7 @@ export default {
       const storage = new StoredFiles(env);
       if (url.pathname === '/v1/storage/webdav') return jsonResponse(await routeWebdavSettings(request, env), 200, origin);
       if (url.pathname === '/v1/system-health') return jsonResponse(await systemHealth(request, env), 200, origin);
+      if (url.pathname.startsWith('/v1/tools/douyin/')) return await routeDouyin(request, env, origin);
       if (request.method === 'GET' && url.pathname === '/auth/return') {
         // Access has established the API-domain cookie before this authenticated
         // navigation reaches us. Return only to the fixed workspace origin.
@@ -832,7 +836,7 @@ export default {
           head = await storage.head(record.r2_key);
           if (!head) return new Response('File storage object missing.', { status: 404 });
           const ifRange = request.headers.get('If-Range');
-          if (request.method === 'GET' && requestedRange && (!ifRange || ifRange === head.httpEtag)) {
+          if (request.method === 'GET' && requestedRange && head.size !== null && (!ifRange || ifRange === head.httpEtag)) {
             range = parseByteRange(requestedRange, head.size) ?? undefined;
             if (!range) return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${head.size}`, 'Cache-Control': 'private, no-store' } });
           }
@@ -855,9 +859,11 @@ export default {
         headers.set('X-Content-Type-Options', 'nosniff');
         headers.set('Referrer-Policy', 'no-referrer');
         if (r2Object.httpEtag) headers.set('etag', r2Object.httpEtag);
-        headers.set('Accept-Ranges', 'bytes');
-        headers.set('Content-Length', String(range?.length ?? r2Object.size));
-        if (range) headers.set('Content-Range', `bytes ${range.offset}-${range.offset + range.length - 1}/${r2Object.size}`);
+        if (range && r2Object.size === null) range = undefined;
+        headers.set('Accept-Ranges', r2Object.size === null ? 'none' : 'bytes');
+        const responseSize = range?.length ?? r2Object.size;
+        if (responseSize !== null) headers.set('Content-Length', String(responseSize));
+        if (range && r2Object.size !== null) headers.set('Content-Range', `bytes ${range.offset}-${range.offset + range.length - 1}/${r2Object.size}`);
         headers.set(
           'Content-Disposition',
           `attachment; filename="${record.filename.replace(/[^a-zA-Z0-9._-]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(record.filename).replace(/['()*]/g, (c) => '%' + c.charCodeAt(0).toString(16))}`
@@ -867,7 +873,7 @@ export default {
         headers.set('Vary', 'Origin');
 
         return new Response(request.method === 'HEAD' ? null : r2Object.body, {
-          status: range ? 206 : 200,
+          status: range && r2Object.size !== null ? 206 : 200,
           headers,
         });
       }

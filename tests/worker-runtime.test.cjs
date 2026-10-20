@@ -31,6 +31,9 @@ test('release Worker runs reliably in workerd with actual D1 and R2 bindings', {
   let outgoingMail;
   const webdavRoot = 'https://higa.teracloud.jp/dav/rachg/';
   const webdavFiles = new Map();
+  let omitWebdavLength = false;
+  const douyinOrigin = 'https://douyin.example.invalid';
+  const douyinBytes = new TextEncoder().encode('runtime mp4 bytes');
   const telegramToken = '987654321:runtime_telegram_fixture_token_12345', telegramUser = 6121514938;
   const telegramFiles = new Map(), telegramReplies = [];
   const telegramSecret = createHmac('sha256', telegramToken).update('rachg:telegram-webhook:v1').digest('hex');
@@ -61,7 +64,25 @@ test('release Worker runs reliably in workerd with actual D1 and R2 bindings', {
         if (request.method === 'DELETE') { assert.notEqual(request.url, webdavRoot); webdavFiles.delete(request.url); return new MockResponse(null, { status: 204 }); }
         const data = webdavFiles.get(request.url);
         if (!data) return new MockResponse(null, { status: 404 });
-        return new MockResponse(request.method === 'HEAD' ? null : data, { headers: { 'Content-Length': String(data.byteLength), 'Content-Type': 'text/plain', ETag: '"runtime-dav"' } });
+        const headers = { 'Content-Type': 'text/plain', ETag: '"runtime-dav"' };
+        if (!omitWebdavLength) headers['Content-Length'] = String(data.byteLength);
+        if (request.method === 'HEAD') return new MockResponse(null, { headers });
+        const range = request.headers.get('range')?.match(/^bytes=(\d+)-(\d+)$/);
+        if (range) {
+          const offset = Number(range[1]), end = Math.min(Number(range[2]), data.byteLength - 1);
+          return new MockResponse(data.slice(offset, end + 1), { status: 206, headers: { ...headers, 'Content-Range': `bytes ${offset}-${end}/${data.byteLength}`, ...(omitWebdavLength ? {} : { 'Content-Length': String(end - offset + 1) }) } });
+        }
+        return new MockResponse(data, { headers });
+      }
+      if (request.url.startsWith(douyinOrigin + '/')) {
+        assert.equal(request.headers.get('x-api-key'), 'runtime-douyin-secret');
+        assert.equal(new URL(request.url).searchParams.has('key'), false);
+        if (request.url.startsWith(douyinOrigin + '/api/info')) return MockResponse.json({ meta: { title: 'Runtime Douyin video', author: 'Fixture creator' }, candidate_urls: [] });
+        if (request.url.startsWith(douyinOrigin + '/api/download')) return new MockResponse(null, { status: 302, headers: { Location: 'https://douyin-cdn.example.invalid/runtime-video' } });
+      }
+      if (request.url === 'https://douyin-cdn.example.invalid/runtime-video') {
+        assert.equal(request.headers.has('x-api-key'), false);
+        return new MockResponse(douyinBytes, { headers: { 'Content-Type': 'video/mp4', 'Content-Length': String(douyinBytes.byteLength) } });
       }
       if (request.url === 'https://rdap.verisign.com/com/v1/domain/rachg.com') {
         assert.equal(request.headers.has('cf-access-jwt-assertion'), false);
@@ -78,7 +99,8 @@ test('release Worker runs reliably in workerd with actual D1 and R2 bindings', {
     },
     bindings: { ACCESS_TEAM_DOMAIN: issuer, ACCESS_AUDIENCE: 'local-workspace',
       ACCESS_ADMIN_EMAIL: 'admin@example.invalid', MAX_STORAGE_BYTES: '1000', RESEND_API_KEY: 'local-fixture-only', PUBLIC_NOTE_SHARES_ENABLED: 'true', WEBDAV_USERNAME: 'runtime-user', WEBDAV_PASSWORD: 'runtime-password',
-      TELEGRAM_ENABLED: 'true', TELEGRAM_BOT_TOKEN: telegramToken, TELEGRAM_ALLOWED_USER_ID: String(telegramUser), TELEGRAM_BOT_USERNAME: 'rachgx_bot' },
+      TELEGRAM_ENABLED: 'true', TELEGRAM_BOT_TOKEN: telegramToken, TELEGRAM_ALLOWED_USER_ID: String(telegramUser), TELEGRAM_BOT_USERNAME: 'rachgx_bot',
+      DOUYIN_API_BASE_URL: douyinOrigin, DOUYIN_API_KEY: 'runtime-douyin-secret' },
   };
   const mf = new Miniflare(convertV4MiniflareOptions(runtimeOptions));
   t.after(() => mf.dispose());
@@ -119,6 +141,17 @@ test('release Worker runs reliably in workerd with actual D1 and R2 bindings', {
     assert.equal((await bucket.list()).objects.length, 0);
   });
 
+  await t.test('Douyin info and streamed downloads require Access and keep the API key off redirected CDN requests', async () => {
+    const anonymous = await mf.dispatchFetch('https://workspace.example.invalid/v1/tools/douyin/info?url=https%3A%2F%2Fv.douyin.com%2Ffixture');
+    assert.equal(anonymous.status, 401); await anonymous.text();
+    const info = await request('/v1/tools/douyin/info?url=' + encodeURIComponent('https://v.douyin.com/fixture'));
+    assert.equal(info.status, 200); assert.equal((await info.json()).meta.title, 'Runtime Douyin video');
+    const download = await request('/v1/tools/douyin/download?url=' + encodeURIComponent('https://v.douyin.com/fixture'));
+    assert.equal(download.status, 200); assert.equal(download.headers.get('content-type'), 'video/mp4');
+    assert.equal(download.headers.get('content-disposition'), 'attachment; filename="douyin-video.mp4"');
+    assert.deepEqual(new Uint8Array(await download.arrayBuffer()), douyinBytes);
+  });
+
   await t.test('WebDAV uses Worker Secrets and real workerd uploads/downloads/range fallback/delete preserve R2 accounting', async () => {
     const response = await request('/v1/storage/webdav', { method: 'POST' });
     assert.equal(response.status, 200); const config = await response.json(); assert.equal(config.settings.configured, true); assert.ok(!JSON.stringify(config).includes('runtime-password'));
@@ -128,6 +161,10 @@ test('release Worker runs reliably in workerd with actual D1 and R2 bindings', {
     const health = await (await request('/health')).json(); assert.equal(health.quota.usedBytes, 0);
     const download = await request(`/f/${file.id}`); assert.equal(await download.text(), 'runtime webdav contents');
     const partial = await request(`/f/${file.id}`, { headers: { Range: 'bytes=0-6' } }); assert.equal(partial.status, 206); assert.equal(await partial.text(), 'runtime');
+    omitWebdavLength = true;
+    const noLengthDownload = await request(`/f/${file.id}`); assert.equal(noLengthDownload.status, 200); assert.equal(await noLengthDownload.text(), 'runtime webdav contents');
+    const noLengthHead = await request(`/f/${file.id}`, { method: 'HEAD' }); assert.equal(noLengthHead.status, 200); assert.equal(noLengthHead.headers.get('content-length'), '23');
+    const noLengthRange = await request(`/f/${file.id}`, { headers: { Range: 'bytes=0-6' } }); assert.equal(noLengthRange.status, 206); assert.equal(noLengthRange.headers.get('content-range'), 'bytes 0-6/23'); assert.equal(await noLengthRange.text(), 'runtime');
     const removed = await request(`/v1/files/${file.id}?deleteRemote=true`, { method: 'DELETE' }); assert.equal(removed.status, 200); await removed.text(); assert.equal(webdavFiles.size, 0); assert.equal((await bucket.list()).objects.length, 0);
   });
 
