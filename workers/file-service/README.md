@@ -1,13 +1,13 @@
 # rachg File Service (Cloudflare Worker)
 
-This API is private and must be protected by Cloudflare Access. Configure an Access application for the API hostname and allow only the administrator account. The Worker verifies `Cf-Access-Jwt-Assertion` itself; it never trusts `Cf-Access-Authenticated-User-Email`.
+This API is private and must be protected by Cloudflare Access. The administrator-only application covers `api.rachg.com`; the only path exceptions are read-only note snapshots under `/s/*` and the exact Telegram webhook path. The Worker verifies `Cf-Access-Jwt-Assertion` itself; it never trusts `Cf-Access-Authenticated-User-Email`.
 
 The optional public note-share feature opens only `/s/*` for read-only snapshots
 when explicitly enabled. All private APIs and share-management actions retain
 administrator authentication. See [Note sharing](../../docs/NOTE-SHARING.md) for
 the exact Access path rule, feature flag, security model and deployment checks.
 
-Required Worker variables: `ACCESS_TEAM_DOMAIN=https://rachg.cloudflareaccess.com`, `ACCESS_AUDIENCE`, `ACCESS_ADMIN_EMAIL`, and `ALLOWED_ORIGINS=https://rachg.com`. Keep the API hostname behind Access and do not expose a public bypass through the `workers.dev` hostname.
+Required Worker variables: `ACCESS_TEAM_DOMAIN=https://rachg.cloudflareaccess.com`, `ACCESS_AUDIENCE`, `ACCESS_ADMIN_EMAIL`, and `ALLOWED_ORIGINS=https://rachg.com`. `workers.dev` and preview URLs are disabled so the Access-protected API has no alternate Worker hostname.
 
 Files may also use the optional InfiniCLOUD WebDAV destination configured through
 Worker Secrets and checked in Settings.
@@ -45,7 +45,7 @@ Independent temporary file transfer micro-service powered by Cloudflare Workers,
 
 ## 📡 API Specification (v1)
 
-Base URL in Production: `https://api.rachg.com` (or worker hostname)
+Base URL in Production: `https://api.rachg.com`
 Local Dev URL: `http://localhost:8787`
 
 ### 1. Health & Quota Status

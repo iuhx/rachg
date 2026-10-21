@@ -32,7 +32,9 @@ when it cannot verify that the endpoint is publicly accessible.
    `api.rachg.com`. Add a more-specific self-hosted application for
    **`api.rachg.com/s/*` only**, with a Bypass policy for Everyone. Do not bypass
    the whole hostname, `/v1/*`, `/f/*`, `/t/*`, the mail routes, or the main site.
-   Check that any broader Access application or Worker route does not override this.
+   The Telegram integration has its own separate Bypass application for the exact
+   `/integrations/telegram/webhook` path. Check that no broader Access application
+   or Worker route overrides either path-specific exception.
 3. Set `PUBLIC_NOTE_SHARES_ENABLED=true` on the file-service Worker. This can be
    done in the dashboard; if deploying with Wrangler, update the explicit variable
    in `wrangler.jsonc` or supply a deployment override so a later deploy preserves

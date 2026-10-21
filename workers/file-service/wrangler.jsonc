@@ -3,8 +3,8 @@
   "name": "rachg-file-service",
   "account_id": "183126450d0d9188448b6265c97e595f",
   "keep_vars": true,
-  "workers_dev": true,
-  "preview_urls": true,
+  "workers_dev": false,
+  "preview_urls": false,
   "observability": { "enabled": true, "logs": { "enabled": true, "invocation_logs": false } },
   "routes": [{ "pattern": "api.rachg.com", "custom_domain": true }],
   "triggers": { "crons": ["*/15 * * * *", "* * * * *"] },
@@ -37,7 +37,7 @@
     "TELEGRAM_ENABLED": "true",
     "TELEGRAM_BOT_USERNAME": "rachgx_bot",
     "TELEGRAM_ALLOWED_USER_ID": "6121514938",
-    // Access bypass is restricted to api.rachg.com/s/*. See docs/NOTE-SHARING.md.
+    // Access bypasses are limited to api.rachg.com/s/* and the exact Telegram webhook path.
     "PUBLIC_NOTE_SHARES_ENABLED": "true",
     "MAX_STORAGE_BYTES": "4294967296", // 4GB max total active storage cap
     "DEFAULT_EXPIRATION_HOURS": "48",

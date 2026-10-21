@@ -7690,7 +7690,7 @@ async function systemHealth(request, env) {
 
 // workers/file-service/src/telegram-client.ts
 var TELEGRAM_WEBHOOK_PATH = "/integrations/telegram/webhook";
-var TELEGRAM_WEBHOOK_URL = `https://rachg-file-service.haenlau.workers.dev${TELEGRAM_WEBHOOK_PATH}`;
+var TELEGRAM_WEBHOOK_URL = `https://api.rachg.com${TELEGRAM_WEBHOOK_PATH}`;
 var TELEGRAM_FILE_BYTES = 2e7;
 var TelegramError = class extends Error {
   constructor(message, retryable = true) {
@@ -7949,7 +7949,7 @@ async function configureTelegram(env) {
   const config = telegramConfig(env);
   if (!config) return false;
   await ensureTelegramSchema(env.DB);
-  const secret = await webhookSecret(config.token), fingerprint = `${config.botId}:${config.userId}:${config.username}:${secret}`;
+  const secret = await webhookSecret(config.token), fingerprint = `${config.botId}:${config.userId}:${config.username}:${TELEGRAM_WEBHOOK_URL}:${secret}`;
   const digest = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(fingerprint))), (b) => b.toString(16).padStart(2, "0")).join("");
   const saved = await env.DB.prepare("SELECT fingerprint FROM telegram_config WHERE id = 'webhook'").first();
   if (saved?.fingerprint === digest) return true;

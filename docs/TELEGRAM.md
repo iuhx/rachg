@@ -32,14 +32,13 @@ logs. The webhook secret is an HMAC derived from the bot token; only a second
 digest is persisted for configuration change detection.
 
 Webhook URL:
-`https://rachg-file-service.haenlau.workers.dev/integrations/telegram/webhook`
+`https://api.rachg.com/integrations/telegram/webhook`
 
-Only this exact POST route uses Telegram authentication. It validates
+Cloudflare Access bypass is scoped to this exact route. Only this POST route uses Telegram authentication. It validates
 `X-Telegram-Bot-Api-Secret-Token`, then checks both the sender and the private chat
 against the numeric allowlist before touching D1, WebDAV or Telegram APIs.
-All workspace endpoints still require their existing Access authentication.
-No Cloudflare Access policy changes, public file shares, or public notes are
-created by this integration. Bot replies contain ordinary authenticated
+All other workspace endpoints still require their existing Access authentication.
+No public file shares or public notes are created by this integration. Bot replies contain ordinary authenticated
 workspace/download links; they do not grant anonymous access.
 
 Authenticated `GET /v1/integrations/telegram` returns registration state and job

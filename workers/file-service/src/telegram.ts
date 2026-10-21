@@ -201,7 +201,7 @@ export async function configureTelegram(env: TelegramStorageEnv) {
   const config = telegramConfig(env);
   if (!config) return false;
   await ensureTelegramSchema(env.DB);
-  const secret = await webhookSecret(config.token), fingerprint = `${config.botId}:${config.userId}:${config.username}:${secret}`;
+  const secret = await webhookSecret(config.token), fingerprint = `${config.botId}:${config.userId}:${config.username}:${TELEGRAM_WEBHOOK_URL}:${secret}`;
   // Store a second digest, never the webhook credential itself.
   const digest = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(fingerprint))), b => b.toString(16).padStart(2, '0')).join('');
   const saved = await env.DB.prepare("SELECT fingerprint FROM telegram_config WHERE id = 'webhook'").first<{ fingerprint: string }>();

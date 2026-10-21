@@ -17,7 +17,7 @@ async function setup(t) {
       const method = url.slice(telegramRoot.length), body = JSON.parse(init.body);
       if (method === 'getMe') return Response.json({ ok: true, result: { id: 987654321, username: behavior.wrongBot ? 'other_bot' : 'rachgx_bot', is_bot: true } });
       if (method === 'setWebhook') {
-        assert.equal(body.url, 'https://rachg-file-service.haenlau.workers.dev/integrations/telegram/webhook');
+        assert.equal(body.url, 'https://api.rachg.com/integrations/telegram/webhook');
         assert.match(body.secret_token, /^[a-f0-9]{64}$/); assert.equal(body.drop_pending_updates, false);
         assert.deepEqual(body.allowed_updates, ['message']); return Response.json({ ok: true, result: true });
       }
@@ -146,6 +146,9 @@ test('collisions do not delete foreign files and a lost reply does not trigger d
 test('configuration verifies the intended bot and stores neither bot token nor webhook secret', async t => {
   const f = await setup(t);
   f.behavior.wrongBot = true; assert.equal(await f.module.configureTelegram(f.env), false); assert.equal(f.calls.filter(c => c.url.endsWith('/setWebhook')).length, 0);
+  const previousFingerprint = `${token.split(':')[0]}:${owner}:rachgx_bot:${f.secret}`;
+  const previousDigest = Buffer.from(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(previousFingerprint))).toString('hex');
+  await f.DB.prepare("UPDATE telegram_config SET fingerprint = ? WHERE id = 'webhook'").bind(previousDigest).run();
   f.behavior.wrongBot = false; assert.equal(await f.module.configureTelegram(f.env), true); assert.equal(await f.module.configureTelegram(f.env), true);
   assert.equal(f.calls.filter(c => c.url.endsWith('/setWebhook')).length, 1);
   const status = await (await f.request('/v1/integrations/telegram')).json(); assert.equal(status.telegram.enabled, true);

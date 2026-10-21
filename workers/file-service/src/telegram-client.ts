@@ -1,7 +1,7 @@
 import { InputError, readBounded } from '../../common/content';
 
 export const TELEGRAM_WEBHOOK_PATH = '/integrations/telegram/webhook';
-export const TELEGRAM_WEBHOOK_URL = `https://rachg-file-service.haenlau.workers.dev${TELEGRAM_WEBHOOK_PATH}`;
+export const TELEGRAM_WEBHOOK_URL = `https://api.rachg.com${TELEGRAM_WEBHOOK_PATH}`;
 export const TELEGRAM_FILE_BYTES = 20_000_000;
 export interface TelegramEnv {
   TELEGRAM_BOT_TOKEN?: string;
