@@ -44,7 +44,11 @@ export interface MailItem {
   preview: string;
 }
 
+export type { MailAttachment } from '@rachg/shared';
+
 export interface MailMessage extends MailItem {
+  html?: string;
+  attachments?: import('@rachg/shared').MailAttachment[];
   replyTo?: string;
   text: string;
   messageId?: string;

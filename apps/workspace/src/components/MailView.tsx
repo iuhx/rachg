@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Inbox, Mail as MailIcon, RefreshCw, Reply, Send, Trash2 } from 'lucide-react';
+import { Download, Inbox, Mail as MailIcon, Paperclip, RefreshCw, Reply, Send, Trash2 } from 'lucide-react';
+import { sanitizeEmailHtml } from '../utils/mailSanitize';
 import type { MailItem, MailMessage, MailQuote, MailSendRequest, SentMailItem, SentMailMessage } from '../types';
 import { ConfirmDialog } from './ConfirmDialog';
 import { replyHeaders as buildReplyHeaders, replySubject } from '../utils/mailReply';
@@ -51,6 +52,7 @@ export const MailView: React.FC<MailViewProps> = ({
   const sendingRef = useRef(false);
   const deletingRef = useRef(false);
   const [discardOpen, setDiscardOpen] = useState(false);
+  const [inboxViewMode, setInboxViewMode] = useState<'rich' | 'plain'>('rich');
   const hasDraft = Boolean(recipient || subject || body);
   const quoteTooLarge = useMemo(() => Boolean(replyContext && (replyContext.text.length > 200_000 || new TextEncoder().encode(replyContext.text).byteLength > 200_000)), [replyContext]);
 
@@ -66,6 +68,16 @@ export const MailView: React.FC<MailViewProps> = ({
     `${message.from} ${message.subject} ${message.preview}`.toLowerCase().includes(search.toLowerCase())), [messages, search]);
   const filteredSent = useMemo(() => sentMessages.filter((message) =>
     `${message.to} ${message.subject} ${message.preview}`.toLowerCase().includes(search.toLowerCase())), [sentMessages, search]);
+
+  const sanitizedHtml = useMemo(() => {
+    if (!selectedMessage?.html) return '';
+    return sanitizeEmailHtml(selectedMessage.html);
+  }, [selectedMessage?.html]);
+
+  const regularAttachments = useMemo(() => {
+    if (!selectedMessage?.attachments) return [];
+    return selectedMessage.attachments.filter(att => att.disposition !== 'inline');
+  }, [selectedMessage?.attachments]);
 
   const clearDraft = () => {
     setRecipient('');
@@ -190,9 +202,67 @@ export const MailView: React.FC<MailViewProps> = ({
                   <article>
                     <div className="flex flex-wrap items-start justify-between gap-4 border-b border-neutral-100 pb-4 dark:border-white/[0.06]">
                       <div className="min-w-0"><h2 className="type-modal-heading break-words text-neutral-900 dark:text-white">{selectedMessage.subject || '(无标题)'}</h2><p className="type-secondary mt-3 break-all">From: {selectedMessage.from}</p><p className="type-caption mt-1 break-all">To: {selectedMessage.to} · {formatDate(selectedMessage.receivedAt)}</p></div>
-                      <div className="flex items-center gap-2"><button type="button" onClick={openReply} className="workspace-button workspace-button-secondary min-h-8 px-2.5 cursor-pointer"><Reply className="w-3.5 h-3.5" /><span>Reply</span></button><button type="button" onClick={() => setPendingDelete(selectedMessage)} aria-label="Delete email" title="Delete email" className="workspace-button workspace-button-secondary min-h-8 px-2 text-red-500 cursor-pointer"><Trash2 className="w-3.5 h-3.5" /></button></div>
+                      <div className="flex items-center gap-2">
+                        {Boolean(selectedMessage.html) && (
+                          <div className="workspace-segment text-xs mr-1" role="group" aria-label="View mode">
+                            <button
+                              type="button"
+                              onClick={() => setInboxViewMode('rich')}
+                              aria-pressed={inboxViewMode === 'rich'}
+                              className={`workspace-segment-item ${inboxViewMode === 'rich' ? 'workspace-segment-item-active' : ''}`}
+                            >
+                              Rich
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setInboxViewMode('plain')}
+                              aria-pressed={inboxViewMode === 'plain'}
+                              className={`workspace-segment-item ${inboxViewMode === 'plain' ? 'workspace-segment-item-active' : ''}`}
+                            >
+                              Plain
+                            </button>
+                          </div>
+                        )}
+                        <button type="button" onClick={openReply} className="workspace-button workspace-button-secondary min-h-8 px-2.5 cursor-pointer"><Reply className="w-3.5 h-3.5" /><span>Reply</span></button>
+                        <button type="button" onClick={() => setPendingDelete(selectedMessage)} aria-label="Delete email" title="Delete email" className="workspace-button workspace-button-secondary min-h-8 px-2 text-red-500 cursor-pointer"><Trash2 className="w-3.5 h-3.5" /></button>
+                      </div>
                     </div>
-                    <pre className="type-body whitespace-pre-wrap break-words font-sans pt-5 text-neutral-700 dark:text-neutral-300">{selectedMessage.text || 'This email has no text content.'}</pre>
+                    {inboxViewMode === 'rich' && sanitizedHtml ? (
+                      <div
+                        className="email-rich-content pt-5 overflow-x-auto text-neutral-800 dark:text-neutral-200"
+                        dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
+                      />
+                    ) : (
+                      <pre className="type-body whitespace-pre-wrap break-words font-sans pt-5 text-neutral-700 dark:text-neutral-300">{selectedMessage.text || 'This email has no text content.'}</pre>
+                    )}
+                    {regularAttachments.length > 0 && (
+                      <div className="mt-6 pt-4 border-t border-neutral-100 dark:border-white/[0.06] space-y-2">
+                        <p className="type-label flex items-center gap-1.5 text-neutral-500 dark:text-neutral-400">
+                          <Paperclip className="w-3.5 h-3.5" />
+                          <span>Attachments ({regularAttachments.length})</span>
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          {regularAttachments.map((att, idx) => (
+                            <div key={idx} className="flex items-center justify-between p-2.5 rounded-lg border border-neutral-200/80 dark:border-white/10 bg-neutral-50/50 dark:bg-white/[0.02]">
+                              <div className="min-w-0 pr-2">
+                                <p className="type-body font-medium truncate text-neutral-900 dark:text-white" title={att.filename}>{att.filename}</p>
+                                <p className="type-caption text-neutral-400">{att.size > 0 ? (att.size > 1048576 ? (att.size / 1048576).toFixed(1) + ' MB' : (att.size / 1024).toFixed(1) + ' KB') : '0 B'} · {att.mimeType}</p>
+                              </div>
+                              {att.dataUrl && (
+                                <a
+                                  href={att.dataUrl}
+                                  download={att.filename}
+                                  className="workspace-button workspace-button-secondary min-h-7 px-2 shrink-0"
+                                  title={`Download ${att.filename}`}
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                </a>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </article>
                 )
             ) : (

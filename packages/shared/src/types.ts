@@ -133,7 +133,18 @@ export interface MailItem {
   preview: string;
 }
 
+export interface MailAttachment {
+  filename: string;
+  mimeType: string;
+  size: number;
+  disposition: string;
+  contentId?: string;
+  dataUrl?: string;
+}
+
 export interface MailMessage extends MailItem {
+  html?: string;
+  attachments?: MailAttachment[];
   replyTo?: string;
   text: string;
   messageId?: string;

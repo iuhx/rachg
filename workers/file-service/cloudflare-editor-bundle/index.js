@@ -8202,6 +8202,14 @@ function mapSentMailItem(record) {
     status: record.status
   };
 }
+function uint8ArrayToBase64(bytes) {
+  let binary = "";
+  const chunkSize = 32768;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
 function htmlToPlainText(html) {
   return mailPlainText(html);
 }
@@ -8459,11 +8467,47 @@ var index_default = {
         if (object2.size > MAX_MAIL_BYTES) throw new InputError("This message exceeds the 5 MiB preview limit", 413);
         const parsed = await PostalMime.parse(await object2.arrayBuffer());
         const item = mapMailItem(record);
+        let rawHtml = parsed.html || "";
+        const attachments = [];
+        if (Array.isArray(parsed.attachments)) {
+          for (const att of parsed.attachments) {
+            const cid = (att.contentId || "").replace(/^<|>$/g, "").trim();
+            const mimeType = att.mimeType || "application/octet-stream";
+            let dataUrl;
+            let size = 0;
+            if (typeof att.content === "string") {
+              const encoded = new TextEncoder().encode(att.content);
+              size = encoded.byteLength;
+              if (size <= 5 * 1024 * 1024) {
+                dataUrl = "data:" + mimeType + ";base64," + uint8ArrayToBase64(encoded);
+              }
+            } else if (att.content) {
+              const bytes = att.content instanceof Uint8Array ? att.content : new Uint8Array(att.content);
+              size = bytes.byteLength;
+              if (size <= 5 * 1024 * 1024) {
+                dataUrl = "data:" + mimeType + ";base64," + uint8ArrayToBase64(bytes);
+              }
+            }
+            if (cid && dataUrl && rawHtml.includes("cid:" + cid)) {
+              rawHtml = rawHtml.split("cid:" + cid).join(dataUrl);
+            }
+            attachments.push({
+              filename: att.filename || "attachment",
+              mimeType,
+              size,
+              disposition: att.disposition || "attachment",
+              contentId: cid || void 0,
+              dataUrl
+            });
+          }
+        }
         const message = {
           ...item,
           from: parsed.from?.address || item.from,
           replyTo: parsed.replyTo?.find((address) => address.address && isEmailAddress(address.address))?.address || parsed.from?.address || item.from,
           text: parsed.text?.trim() || htmlToPlainText(parsed.html || ""),
+          html: rawHtml || void 0,
+          attachments: attachments.length > 0 ? attachments : void 0,
           messageId: parsed.messageId,
           references: parsed.references
         };
